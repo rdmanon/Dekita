@@ -83,6 +83,25 @@ struct DebugPanelView: View {
                 }
 
                 Section {
+                    Button("Add sample draft order") { bridge.addSampleDraft() }
+                    if let stores = state.stores {
+                        ForEach(stores.filter { $0.supports(mode: .inStore) }, id: \.id) { store in
+                            HStack {
+                                Text(store.name).lineLimit(1)
+                                Spacer()
+                                Button(store.seatsFull ? "Free seats" : "Seats full") { bridge.toggleSeatsFull(store: store) }
+                                    .buttonStyle(.borderless)
+                                    .font(.footnote)
+                            }
+                        }
+                    }
+                } header: {
+                    Text("Check-in")
+                } footer: {
+                    Text("The draft is the sample cart at Test Ramen Bar. Sign in to see it in Orders and on Discover.")
+                }
+
+                Section {
                     LabeledContent("Session", value: state.session)
                     Toggle("Force SSO failure", isOn: Binding(
                         get: { state.forceSsoFailure },

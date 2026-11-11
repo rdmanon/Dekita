@@ -14,6 +14,9 @@ struct DiscoverView: View {
         let state = model.state
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
+                if let draft = state.draft {
+                    DraftBanner(order: draft)
+                }
                 ModePicker(mode: state.filters.mode) { model.viewModel.selectMode(mode: $0) }
                 DecidedShortcuts(
                     favoriteItemCount: state.favoriteItemCount,

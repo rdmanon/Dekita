@@ -104,7 +104,7 @@ struct CartReviewView: View {
             if event is CartReviewEventRequireSignIn {
                 flow.requestSignIn(from: .checkout)
             } else if let saved = event as? CartReviewEventDraftSaved {
-                flow.replaceTop(with: .checkIn(orderNumber: Int(saved.orderNumber), storeName: saved.storeName))
+                flow.replaceTop(with: .checkIn(orderId: saved.orderId))
             } else {
                 showPaymentNote = true
             }

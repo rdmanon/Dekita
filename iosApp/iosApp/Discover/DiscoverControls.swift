@@ -7,8 +7,8 @@ enum DiscoverRoute: Hashable {
     case history
     case store(id: String, name: String)
     case cart
-    /// CART-01: after Eat-In saves a DRAFT order. Replaces the cart in the stack.
-    case checkIn(orderNumber: Int, storeName: String)
+    /// Check-in for an Eat-In draft (SEAT-01). Replaces the cart in the stack after "Head to store".
+    case checkIn(orderId: String)
 }
 
 /// Opens the screen for a route. Attach with `.navigationDestination(for: DiscoverRoute.self)`.
@@ -21,7 +21,7 @@ struct DiscoverDestination: View {
         case .history: HistoryView()
         case let .store(id, name): StoreScreen(storeId: id, name: name)
         case .cart: CartReviewView()
-        case let .checkIn(orderNumber, storeName): CheckInPlaceholderView(orderNumber: orderNumber, storeName: storeName)
+        case let .checkIn(orderId): CheckInView(orderId: orderId)
         }
     }
 }
@@ -227,5 +227,33 @@ struct LoadingPlaceholder: View {
         .onAppear { dimmed = true }
         .accessibilityElement()
         .accessibilityLabel("Loading stores")
+    }
+}
+
+/// SEAT-01: a draft kept from check-in, so the customer can pick it up again. Tapping it resumes check-in.
+struct DraftBanner: View {
+    let order: Order
+
+    var body: some View {
+        NavigationLink(value: DiscoverRoute.checkIn(orderId: order.id)) {
+            HStack(spacing: 14) {
+                Image(systemName: "fork.knife")
+                    .font(.title3)
+                    .foregroundStyle(Palette.action)
+                    .frame(width: 40, height: 40)
+                    .background(Palette.tileIcon, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(LabelsKt.draftBannerTitle(storeName: order.storeName)).font(.headline).foregroundStyle(.primary)
+                    Text(order.itemsLabel).font(.subheadline).foregroundStyle(.secondary)
+                }
+                Spacer()
+                Text(LabelsKt.RESUME_CHECK_IN).font(.subheadline.weight(.semibold)).foregroundStyle(Palette.action)
+            }
+            .padding(14)
+            .background(Palette.card, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .accessibilityElement(children: .combine)
+        .accessibilityHint(LabelsKt.RESUME_CHECK_IN)
     }
 }

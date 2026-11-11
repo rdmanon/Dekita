@@ -2,6 +2,7 @@ import SwiftUI
 import SharedLogic
 
 /// Orders tab: active tickets and history from the seed data. Guests see a sign-in card instead.
+/// SEAT-01: a draft kept from check-in can be resumed from here.
 /// The real Orders screen is a later ticket; this matches the content the Android tab shows.
 struct OrdersView: View {
     @EnvironmentObject private var flow: AuthFlow
@@ -24,7 +25,7 @@ struct OrdersView: View {
                         Text("No active orders.").foregroundStyle(.secondary)
                     }
                     ForEach(state.active, id: \.id) { order in
-                        ActiveOrderCard(order: order)
+                        ActiveOrderCard(order: order) { flow.resumeCheckIn(orderId: order.id) }
                     }
                     Text("History").font(.title3.weight(.bold)).padding(.top, 8)
                     VStack(spacing: 0) {
@@ -48,6 +49,8 @@ struct OrdersView: View {
 /// The ticket's order number large enough to show at the counter, then store, mode, total and status.
 private struct ActiveOrderCard: View {
     let order: Order
+    /// SEAT-01: a draft kept from check-in offers "Resume check-in".
+    let onResumeDraft: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -72,6 +75,13 @@ private struct ActiveOrderCard: View {
                 .frame(minHeight: 22)
                 .foregroundStyle(Color.accentColor)
                 .background(Palette.tileIcon, in: Capsule())
+            if order.status == OrderStatus.draft {
+                Text("Not cooked or charged yet. Check in at the store to start cooking.")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                Button(LabelsKt.RESUME_CHECK_IN, action: onResumeDraft)
+                    .buttonStyle(CapsuleButtonStyle())
+            }
         }
         .padding(16)
         .background(Palette.card, in: RoundedRectangle(cornerRadius: 24, style: .continuous))

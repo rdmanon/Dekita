@@ -282,6 +282,31 @@ final class CartReviewModel: ObservableObject {
     }
 }
 
+/// SEAT-01 check-in for one draft order.
+final class CheckInModel: ObservableObject {
+    private let bridge: CheckInBridge
+    private var watches: [FlowWatch] = []
+
+    @Published private(set) var state: CheckInUiState
+    let events = PassthroughSubject<any CheckInEvent, Never>()
+
+    var viewModel: CheckInViewModel { bridge.viewModel }
+
+    init(orderId: String) {
+        bridge = CheckInBridge(orderId: orderId)
+        state = bridge.currentState
+        watches = [
+            bridge.watch { [weak self] state in self?.state = state },
+            bridge.watchEvents { [weak self] event in self?.events.send(event) },
+        ]
+    }
+
+    deinit {
+        watches.forEach { $0.cancel() }
+        bridge.close()
+    }
+}
+
 /// The debug panel's view of the mock data layer. Debug builds only.
 final class DebugModel: ObservableObject {
     let bridge = DebugBridge()

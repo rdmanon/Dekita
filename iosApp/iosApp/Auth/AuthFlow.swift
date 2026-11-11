@@ -41,15 +41,29 @@ final class AuthFlow: ObservableObject {
         showFreshDiscover()
     }
 
-    /// Replaces the top screen of the current tab's stack, so Back skips it. CART-01: cart → check-in.
-    func replaceTop(with route: DiscoverRoute) {
+    /// Replaces the top screen of the current tab's stack with [routes], so Back skips it.
+    /// CART-01: cart → check-in. SEAT-01: check-in → store → cart (Switch to Takeout).
+    func replaceTop(with routes: DiscoverRoute...) {
         if selection == .search {
             if !searchPath.isEmpty { searchPath.removeLast() }
-            searchPath.append(route)
+            routes.forEach { searchPath.append($0) }
         } else {
             if !discoverPath.isEmpty { discoverPath.removeLast() }
-            discoverPath.append(route)
+            routes.forEach { discoverPath.append($0) }
         }
+    }
+
+    /// SEAT-01: opens check-in for a kept draft from Orders. Check-in lives in the Discover tab, with the
+    /// cart and store it can lead back to.
+    func resumeCheckIn(orderId: String) {
+        selection = .discover
+        discoverPath.append(DiscoverRoute.checkIn(orderId: orderId))
+    }
+
+    /// After paying at check-in: back to the tab's first screen, then the Orders tab.
+    func showOrders() {
+        popToRoot()
+        selection = .orders
     }
 
     /// Back to the current tab's first screen.
