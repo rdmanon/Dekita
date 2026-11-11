@@ -12,6 +12,7 @@ import tech.vauldex.dekita.domain.ModifierGroup
 import tech.vauldex.dekita.domain.ModifierOption
 import tech.vauldex.dekita.domain.Money
 import tech.vauldex.dekita.domain.OrderStatus
+import tech.vauldex.dekita.domain.OrderStep
 import tech.vauldex.dekita.domain.QueueStatus
 import tech.vauldex.dekita.domain.Store
 import tech.vauldex.dekita.domain.StoreAvailability
@@ -96,6 +97,21 @@ val OrderStatus.label: String
         OrderStatus.SERVED -> "Served"
         OrderStatus.COMPLETED -> "Completed"
     }
+
+/** The ticket's stepper and the Orders list: Received, Cooking, then Ready or Served. */
+val OrderStep.label: String
+    get() = when (this) {
+        OrderStep.RECEIVED -> "Received"
+        OrderStep.COOKING -> "Cooking"
+        OrderStep.READY -> "Ready"
+        OrderStep.SERVED -> "Served"
+    }
+
+/** Sent right after payment when the customer still has to go to the store. */
+const val ORDER_PLACED_MESSAGE = "Your order will be ready shortly. Please come to the store."
+
+/** Sent when a pickup or takeout order is ready. */
+fun orderReadyMessage(number: Int): String = "Your order #$number is ready for pickup"
 
 val CompletionReason.label: String
     get() = when (this) {

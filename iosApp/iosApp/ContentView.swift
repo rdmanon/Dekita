@@ -5,10 +5,12 @@ import SharedLogic
 /// as its own round button beside it, as in the design; on iOS 18–25 the same code gives the standard tab bar.
 /// Every screen is SwiftUI; the shared Kotlin code supplies view models and data only.
 /// Sign-in opens as a sheet over the current screen, or full screen after sign-out.
-/// Check-in opens full screen over every tab.
+/// Check-in and the order ticket open full screen over every tab, one at a time, so paying at the
+/// seat check swaps check-in for the ticket.
 struct ContentView: View {
     @StateObject private var flow = AuthFlow()
-    @State private var checkIn: CheckInTarget?
+    @ObservedObject private var notifier = OrderNotifier.shared
+    @State private var cover: AppCover?
 
     var body: some View {
         TabView(selection: $flow.selection) {
@@ -33,8 +35,33 @@ struct ContentView: View {
             SignInFlowView(isRoot: true).environmentObject(flow)
         }
         .environmentObject(flow)
-        .environment(\.openCheckIn) { checkIn = CheckInTarget(orderId: $0) }
-        .fullScreenCover(item: $checkIn) { CheckInFlow(orderId: $0.orderId) }
+        .fullScreenCover(item: $cover) { cover in
+            switch cover {
+            case .checkIn(let orderId): CheckInFlow(orderId: orderId)
+            case .ticket(let orderId): OrderTicketFlow(orderId: orderId)
+            }
+        }
+        // Outside the cover, so check-in can open the ticket after paying.
+        .environment(\.openCheckIn) { cover = .checkIn($0) }
+        .environment(\.openOrderTicket) { cover = .ticket($0) }
+        .onReceive(notifier.$openedOrderId.compactMap { $0 }) { orderId in
+            notifier.openedOrderId = nil
+            // The id comes from outside the app's screens: open only a paid order, and only while signed in.
+            if notifier.canOpenTicket(orderId) { cover = .ticket(orderId) }
+        }
+    }
+}
+
+/// What is open full screen over the tabs.
+enum AppCover: Identifiable, Hashable {
+    case checkIn(String)
+    case ticket(String)
+
+    var id: String {
+        switch self {
+        case .checkIn(let orderId): return "check-in-\(orderId)"
+        case .ticket(let orderId): return "ticket-\(orderId)"
+        }
     }
 }
 

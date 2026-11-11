@@ -1,13 +1,15 @@
 import SwiftUI
 import SharedLogic
 
-/// Orders tab: active tickets and history from the seed data. Guests see a sign-in card instead.
-/// The real Orders screen is a later ticket; this matches the content the Android tab shows.
-/// An in-store draft waiting for check-in can be resumed here, so leaving check-in never loses it.
+/// Orders tab: active tickets, then history. Guests see a sign-in card instead. Statuses update live.
+/// The full Orders inbox is RCPT-01; this matches the content the Android tab shows.
+/// An active order opens its ticket. An in-store draft waiting for check-in can be resumed here,
+/// so leaving check-in never loses it.
 struct OrdersView: View {
     @EnvironmentObject private var flow: AuthFlow
     @StateObject private var model = OrdersModel()
     @Environment(\.openCheckIn) private var openCheckIn
+    @Environment(\.openOrderTicket) private var openOrderTicket
 
     var body: some View {
         let state = model.state
@@ -29,7 +31,9 @@ struct OrdersView: View {
                         if order.awaitsCheckIn {
                             DraftCard(order: order) { openCheckIn(order.id) }
                         } else {
-                            ActiveOrderCard(order: order)
+                            Button { openOrderTicket(order.id) } label: { ActiveOrderCard(order: order) }
+                                .buttonStyle(.plain)
+                                .accessibilityHint("Opens the order ticket")
                         }
                     }
                     Text("History").font(.title3.weight(.bold)).padding(.top, 8)
@@ -72,7 +76,7 @@ private struct ActiveOrderCard: View {
             Text("\(order.itemCount) items · \(order.total.formatted())")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
-            Text(order.status.label)
+            Text(order.currentStep?.label ?? order.status.label)
                 .font(.caption.weight(.semibold))
                 .padding(.horizontal, 8)
                 .frame(minHeight: 22)

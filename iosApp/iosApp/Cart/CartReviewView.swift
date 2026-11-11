@@ -9,8 +9,8 @@ struct CartReviewView: View {
     @EnvironmentObject private var flow: AuthFlow
     @Environment(\.dismiss) private var dismiss
     @Environment(\.openCheckIn) private var openCheckIn
+    @Environment(\.openOrderTicket) private var openOrderTicket
     @StateObject private var model = CartReviewModel()
-    @State private var showPaymentNote = false
 
     var body: some View {
         let state = model.state
@@ -113,14 +113,11 @@ struct CartReviewView: View {
                 // The cart is now a draft order: close it, then check in over the tabs (CHECKIN-01).
                 flow.popTop()
                 openCheckIn(saved.orderId)
-            } else {
-                showPaymentNote = true
+            } else if let placed = event as? CartReviewEventOrderPlaced {
+                // The cart is now a paid order: close it, then show the ticket over the tabs (ORDER-01).
+                flow.popTop()
+                openOrderTicket(placed.orderId)
             }
-        }
-        .alert("You're signed in", isPresented: $showPaymentNote) {
-            Button("OK", role: .cancel) {}
-        } message: {
-            Text("Payment isn't built in this mockup yet. Your cart is kept.")
         }
     }
 

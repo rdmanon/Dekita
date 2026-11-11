@@ -84,6 +84,26 @@ final class CheckInModel: ObservableObject {
     }
 }
 
+final class OrderTicketModel: ObservableObject {
+    private let bridge: OrderTicketBridge
+    private var watch: FlowWatch?
+
+    @Published private(set) var state: OrderTicketUiState
+
+    var viewModel: OrderTicketViewModel { bridge.viewModel }
+
+    init(orderId: String) {
+        bridge = OrderTicketBridge(orderId: orderId)
+        state = bridge.currentState
+        watch = bridge.watch { [weak self] state in self?.state = state }
+    }
+
+    deinit {
+        watch?.cancel()
+        bridge.close()
+    }
+}
+
 final class QrScannerModel: ObservableObject {
     private let bridge: QrScannerBridge
     private var watch: FlowWatch?

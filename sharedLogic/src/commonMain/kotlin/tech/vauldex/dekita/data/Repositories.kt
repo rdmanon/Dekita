@@ -76,8 +76,30 @@ interface CartRepository {
 interface OrderRepository {
     val orders: StateFlow<LoadState<List<Order>>>
 
+    /**
+     * Each order right after its status changes, including payment. Not replayed, so a collector
+     * only sees changes made while it collects. Drives the order notifications.
+     */
+    val statusChanges: Flow<Order>
+
     /** Returns null when the orders are not loaded or there is no order with [orderId]. */
     fun transition(orderId: String, to: OrderStatus, reason: CompletionReason? = null): TransitionResult?
+
+    /**
+     * Pay now: charges the customer's default payment method and places [cart] as a paid order, PAID for
+     * pickup or QUEUED for in-store. Returns the new order, which also appears in [orders].
+     *
+     * shortcut: a mock payment that always succeeds. PAY-01 puts the payment sheet in front of this.
+     */
+    fun placeOrder(cart: Cart, storeName: String): Order
+
+    /**
+     * Pays an Eat-In draft at the store once the customer has checked in, moving it to QUEUED.
+     * Returns the paid order, or null when [orderId] is not a checked-in in-store draft.
+     *
+     * shortcut: a mock payment that always succeeds. PAY-01 replaces it.
+     */
+    fun payAtCheckIn(orderId: String): Order?
 
     /**
      * Saves [cart] as a DRAFT order: an Eat-In order that is paid on arrival with [Start Cooking].

@@ -10,10 +10,13 @@ import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.painterResource
 import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavBackStackEntry
 import androidx.navigation.NavController
@@ -28,6 +31,7 @@ import androidx.navigation.compose.navigation
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.toRoute
 import kotlin.reflect.KClass
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.serialization.Serializable
 import tech.vauldex.dekita.R
 import tech.vauldex.dekita.di.AppContainer
@@ -44,6 +48,7 @@ import tech.vauldex.dekita.presentation.checkin.QrScannerViewModel
 import tech.vauldex.dekita.presentation.discover.DiscoverViewModel
 import tech.vauldex.dekita.presentation.discover.FavoritesViewModel
 import tech.vauldex.dekita.presentation.discover.HistoryViewModel
+import tech.vauldex.dekita.presentation.orders.OrderTicketViewModel
 import tech.vauldex.dekita.presentation.orders.OrdersViewModel
 import tech.vauldex.dekita.presentation.store.StoreDetailViewModel
 import tech.vauldex.dekita.ui.account.AccountScreen
@@ -59,7 +64,9 @@ import tech.vauldex.dekita.ui.checkin.SeatCheckScreen
 import tech.vauldex.dekita.ui.discover.DiscoverScreen
 import tech.vauldex.dekita.ui.discover.FavoritesScreen
 import tech.vauldex.dekita.ui.discover.HistoryScreen
+import tech.vauldex.dekita.ui.orders.OrderTicketScreen
 import tech.vauldex.dekita.ui.orders.OrdersScreen
+import tech.vauldex.dekita.ui.orders.RateOrderPlaceholderScreen
 import tech.vauldex.dekita.ui.store.StoreDetailScreen
 
 // One nested graph per tab, so each tab keeps its own back stack when you switch away and back.
@@ -88,6 +95,10 @@ import tech.vauldex.dekita.ui.store.StoreDetailScreen
 @Serializable data class QrScannerRoute(val orderId: String)
 @Serializable data class SeatCheckRoute(val orderId: String)
 
+// The order ticket also sits outside the tabs: payment, Discover, Orders and notifications all open it.
+@Serializable data class OrderTicketRoute(val orderId: String)
+@Serializable data class RateOrderRoute(val orderId: String)
+
 private enum class TopLevelTab(
     val graph: Any,
     val graphClass: KClass<*>,
@@ -102,11 +113,27 @@ private enum class TopLevelTab(
 
 /**
  * Bottom tabs plus the back stack. Back and predictive back pop through NavHost.
+ * [ticketRequest] is an order id from a tapped notification; it opens that ticket when the id checks out.
  */
 @Composable
-fun AppShell(container: AppContainer, modifier: Modifier = Modifier) {
+fun AppShell(
+    container: AppContainer,
+    ticketRequest: StateFlow<String?>,
+    onTicketRequestHandled: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
     val navController = rememberNavController()
     val backStackEntry by navController.currentBackStackEntryAsState()
+    val requestedTicket by ticketRequest.collectAsStateWithLifecycle()
+    val currentOnTicketRequestHandled by rememberUpdatedState(onTicketRequestHandled)
+    LaunchedEffect(requestedTicket) {
+        val orderId = requestedTicket ?: return@LaunchedEffect
+        currentOnTicketRequestHandled()
+        // The id comes from outside the app's screens: open only a paid order, and only while signed in.
+        if (container.orderNotifications.canOpenTicket(orderId)) {
+            navController.navigate(OrderTicketRoute(orderId)) { launchSingleTop = true }
+        }
+    }
     val destination = backStackEntry?.destination
     // As in the design, the bar shows on tab roots only and hides on pushed screens.
     val showBottomBar = destination == null || TopLevelTab.entries.any { destination.hasRoute(it.rootClass) }
@@ -139,7 +166,12 @@ fun AppShell(container: AppContainer, modifier: Modifier = Modifier) {
                 composable<DiscoverRoute> { entry ->
                     DiscoverScreen(
                         viewModel = viewModel {
-                            DiscoverViewModel(container.storeRepository, container.orderRepository, container.cartRepository)
+                            DiscoverViewModel(
+                                container.storeRepository,
+                                container.orderRepository,
+                                container.cartRepository,
+                                container.authRepository,
+                            )
                         },
                         onStoreClick = { storeId ->
                             if (entry.isResumed()) navController.navigate(StoreDetailRoute(storeId))
@@ -147,6 +179,7 @@ fun AppShell(container: AppContainer, modifier: Modifier = Modifier) {
                         onFavoritesClick = { if (entry.isResumed()) navController.navigate(FavoritesRoute) },
                         onHistoryClick = { if (entry.isResumed()) navController.navigate(HistoryRoute) },
                         onResumeDraft = { orderId -> if (entry.isResumed()) navController.navigate(CheckInRoute(orderId)) },
+                        onOpenTicket = { orderId -> if (entry.isResumed()) navController.navigate(OrderTicketRoute(orderId)) },
                     )
                 }
                 composable<FavoritesRoute> { entry ->
@@ -204,6 +237,12 @@ fun AppShell(container: AppContainer, modifier: Modifier = Modifier) {
                                 popUpTo<CartRoute> { inclusive = true }
                             }
                         },
+                        onOrderPlaced = { orderId ->
+                            navController.navigate(OrderTicketRoute(orderId)) {
+                                // The cart is now a paid order, so Back from the ticket skips the empty cart.
+                                popUpTo<CartRoute> { inclusive = true }
+                            }
+                        },
                     )
                 }
             }
@@ -213,6 +252,7 @@ fun AppShell(container: AppContainer, modifier: Modifier = Modifier) {
                         viewModel = viewModel { OrdersViewModel(container.orderRepository, container.authRepository) },
                         onSignIn = { if (entry.isResumed()) navController.navigate(SignInRoute()) },
                         onCheckIn = { orderId -> if (entry.isResumed()) navController.navigate(CheckInRoute(orderId)) },
+                        onOpenTicket = { orderId -> if (entry.isResumed()) navController.navigate(OrderTicketRoute(orderId)) },
                     )
                 }
             }
@@ -229,6 +269,7 @@ fun AppShell(container: AppContainer, modifier: Modifier = Modifier) {
             }
             authDestinations(container, navController)
             checkInDestinations(container, navController)
+            orderDestinations(container, navController)
         }
     }
 }
@@ -336,8 +377,30 @@ private fun NavGraphBuilder.checkInDestinations(container: AppContainer, navCont
                 CheckInViewModel(orderId, container.orderRepository, container.storeRepository, container.locationRepository)
             },
             onBack = { if (entry.isResumed()) navController.popBackStack() },
-            onDone = { if (entry.isResumed()) navController.popBackStack<CheckInRoute>(inclusive = true) },
+            onPaid = { paidOrderId ->
+                // Check-in is over once the order is paid, so Back from the ticket leaves the whole flow.
+                navController.navigate(OrderTicketRoute(paidOrderId)) { popUpTo<CheckInRoute> { inclusive = true } }
+            },
         )
+    }
+}
+
+private fun NavGraphBuilder.orderDestinations(container: AppContainer, navController: NavController) {
+    composable<OrderTicketRoute> { entry ->
+        val orderId = entry.toRoute<OrderTicketRoute>().orderId
+        OrderTicketScreen(
+            viewModel = viewModel {
+                OrderTicketViewModel(orderId, container.orderRepository, container.authRepository, container.orderSimulator)
+            },
+            onBack = { if (entry.isResumed()) navController.popBackStack() },
+            onConfirmed = {
+                // The order is closed, so Back from the rating skips its ticket.
+                navController.navigate(RateOrderRoute(orderId)) { popUpTo<OrderTicketRoute> { inclusive = true } }
+            },
+        )
+    }
+    composable<RateOrderRoute> { entry ->
+        RateOrderPlaceholderScreen(onDone = { if (entry.isResumed()) navController.popBackStack() })
     }
 }
 

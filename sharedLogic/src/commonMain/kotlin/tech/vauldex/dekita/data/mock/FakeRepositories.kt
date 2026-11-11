@@ -4,9 +4,13 @@ import kotlin.time.Clock
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.getAndUpdate
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.updateAndGet
@@ -21,6 +25,7 @@ import tech.vauldex.dekita.data.MenuRepository
 import tech.vauldex.dekita.data.OrderRepository
 import tech.vauldex.dekita.data.PaymentRepository
 import tech.vauldex.dekita.data.StoreRepository
+import tech.vauldex.dekita.data.dataOrNull
 import tech.vauldex.dekita.domain.BusinessType
 import tech.vauldex.dekita.domain.Cart
 import tech.vauldex.dekita.domain.CartLine
@@ -44,6 +49,8 @@ import tech.vauldex.dekita.domain.Store
 import tech.vauldex.dekita.domain.StoreAvailability
 import tech.vauldex.dekita.domain.TransitionResult
 import tech.vauldex.dekita.domain.UserProfile
+import tech.vauldex.dekita.domain.canConfirm
+import tech.vauldex.dekita.domain.isActive
 
 // In-memory fakes over the seed data. They never touch the network or disk.
 // Pass a test scope in tests so the simulated delay runs on virtual time.
@@ -318,14 +325,32 @@ class FakeCartRepository : CartRepository, Resettable {
     }
 }
 
+/** Debug-only moves of an order, as the store's own app would make them. Only the fake implements this. */
+interface OrderSimulator {
+    /** Moves a paid order one status on, stopping at Ready or Served. Returns false when it can't move. */
+    fun advance(orderId: String): Boolean
+
+    /** Completes a Ready or Served order as if the customer never tapped [Confirm]. Returns false otherwise. */
+    fun autoComplete(orderId: String): Boolean
+}
+
+/**
+ * Orders over the seed data. Orders paid in this session move on by themselves, like a busy kitchen:
+ * one status every [MockConfig.ORDER_STEP_INTERVAL], then auto-complete [MockConfig.AUTO_COMPLETE_AFTER]
+ * after Ready or Served. Seed orders stay where they are, so QA can check them; the debug buttons move them.
+ */
 class FakeOrderRepository(
     private val scope: CoroutineScope,
     private val config: MockConfig,
     private val clock: Clock,
-) : OrderRepository, Resettable {
+) : OrderRepository, OrderSimulator, Resettable {
 
     private val _orders = MutableStateFlow<LoadState<List<Order>>>(LoadState.Loading)
     override val orders: StateFlow<LoadState<List<Order>>> = _orders.asStateFlow()
+
+    // Sized so tryEmit never drops a change while a slow collector catches up.
+    private val _statusChanges = MutableSharedFlow<Order>(extraBufferCapacity = 64)
+    override val statusChanges: Flow<Order> = _statusChanges.asSharedFlow()
 
     // Declared before init: reset() uses it, and Kotlin runs initializers in declaration order.
     /** Orders made in this session. A reload keeps them, as a server would. */
@@ -350,26 +375,99 @@ class FakeOrderRepository(
                 is TransitionResult.Rejected -> state
             }
         }
+        // Emitted after the update, which can run its block more than once.
+        (result as? TransitionResult.Accepted)?.let { _statusChanges.tryEmit(it.order) }
         return result
     }
 
-    override fun createDraft(cart: Cart, storeName: String): Order {
-        val known = (_orders.value as? LoadState.Success)?.data ?: (created.value + seedOrders(clock.now()))
+    override fun createDraft(cart: Cart, storeName: String): Order =
+        // Eat-In is paid at check-in, so there is no payment method yet.
+        newDraft(cart, storeName).also(::add)
+
+    override fun placeOrder(cart: Cart, storeName: String): Order {
+        val draft = newDraft(cart, storeName)
+        val order = paid(draft) ?: error("A new draft can always be paid")
+        add(order)
+        _statusChanges.tryEmit(order)
+        drive(order.id)
+        return order
+    }
+
+    override fun payAtCheckIn(orderId: String): Order? {
+        var result: Order? = null
+        _orders.update { state ->
+            result = null
+            val orders = state.dataOrNull() ?: return@update state
+            val draft = orders.firstOrNull { it.id == orderId }?.takeIf { it.awaitsCheckIn && it.checkIn != null }
+                ?: return@update state
+            val order = paid(draft) ?: return@update state
+            result = order
+            LoadState.Success(orders.map { if (it.id == orderId) order else it })
+        }
+        result?.let {
+            _statusChanges.tryEmit(it)
+            drive(it.id)
+        }
+        return result
+    }
+
+    override fun advance(orderId: String): Boolean {
+        val order = order(orderId)?.takeIf { it.isActive && !it.canConfirm } ?: return false
+        val next = OrderStatusMachine.nextStatus(order.status, order.mode) ?: return false
+        return transition(orderId, next) is TransitionResult.Accepted
+    }
+
+    override fun autoComplete(orderId: String): Boolean {
+        if (order(orderId)?.canConfirm != true) return false
+        // The state machine rejects this if the customer confirmed first, so an order completes once.
+        return transition(orderId, OrderStatus.COMPLETED, CompletionReason.AUTO_COMPLETED) is TransitionResult.Accepted
+    }
+
+    private fun order(orderId: String): Order? = _orders.value.dataOrNull()?.firstOrNull { it.id == orderId }
+
+    private fun newDraft(cart: Cart, storeName: String): Order {
+        val known = _orders.value.dataOrNull() ?: (created.value + seedOrders(clock.now()))
         val number = (known.maxOfOrNull { it.number } ?: 0) + 1
-        val order = Order.draft(
+        return Order.draft(
             id = "order-$number",
             number = number,
             storeId = cart.storeId,
             storeName = storeName,
             mode = cart.mode,
             lines = cart.lines,
-            // Eat-In is paid at check-in, so there is no payment method yet.
             paymentMethodId = null,
             at = clock.now(),
         )
+    }
+
+    private fun add(order: Order) {
         created.update { listOf(order) + it }
         _orders.update { state -> if (state is LoadState.Success) LoadState.Success(listOf(order) + state.data) else state }
-        return order
+    }
+
+    /** The draft after a mock payment with the default method: PAID for pickup, QUEUED for in-store. Null if it isn't a draft. */
+    private fun paid(draft: Order): Order? {
+        if (draft.status != OrderStatus.DRAFT) return null
+        val next = OrderStatusMachine.nextStatus(draft.status, draft.mode) ?: return null
+        val accepted = OrderStatusMachine.transition(draft, next, clock.now()) as? TransitionResult.Accepted ?: return null
+        return accepted.order.copy(paymentMethodId = DEFAULT_PAYMENT_METHOD_ID)
+    }
+
+    /**
+     * The mock kitchen for one paid order. Ends when the order completes or is gone (reset). A change made
+     * during a wait, by a debug button or [Confirm], starts the wait again from the new status.
+     */
+    private fun drive(orderId: String) {
+        scope.launch {
+            while (true) {
+                val before = order(orderId)?.takeIf { it.isActive } ?: return@launch
+                delay(if (before.canConfirm) MockConfig.AUTO_COMPLETE_AFTER else MockConfig.ORDER_STEP_INTERVAL)
+                config.liveOrders.first { it }
+                val now = order(orderId) ?: return@launch
+                if (now.history.size != before.history.size) continue
+                if (now.canConfirm) autoComplete(orderId) else advance(orderId)
+            }
+        }
     }
 
     override fun checkIn(orderId: String, checkIn: CheckIn): Boolean {
@@ -395,6 +493,10 @@ class FakeOrderRepository(
         loadJob?.cancel()
         created.value = emptyList()
         _orders.value = LoadState.Success(emptyList())
+    }
+
+    private companion object {
+        val DEFAULT_PAYMENT_METHOD_ID = seedPaymentMethods.first { it.isDefault }.id
     }
 }
 

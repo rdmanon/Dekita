@@ -26,6 +26,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import tech.vauldex.dekita.domain.Order
+import tech.vauldex.dekita.domain.currentStep
 import tech.vauldex.dekita.presentation.orders.OrdersViewModel
 import tech.vauldex.dekita.ui.components.LoadingIndicator
 import tech.vauldex.dekita.ui.components.SectionTitle
@@ -37,11 +38,17 @@ import tech.vauldex.dekita.ui.theme.DekitaTheme
 import tech.vauldex.dekita.ui.theme.Dimens
 
 /**
- * Placeholder Orders tab: active tickets and history from the seed. The real screen is a later ticket.
- * An in-store draft waiting for check-in shows here with [onCheckIn], so leaving check-in never loses it.
+ * Orders tab: active tickets, then history. The full Orders inbox is RCPT-01. Statuses update live.
+ * An active order opens its ticket with [onOpenTicket]. An in-store draft waiting for check-in shows here
+ * with [onCheckIn], so leaving check-in never loses it.
  */
 @Composable
-fun OrdersScreen(viewModel: OrdersViewModel, onSignIn: () -> Unit, onCheckIn: (orderId: String) -> Unit) {
+fun OrdersScreen(
+    viewModel: OrdersViewModel,
+    onSignIn: () -> Unit,
+    onCheckIn: (orderId: String) -> Unit,
+    onOpenTicket: (orderId: String) -> Unit,
+) {
     val state by viewModel.state.collectAsStateWithLifecycle()
 
     Scaffold(topBar = { TopAppBar(title = { Text("Orders") }) }) { padding ->
@@ -76,7 +83,7 @@ fun OrdersScreen(viewModel: OrdersViewModel, onSignIn: () -> Unit, onCheckIn: (o
                 if (order.awaitsCheckIn) {
                     DraftCard(order, onCheckIn = { onCheckIn(order.id) }, Modifier.padding(bottom = 12.dp))
                 } else {
-                    ActiveOrderCard(order, Modifier.padding(bottom = 12.dp))
+                    ActiveOrderCard(order, onClick = { onOpenTicket(order.id) }, Modifier.padding(bottom = 12.dp))
                 }
             }
             item(key = "history-title") { SectionTitle("History") }
@@ -88,9 +95,14 @@ fun OrdersScreen(viewModel: OrdersViewModel, onSignIn: () -> Unit, onCheckIn: (o
 }
 
 @Composable
-private fun ActiveOrderCard(order: Order, modifier: Modifier = Modifier) {
+private fun ActiveOrderCard(order: Order, onClick: () -> Unit, modifier: Modifier = Modifier) {
     val numberColors = DekitaTheme.colors.orderNumber
-    Surface(color = MaterialTheme.colorScheme.surfaceContainer, shape = MaterialTheme.shapes.extraLarge, modifier = modifier) {
+    Surface(
+        onClick = onClick,
+        color = MaterialTheme.colorScheme.surfaceContainer,
+        shape = MaterialTheme.shapes.extraLarge,
+        modifier = modifier,
+    ) {
         Column(verticalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth().padding(16.dp)) {
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
@@ -110,7 +122,7 @@ private fun ActiveOrderCard(order: Order, modifier: Modifier = Modifier) {
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             order.checkIn?.tableNumber?.let { Text("Table $it", style = MaterialTheme.typography.titleMedium) }
-            StatusPill(order.status.label, DekitaTheme.colors.bothModes)
+            order.currentStep?.let { StatusPill(it.label, DekitaTheme.colors.bothModes) }
         }
     }
 }

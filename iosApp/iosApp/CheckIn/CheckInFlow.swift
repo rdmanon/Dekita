@@ -1,12 +1,6 @@
 import SwiftUI
 import SharedLogic
 
-/// Which in-store draft to check in. Presented over the tabs, so Discover and Orders both lead here.
-struct CheckInTarget: Identifiable, Hashable {
-    let orderId: String
-    var id: String { orderId }
-}
-
 extension EnvironmentValues {
     /// Opens check-in for an in-store draft. ContentView presents it over every tab.
     @Entry var openCheckIn: (String) -> Void = { _ in }
@@ -14,11 +8,13 @@ extension EnvironmentValues {
 
 /// Check-in from "On your way" to the seat check, with the QR scanner as the fallback.
 /// Closing it at any point keeps the draft, which Orders and the Discover banner both resume.
+/// Paying at the seat check swaps this flow for the order's ticket.
 struct CheckInFlow: View {
     let orderId: String
     @StateObject private var model: CheckInModel
     @State private var path: [Step] = []
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.openOrderTicket) private var openOrderTicket
 
     private enum Step: Hashable {
         case scanner, seatCheck
@@ -43,7 +39,9 @@ struct CheckInFlow: View {
                     // The scanner is done once it checks in, so Back from the seat check returns to check-in.
                     QrScannerView(orderId: orderId) { path = [.seatCheck] }
                 case .seatCheck:
-                    SeatCheckView(model: model) { dismiss() }
+                    SeatCheckView(model: model) {
+                        if let paidOrderId = model.viewModel.payAtCheckIn() { openOrderTicket(paidOrderId) }
+                    }
                 }
             }
         }

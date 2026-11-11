@@ -23,8 +23,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.SnackbarHost
-import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -32,7 +30,6 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -46,7 +43,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import kotlinx.coroutines.launch
 import tech.vauldex.dekita.R
 import tech.vauldex.dekita.domain.Cart
 import tech.vauldex.dekita.domain.CheckoutAction
@@ -88,18 +84,17 @@ fun CartReviewScreen(
     onBrowseMenu: () -> Unit,
     onSignInRequired: () -> Unit,
     onDraftSaved: (orderId: String) -> Unit,
+    onOrderPlaced: (orderId: String) -> Unit,
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
-    val snackbarHostState = remember { SnackbarHostState() }
     val currentOnSignInRequired by rememberUpdatedState(onSignInRequired)
     val currentOnDraftSaved by rememberUpdatedState(onDraftSaved)
+    val currentOnOrderPlaced by rememberUpdatedState(onOrderPlaced)
     LaunchedEffect(viewModel) {
         viewModel.events.collect { event ->
             when (event) {
                 CartReviewEvent.RequireSignIn -> currentOnSignInRequired()
-                CartReviewEvent.PaymentComingLater -> launch {
-                    snackbarHostState.showSnackbar("You're signed in. Payment isn't built in this mockup yet.")
-                }
+                is CartReviewEvent.OrderPlaced -> currentOnOrderPlaced(event.orderId)
                 is CartReviewEvent.DraftSaved -> currentOnDraftSaved(event.orderId)
             }
         }
@@ -121,7 +116,6 @@ fun CartReviewScreen(
         bottomBar = {
             if (cart != null) CheckoutBar(state, onCheckout = viewModel::checkout)
         },
-        snackbarHost = { SnackbarHost(snackbarHostState) },
     ) { padding ->
         if (cart == null) {
             Column(

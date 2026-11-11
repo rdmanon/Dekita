@@ -26,8 +26,10 @@ import tech.vauldex.dekita.data.mock.FakeQrScanner
 import tech.vauldex.dekita.data.mock.FakeStoreRepository
 import tech.vauldex.dekita.data.mock.MockConfig
 import tech.vauldex.dekita.data.mock.MenuSimulator
+import tech.vauldex.dekita.data.mock.OrderSimulator
 import tech.vauldex.dekita.data.mock.StoreFeedSimulator
 import tech.vauldex.dekita.data.mock.seedSampleCart
+import tech.vauldex.dekita.presentation.orders.OrderNotifications
 
 /** Manual wiring for the mockup. Every repository is an in-memory fake over seed data. */
 class AppContainer(
@@ -61,6 +63,12 @@ class AppContainer(
 
     /** Debug only: items selling out while a customer looks at them. */
     val menuSimulator: MenuSimulator get() = menus
+
+    /** Debug only: the store moving an order on, and auto-complete, from the ticket's debug buttons. */
+    val orderSimulator: OrderSimulator get() = orders
+
+    /** Order notices for the platforms' system notifications. One per process, like the repositories. */
+    val orderNotifications: OrderNotifications = OrderNotifications(orders, auth)
 
     /** Debug panel only: arrival and QR scans for check-in, in place of GPS and the camera. */
     val checkInSimulator: CheckInSimulator = FakeCheckInSimulator(orders, location, scanner)

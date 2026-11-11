@@ -22,6 +22,7 @@ import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 import tech.vauldex.dekita.data.dataOrNull
+import tech.vauldex.dekita.data.mock.FakeAuthRepository
 import tech.vauldex.dekita.data.mock.FakeCartRepository
 import tech.vauldex.dekita.data.mock.FakeCheckInSimulator
 import tech.vauldex.dekita.data.mock.FakeLocationRepository
@@ -31,7 +32,9 @@ import tech.vauldex.dekita.data.mock.FakeStoreRepository
 import tech.vauldex.dekita.data.mock.MockConfig
 import tech.vauldex.dekita.domain.CheckIn
 import tech.vauldex.dekita.domain.CheckInMethod
+import tech.vauldex.dekita.domain.OrderStatus
 import tech.vauldex.dekita.domain.QrScanResult
+import tech.vauldex.dekita.domain.SsoProvider
 import tech.vauldex.dekita.domain.StoreAvailability
 import tech.vauldex.dekita.presentation.discover.DiscoverViewModel
 
@@ -238,14 +241,38 @@ class CheckInViewModelTest {
         // Draft retention: leaving check-in clears its view model, but the draft is in the repository.
         val fixture = fixture()
         val checkIn = checkInViewModel(fixture)
-        val discover = DiscoverViewModel(fixture.stores, fixture.orders, FakeCartRepository())
+        val auth = FakeAuthRepository(MockConfig())
+        val discover = DiscoverViewModel(fixture.stores, fixture.orders, FakeCartRepository(), auth)
         backgroundScope.launch { discover.state.collect {} }
         finishLoading()
         assertNotNull(checkIn.state.value.draft)
+        // The banner names the customer's own draft, so guests don't see it.
+        assertNull(discover.state.value.draftToResume)
+        auth.signInWith(SsoProvider.APPLE)
+        runCurrent()
 
         assertEquals(draftId, discover.state.value.draftToResume?.id)
         assertEquals("Test Ramen Bar", discover.state.value.lastOrderStoreName)
         assertEquals("store-test-ramen-bar", fixture.simulator.draftStoreId)
+    }
+
+    @Test
+    fun payAtCheckInPaysTheCheckedInDraftOnce() = runTest(mainDispatcher) {
+        // ORDER-01: the seat check's mock payment starts the kitchen and opens the ticket.
+        val fixture = fixture()
+        val viewModel = checkInViewModel(fixture)
+        finishLoading()
+        assertNull(viewModel.payAtCheckIn(), "Not checked in yet")
+
+        fixture.simulator.simulateArrival()
+        runCurrent()
+        assertTrue(viewModel.startCooking())
+
+        assertEquals(draftId, viewModel.payAtCheckIn())
+        assertEquals(OrderStatus.QUEUED, fixture.orders.orders.value.dataOrNull()?.first { it.id == draftId }?.status)
+        assertNull(viewModel.payAtCheckIn(), "A second tap pays nothing")
+        runCurrent()
+        assertNull(viewModel.state.value.draft, "A paid order is no longer waiting for check-in")
     }
 
     @Test
