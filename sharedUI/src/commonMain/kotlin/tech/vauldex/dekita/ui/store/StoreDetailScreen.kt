@@ -37,6 +37,8 @@ import tech.vauldex.dekita.domain.FulfillmentMode
 import tech.vauldex.dekita.domain.MenuItem
 import tech.vauldex.dekita.domain.Store
 import tech.vauldex.dekita.domain.StoreAvailability
+import tech.vauldex.dekita.presentation.NOT_ACCEPTING_ORDERS_MESSAGE
+import tech.vauldex.dekita.presentation.optionsSummary
 import tech.vauldex.dekita.presentation.store.StoreDetailViewModel
 import tech.vauldex.dekita.ui.components.AvailabilityBadge
 import tech.vauldex.dekita.ui.components.BusinessTypeBadge
@@ -48,18 +50,15 @@ import tech.vauldex.dekita.ui.components.StoreArt
 import tech.vauldex.dekita.ui.theme.DekitaTheme
 import tech.vauldex.dekita.ui.theme.Dimens
 
-/**
- * Store header with the live queue. The menu list below is still a placeholder until MENU-01.
- * The iOS app passes [showTopBar] false: its SwiftUI navigation bar shows the title, back and favorite buttons.
- */
+/** Store header with the live queue. The menu list below is still a placeholder until MENU-01. */
 @Composable
-fun StoreDetailScreen(viewModel: StoreDetailViewModel, onBack: () -> Unit, showTopBar: Boolean = true) {
+fun StoreDetailScreen(viewModel: StoreDetailViewModel, onBack: () -> Unit) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val store = state.store
 
     Scaffold(
         topBar = {
-            if (showTopBar) TopAppBar(
+            TopAppBar(
                 title = { Text(store?.name.orEmpty(), maxLines = 1, overflow = TextOverflow.Ellipsis) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
@@ -139,7 +138,7 @@ private fun StoreHeader(store: Store) {
                 shape = MaterialTheme.shapes.large,
             ) {
                 Text(
-                    "Currently at full capacity - Not accepting new orders",
+                    NOT_ACCEPTING_ORDERS_MESSAGE,
                     style = MaterialTheme.typography.bodyMedium,
                     modifier = Modifier.fillMaxWidth().padding(16.dp),
                 )
@@ -177,14 +176,5 @@ private fun MenuItemRow(item: MenuItem) {
             item.availableModes == setOf(FulfillmentMode.IN_STORE) -> StatusPill("In-store only", DekitaTheme.colors.inStore)
             item.availableModes == setOf(FulfillmentMode.PICKUP) -> StatusPill("Pickup only", DekitaTheme.colors.pickup)
         }
-    }
-}
-
-private fun MenuItem.optionsSummary(): String? {
-    if (modifierGroups.isEmpty()) return null
-    return modifierGroups.joinToString(" · ") { group ->
-        val rule = if (group.isRequired) "required" else "up to ${group.maxSelections}"
-        val soldOut = group.options.filter { it.isSoldOut }.joinToString { it.name }
-        if (soldOut.isEmpty()) "${group.name} ($rule)" else "${group.name} ($rule), $soldOut sold out"
     }
 }

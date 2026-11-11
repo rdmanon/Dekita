@@ -25,6 +25,7 @@ import tech.vauldex.dekita.domain.StoreAvailability
 import tech.vauldex.dekita.domain.StoreBadge
 import tech.vauldex.dekita.presentation.headline
 import tech.vauldex.dekita.presentation.label
+import tech.vauldex.dekita.presentation.queueDetail
 import tech.vauldex.dekita.ui.theme.BadgeColors
 import tech.vauldex.dekita.ui.theme.DekitaTheme
 
@@ -127,11 +128,7 @@ fun LiveQueueCounter(store: Store, modifier: Modifier = Modifier) {
                     if (queue.isHigh) StatusPill("Busy", DekitaTheme.colors.full)
                 }
                 Text(
-                    when {
-                        store.availability == StoreAvailability.FULL -> "Not taking new orders"
-                        queue.estimatedWaitMinutes == 0 -> "Updates live"
-                        else -> "About ${queue.estimatedWaitMinutes} min wait · updates live"
-                    },
+                    store.queueDetail(),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
