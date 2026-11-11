@@ -15,12 +15,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.unit.dp
 import tech.vauldex.dekita.domain.BusinessType
-import tech.vauldex.dekita.domain.CompletionReason
-import tech.vauldex.dekita.domain.FulfillmentMode
-import tech.vauldex.dekita.domain.OrderStatus
-import tech.vauldex.dekita.domain.Store
 import tech.vauldex.dekita.domain.StoreAvailability
 import tech.vauldex.dekita.domain.StoreBadge
+import tech.vauldex.dekita.presentation.label
 import tech.vauldex.dekita.ui.theme.BadgeColors
 import tech.vauldex.dekita.ui.theme.DekitaTheme
 
@@ -62,15 +59,6 @@ fun StoreStatusBadge(badge: StoreBadge, modifier: Modifier = Modifier) {
     }
     StatusPill(badge.label, badgeColors, modifier)
 }
-
-val StoreBadge.label: String
-    get() = when (this) {
-        StoreBadge.OPEN_FOR_LUNCH -> "Open for Lunch"
-        StoreBadge.PICKUP_ONLY -> "Pickup Only"
-        StoreBadge.IN_STORE_ONLY -> "In-store Only"
-        StoreBadge.PAUSED -> "Paused"
-        StoreBadge.FULL -> "Full"
-    }
 
 /** Shows nothing for an open store. */
 @Composable
@@ -115,37 +103,3 @@ fun groupedShape(index: Int, count: Int): Shape {
         bottomEnd = if (index == count - 1) outer else inner,
     )
 }
-
-fun Store.queueLabel(): String {
-    val queue = queue
-    return when {
-        availability == StoreAvailability.PAUSED -> "Not accepting orders"
-        queue == null -> ""
-        availability == StoreAvailability.FULL -> "${queue.ordersAhead} ahead · not taking new orders"
-        queue.ordersAhead == 0 -> "No wait"
-        else -> "${queue.ordersAhead} ahead · ~${queue.estimatedWaitMinutes} min"
-    }
-}
-
-val FulfillmentMode.label: String
-    get() = when (this) {
-        FulfillmentMode.IN_STORE -> "In-store"
-        FulfillmentMode.PICKUP -> "Pickup"
-    }
-
-val OrderStatus.label: String
-    get() = when (this) {
-        OrderStatus.DRAFT -> "Draft"
-        OrderStatus.PAID -> "Paid"
-        OrderStatus.QUEUED -> "In queue"
-        OrderStatus.PREPARING -> "Preparing"
-        OrderStatus.READY_FOR_PICKUP -> "Ready for pickup"
-        OrderStatus.SERVED -> "Served"
-        OrderStatus.COMPLETED -> "Completed"
-    }
-
-val CompletionReason.label: String
-    get() = when (this) {
-        CompletionReason.CUSTOMER_CONFIRMED -> "Confirmed by you"
-        CompletionReason.AUTO_COMPLETED -> "Auto-completed"
-    }

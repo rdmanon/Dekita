@@ -30,8 +30,8 @@ import androidx.compose.ui.unit.dp
 import tech.vauldex.dekita.domain.Store
 import tech.vauldex.dekita.ui.components.StoreArt
 import tech.vauldex.dekita.ui.components.StoreStatusBadge
-import tech.vauldex.dekita.ui.components.label
-import tech.vauldex.dekita.ui.components.queueLabel
+import tech.vauldex.dekita.presentation.label
+import tech.vauldex.dekita.presentation.queueLabel
 
 /**
  * A store card in a grouped list: photo, name, category and walking time, status badge and queue.

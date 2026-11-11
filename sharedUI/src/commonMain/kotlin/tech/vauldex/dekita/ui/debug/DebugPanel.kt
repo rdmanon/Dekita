@@ -51,28 +51,34 @@ internal val debugSections: List<DebugSection> = listOf(
 @Composable
 internal fun DebugPanel(container: AppContainer, onDismiss: () -> Unit) {
     ModalBottomSheet(onDismissRequest = onDismiss) {
-        Column(
-            verticalArrangement = Arrangement.spacedBy(16.dp),
-            modifier = Modifier
-                .fillMaxWidth()
-                .verticalScroll(rememberScrollState())
-                .padding(start = 16.dp, end = 16.dp, bottom = 24.dp),
-        ) {
-            Text("Debug panel", style = MaterialTheme.typography.headlineSmall)
-            Text(
-                "Debug builds only. Release builds never show this panel.",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            debugSections.forEach { section ->
-                Surface(color = MaterialTheme.colorScheme.surfaceContainer, shape = MaterialTheme.shapes.large) {
-                    Column(
-                        verticalArrangement = Arrangement.spacedBy(8.dp),
-                        modifier = Modifier.fillMaxWidth().padding(16.dp),
-                    ) {
-                        Text(section.title, style = MaterialTheme.typography.titleMedium)
-                        section.content(container)
-                    }
+        DebugPanelContent(container)
+    }
+}
+
+/** The panel's contents without the sheet. The iOS app shows this inside a native SwiftUI sheet. */
+@Composable
+internal fun DebugPanelContent(container: AppContainer, modifier: Modifier = Modifier) {
+    Column(
+        verticalArrangement = Arrangement.spacedBy(16.dp),
+        modifier = modifier
+            .fillMaxWidth()
+            .verticalScroll(rememberScrollState())
+            .padding(start = 16.dp, end = 16.dp, bottom = 24.dp),
+    ) {
+        Text("Debug panel", style = MaterialTheme.typography.headlineSmall)
+        Text(
+            "Debug builds only. Release builds never show this panel.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        debugSections.forEach { section ->
+            Surface(color = MaterialTheme.colorScheme.surfaceContainer, shape = MaterialTheme.shapes.large) {
+                Column(
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.fillMaxWidth().padding(16.dp),
+                ) {
+                    Text(section.title, style = MaterialTheme.typography.titleMedium)
+                    section.content(container)
                 }
             }
         }

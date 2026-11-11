@@ -45,8 +45,11 @@ class DiscoverViewModel(
     private val cartRepository: CartRepository,
 ) : ViewModel() {
 
-    // Starts from the cart's mode so the selector survives this screen being recreated.
-    private val filters = MutableStateFlow(StoreFilters(mode = cartRepository.preferredMode.value))
+    // Every filter except the mode. The mode lives in the cart repository, so every Discover screen
+    // (the Android tab, the iOS Discover and Search tabs) shows the same one and Cart Review starts in it.
+    private val filters = MutableStateFlow(StoreFilters())
+
+    private val filtersWithMode = combine(filters, cartRepository.preferredMode) { current, mode -> current.copy(mode = mode) }
 
     val state: StateFlow<DiscoverUiState> =
         combine(
@@ -54,7 +57,7 @@ class DiscoverViewModel(
             storeRepository.recommendedStoreIds,
             storeRepository.favoriteItems,
             orderRepository.orders,
-            filters,
+            filtersWithMode,
             ::toUiState,
         ).stateIn(
             scope = viewModelScope,
@@ -64,15 +67,12 @@ class DiscoverViewModel(
                 storeRepository.recommendedStoreIds.value,
                 storeRepository.favoriteItems.value,
                 orderRepository.orders.value,
-                filters.value,
+                filters.value.copy(mode = cartRepository.preferredMode.value),
             ),
         )
 
     /** Picks In-store or Pickup, or null for all stores. The cart starts in this mode. */
-    fun selectMode(mode: FulfillmentMode?) {
-        filters.update { it.copy(mode = mode) }
-        cartRepository.setPreferredMode(mode)
-    }
+    fun selectMode(mode: FulfillmentMode?) = cartRepository.setPreferredMode(mode)
 
     fun setQuery(query: String) = filters.update { it.copy(query = query) }
 

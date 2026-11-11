@@ -30,7 +30,7 @@ import tech.vauldex.dekita.ui.components.LoadingIndicator
 import tech.vauldex.dekita.ui.components.SectionTitle
 import tech.vauldex.dekita.ui.components.StatusPill
 import tech.vauldex.dekita.ui.components.groupedShape
-import tech.vauldex.dekita.ui.components.label
+import tech.vauldex.dekita.presentation.label
 import tech.vauldex.dekita.ui.theme.DekitaTheme
 import tech.vauldex.dekita.ui.theme.Dimens
 

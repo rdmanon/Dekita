@@ -18,6 +18,9 @@ kotlin {
             baseName = "SharedUI"
             isStatic = true
             binaryOption("bundleId", "tech.vauldex.dekita.SharedUI")
+            // The SwiftUI screens use sharedLogic's view models and domain types directly,
+            // so export them with their full API rather than only what SharedUI's own API mentions.
+            export(project(":sharedLogic"))
         }
     }
     android {

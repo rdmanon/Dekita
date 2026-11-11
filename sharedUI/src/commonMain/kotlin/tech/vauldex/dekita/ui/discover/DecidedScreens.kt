@@ -42,7 +42,7 @@ import tech.vauldex.dekita.ui.components.LoadingIndicator
 import tech.vauldex.dekita.ui.components.SectionTitle
 import tech.vauldex.dekita.ui.components.StoreArt
 import tech.vauldex.dekita.ui.components.groupedShape
-import tech.vauldex.dekita.ui.components.label
+import tech.vauldex.dekita.presentation.label
 import tech.vauldex.dekita.ui.theme.Dimens
 
 /** Favorited items, each with its store, then favorited stores. Every row opens its store. */

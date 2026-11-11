@@ -1,25 +1,56 @@
 import SwiftUI
-import UIKit
 import SharedUI
 
-/// Hosts the shared Compose UI. Navigation, including the edge swipe-back gesture, is handled
-/// inside Compose, so this view must not be wrapped in a NavigationStack.
-struct ComposeView: UIViewControllerRepresentable {
-    func makeUIViewController(context: Context) -> UIViewController {
-        #if DEBUG
-        let isDebug = true
-        #else
-        let isDebug = false
-        #endif
-        return MainViewControllerKt.MainViewController(isDebug: isDebug)
-    }
+/// The app's tabs. On iOS 26 the system draws the tab bar in Liquid Glass and floats the Search tab
+/// as its own round button beside it, as in the design; on iOS 18–25 the same code gives the standard tab bar.
+/// Discover, Search, Favorites and History are SwiftUI. Orders, Account and the store screen are still
+/// the shared Compose screens until their iOS designs are built.
+struct ContentView: View {
+    @State private var selection: AppTab = .discover
 
-    func updateUIViewController(_ uiViewController: UIViewController, context: Context) {}
+    var body: some View {
+        TabView(selection: $selection) {
+            Tab("Discover", systemImage: "safari", value: AppTab.discover) {
+                NavigationStack { DiscoverView() }
+            }
+            Tab("Orders", systemImage: "receipt", value: AppTab.orders) {
+                ComposeController { ComposeScreensKt.OrdersViewController(isDebug: AppBuild.isDebug) }
+                    .ignoresSafeArea()
+            }
+            Tab("Account", systemImage: "person.crop.circle", value: AppTab.account) {
+                ComposeController { ComposeScreensKt.AccountViewController(isDebug: AppBuild.isDebug) }
+                    .ignoresSafeArea()
+            }
+            Tab(value: AppTab.search, role: .search) {
+                NavigationStack { SearchView() }
+            }
+        }
+        .modifier(MinimizeTabBarOnScroll())
+    }
 }
 
-struct ContentView: View {
-    var body: some View {
-        ComposeView()
-            .ignoresSafeArea()
+enum AppTab: Hashable {
+    case discover, orders, account, search
+}
+
+/// iOS 26 shrinks the glass tab bar while the user scrolls down. Earlier versions keep it as is.
+private struct MinimizeTabBarOnScroll: ViewModifier {
+    func body(content: Content) -> some View {
+        if #available(iOS 26.0, *) {
+            content.tabBarMinimizeBehavior(.onScrollDown)
+        } else {
+            content
+        }
     }
+}
+
+enum AppBuild {
+    /// Debug builds show the debug panel. Release builds never do.
+    static let isDebug: Bool = {
+        #if DEBUG
+        return true
+        #else
+        return false
+        #endif
+    }()
 }

@@ -16,6 +16,16 @@ This is a Kotlin Multiplatform project targeting Android, iOS.
     Similarly, if you want to edit the Desktop (JVM) specific part, the [jvmMain](./sharedUI/src/jvmMain/kotlin)
     folder is the appropriate location.
 
+### How the iOS app is put together
+
+* The iOS app has a SwiftUI shell ([ContentView.swift](./iosApp/iosApp/ContentView.swift)): a `TabView` that iOS 26
+  draws in Liquid Glass, with Search as its own tab. Discover, Search, Favorites and History are SwiftUI.
+* SwiftUI screens use the shared Kotlin view models through small bridges in
+  [sharedUI/src/iosMain/.../ios](./sharedUI/src/iosMain/kotlin/tech/vauldex/dekita/ios), which turn each
+  `StateFlow` into a callback and clear the view models when the screen goes away.
+* Screens without an iOS design yet (Orders, Account, the store screen, the debug panel) are the shared
+  Compose screens, embedded one at a time from `ComposeScreens.kt`.
+
 ### Running the apps
 
 Use the run configurations provided by the run widget in your IDE's toolbar. You can also use these commands and options:

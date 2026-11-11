@@ -49,6 +49,8 @@ import org.jetbrains.compose.resources.painterResource
 import tech.vauldex.dekita.domain.StoreAvailability
 import tech.vauldex.dekita.presentation.discover.StoreFilters
 import tech.vauldex.dekita.presentation.discover.WalkLimit
+import tech.vauldex.dekita.presentation.filterLabel
+import tech.vauldex.dekita.presentation.label
 import tech.vauldex.dekita.ui.components.groupedShape
 
 /** No results: says so and offers the one action that always helps. */
@@ -187,7 +189,7 @@ internal fun FilterSheet(
             FilterGroupTitle("Walking distance")
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 WalkLimit.entries.forEach { limit ->
-                    SelectChip("≤ ${limit.maxMinutes} min", filters.walkLimit == limit) { onWalkLimit(limit) }
+                    SelectChip(limit.label, filters.walkLimit == limit) { onWalkLimit(limit) }
                 }
             }
 
@@ -238,10 +240,3 @@ internal fun SelectChip(label: String, selected: Boolean, onClick: () -> Unit) {
         },
     )
 }
-
-private val StoreAvailability.filterLabel: String
-    get() = when (this) {
-        StoreAvailability.OPEN -> "Open"
-        StoreAvailability.FULL -> "Full"
-        StoreAvailability.PAUSED -> "Paused"
-    }
