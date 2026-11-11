@@ -6,10 +6,18 @@ plugins {
 }
 
 kotlin {
-    // No framework here: the iOS app links the SharedUI framework, which bundles this module.
-    // Linking two static Kotlin frameworks would duplicate the Kotlin runtime and these types.
-    iosArm64()
-    iosSimulatorArm64()
+    // The one Kotlin framework the iOS app links. The iOS UI is SwiftUI; it reaches the shared view models
+    // through the bridges in iosMain.
+    listOf(
+        iosArm64(),
+        iosSimulatorArm64(),
+    ).forEach { iosTarget ->
+        iosTarget.binaries.framework {
+            baseName = "SharedLogic"
+            isStatic = true
+            binaryOption("bundleId", "tech.vauldex.dekita.SharedLogic")
+        }
+    }
 
     android {
        namespace = "tech.vauldex.dekita.sharedLogic"

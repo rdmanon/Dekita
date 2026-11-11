@@ -1,50 +1,36 @@
 import SwiftUI
-import SharedUI
+import SharedLogic
 
 /// The app's tabs. On iOS 26 the system draws the tab bar in Liquid Glass and floats the Search tab
 /// as its own round button beside it, as in the design; on iOS 18–25 the same code gives the standard tab bar.
-/// Discover, Search, Favorites, History and the store screen are SwiftUI. Orders and Account are still
-/// the shared Compose screens until their iOS designs are built.
+/// Every screen is SwiftUI; the shared Kotlin code supplies view models and data only.
+/// Sign-in opens as a sheet over the current screen, or full screen after sign-out.
 struct ContentView: View {
-    @State private var selection: AppTab = .discover
-    @StateObject private var discoverNavigation = NavigationModel()
-    @StateObject private var searchNavigation = NavigationModel()
+    @StateObject private var flow = AuthFlow()
 
     var body: some View {
-        TabView(selection: $selection) {
+        TabView(selection: $flow.selection) {
             Tab("Discover", systemImage: "safari", value: AppTab.discover) {
-                NavigationStack(path: $discoverNavigation.path) { DiscoverView() }
-                    .environmentObject(discoverNavigation)
+                NavigationStack(path: $flow.discoverPath) { DiscoverView() }
             }
             Tab("Orders", systemImage: "receipt", value: AppTab.orders) {
-                ComposeController { ComposeScreensKt.OrdersViewController(isDebug: AppBuild.isDebug) }
-                    .ignoresSafeArea()
+                NavigationStack { OrdersView() }
             }
             Tab("Account", systemImage: "person.crop.circle", value: AppTab.account) {
-                ComposeController { ComposeScreensKt.AccountViewController(isDebug: AppBuild.isDebug) }
-                    .ignoresSafeArea()
+                NavigationStack { AccountView() }
             }
             Tab(value: AppTab.search, role: .search) {
-                NavigationStack(path: $searchNavigation.path) { SearchView() }
-                    .environmentObject(searchNavigation)
+                NavigationStack(path: $flow.searchPath) { SearchView() }
             }
         }
         .modifier(MinimizeTabBarOnScroll())
-    }
-}
-
-/// One tab's navigation stack, so a screen can replace itself (Cart → Check-in) or return to the tab's root.
-final class NavigationModel: ObservableObject {
-    @Published var path = NavigationPath()
-
-    /// Replaces the top screen with [route], so Back skips the screen that was replaced.
-    func replaceTop(with route: DiscoverRoute) {
-        if !path.isEmpty { path.removeLast() }
-        path.append(route)
-    }
-
-    func popToRoot() {
-        path = NavigationPath()
+        .sheet(item: $flow.signInSheet) { _ in
+            SignInFlowView(isRoot: false).environmentObject(flow)
+        }
+        .fullScreenCover(isPresented: $flow.signInAfterSignOut) {
+            SignInFlowView(isRoot: true).environmentObject(flow)
+        }
+        .environmentObject(flow)
     }
 }
 

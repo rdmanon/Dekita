@@ -1,5 +1,5 @@
 import SwiftUI
-import SharedUI
+import SharedLogic
 
 /// Favorited items, each with its store, then favorited stores. Every row opens its store.
 struct FavoritesView: View {

@@ -11,4 +11,5 @@ data class InboxMessage(
     val orderId: String? = null,
 )
 
-data class UserProfile(val displayName: String, val email: String)
+/** A phone sign-in has no email and an email sign-in has no phone, so both are optional. */
+data class UserProfile(val displayName: String, val email: String? = null, val phone: String? = null)

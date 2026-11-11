@@ -1,5 +1,5 @@
 import SwiftUI
-import SharedUI
+import SharedLogic
 
 /// Discover, the start of every order. From the top: the In-store / Pickup selector, the decided
 /// customer's Favorites and History (Search is the floating Search tab), then the undecided
@@ -40,7 +40,7 @@ struct DiscoverView: View {
             }
         }
         .sheet(isPresented: $showFilters) { FilterSheet(model: model) }
-        .sheet(isPresented: $showDebugPanel) { DebugPanelSheet() }
+        .sheet(isPresented: $showDebugPanel) { DebugPanelView() }
         .navigationDestination(for: DiscoverRoute.self) { DiscoverDestination(route: $0) }
     }
 }
@@ -136,14 +136,5 @@ private struct NavigationSubtitle: ViewModifier {
         } else {
             content
         }
-    }
-}
-
-/// The shared debug panel in a native sheet. Only reachable in debug builds.
-struct DebugPanelSheet: View {
-    var body: some View {
-        ComposeController { ComposeScreensKt.DebugPanelViewController() }
-            .ignoresSafeArea(edges: .bottom)
-            .presentationDetents([.medium, .large])
     }
 }

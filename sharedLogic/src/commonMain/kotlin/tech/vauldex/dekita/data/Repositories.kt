@@ -11,6 +11,9 @@ import tech.vauldex.dekita.domain.Menu
 import tech.vauldex.dekita.domain.Order
 import tech.vauldex.dekita.domain.OrderStatus
 import tech.vauldex.dekita.domain.PaymentMethod
+import tech.vauldex.dekita.domain.PhoneNumber
+import tech.vauldex.dekita.domain.Session
+import tech.vauldex.dekita.domain.SsoProvider
 import tech.vauldex.dekita.domain.Store
 import tech.vauldex.dekita.domain.TransitionResult
 
@@ -47,20 +50,13 @@ interface CartRepository {
     fun setPreferredMode(mode: FulfillmentMode?)
 
     /**
-     * Adds a line, starting a cart for the item's store if there is none. [mode] is the new cart's
-     * mode; an existing cart keeps its own. Returns false, and changes nothing, when the cart
-     * belongs to another store.
+     * Adds a line, starting a cart for the item's store if there is none.
+     * Returns false, and changes nothing, when the cart belongs to another store.
      */
     fun addLine(mode: FulfillmentMode, line: CartLine): Boolean
 
-    /** A line id no other line has. */
-    fun newLineId(): String
-
-    /** Puts an edited line in place of [lineId], in the same position. Does nothing if the line is gone. */
-    fun replaceLine(lineId: String, line: CartLine)
-
-    /** Eat-In or Takeout, for a store that offers both. Does nothing without a cart. */
-    fun setMode(mode: FulfillmentMode)
+    /** Drops the current cart, even one from another store, and starts a new one with [line]. */
+    fun replaceWith(mode: FulfillmentMode, line: CartLine)
 
     /** A quantity of 0 removes the line; removing the last line clears the cart. */
     fun updateQuantity(lineId: String, quantity: Int)
@@ -73,12 +69,6 @@ interface OrderRepository {
 
     /** Returns null when the orders are not loaded or there is no order with [orderId]. */
     fun transition(orderId: String, to: OrderStatus, reason: CompletionReason? = null): TransitionResult?
-
-    /**
-     * Saves [cart] as a DRAFT order: an Eat-In order that is paid on arrival with [Start Cooking].
-     * Returns the new order, which also appears in [orders].
-     */
-    fun createDraft(cart: Cart, storeName: String): Order
 }
 
 interface PaymentRepository {
@@ -90,3 +80,32 @@ interface InboxRepository {
 
     fun markRead(messageId: String)
 }
+
+interface AuthRepository {
+    /** Null while browsing as a guest. Held in memory only: nothing is written to disk and no token exists. */
+    val session: StateFlow<Session?>
+
+    /** Sends a 6-digit code to [phone]. */
+    suspend fun requestOtp(phone: PhoneNumber)
+
+    suspend fun verifyOtp(phone: PhoneNumber, code: String): AuthResult
+
+    suspend fun signUpWithEmail(email: String, password: String): AuthResult
+
+    suspend fun signInWithEmail(email: String, password: String): AuthResult
+
+    /** Has the same outcome whether or not the account exists, so it can't reveal which emails are registered. */
+    suspend fun requestPasswordReset(email: String)
+
+    suspend fun signInWith(provider: SsoProvider): AuthResult
+
+    fun signOut()
+}
+
+sealed interface AuthResult {
+    data object Success : AuthResult
+
+    data class Failure(val reason: AuthFailure) : AuthResult
+}
+
+enum class AuthFailure { INVALID_CODE, WRONG_CREDENTIALS, EMAIL_TAKEN, SSO_FAILED }

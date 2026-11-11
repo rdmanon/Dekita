@@ -11,6 +11,9 @@ import kotlinx.coroutines.flow.getAndUpdate
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.updateAndGet
 import kotlinx.coroutines.launch
+import tech.vauldex.dekita.data.AuthFailure
+import tech.vauldex.dekita.data.AuthRepository
+import tech.vauldex.dekita.data.AuthResult
 import tech.vauldex.dekita.data.CartRepository
 import tech.vauldex.dekita.data.InboxRepository
 import tech.vauldex.dekita.data.LoadState
@@ -29,10 +32,15 @@ import tech.vauldex.dekita.domain.Order
 import tech.vauldex.dekita.domain.OrderStatus
 import tech.vauldex.dekita.domain.OrderStatusMachine
 import tech.vauldex.dekita.domain.PaymentMethod
+import tech.vauldex.dekita.domain.PhoneNumber
 import tech.vauldex.dekita.domain.QueueStatus
+import tech.vauldex.dekita.domain.Session
+import tech.vauldex.dekita.domain.SignInMethod
+import tech.vauldex.dekita.domain.SsoProvider
 import tech.vauldex.dekita.domain.Store
 import tech.vauldex.dekita.domain.StoreAvailability
 import tech.vauldex.dekita.domain.TransitionResult
+import tech.vauldex.dekita.domain.UserProfile
 
 // In-memory fakes over the seed data. They never touch the network or disk.
 // Pass a test scope in tests so the simulated delay runs on virtual time.
@@ -47,9 +55,6 @@ interface StoreFeedSimulator {
 
     /** Empties favorite stores and items, as for a customer who has none yet. */
     fun clearFavorites()
-
-    /** Moves a store's queue by [delta] orders, as orders come in or are served. Never below zero. */
-    fun adjustQueue(storeId: String, delta: Int)
 }
 
 class FakeStoreRepository(
@@ -106,23 +111,6 @@ class FakeStoreRepository(
         _stores.update { state -> if (state is LoadState.Success) LoadState.Success(updated) else state }
     }
 
-    override fun adjustQueue(storeId: String, delta: Int) {
-        val updated = feed.updateAndGet { stores ->
-            stores.map { store ->
-                val queue = store.queue
-                if (store.id != storeId || queue == null) {
-                    store
-                } else {
-                    val ahead = (queue.ordersAhead + delta).coerceAtLeast(0)
-                    // About three minutes per order, as in the seed data; no queue means no wait.
-                    val wait = if (ahead == 0) 0 else (queue.estimatedWaitMinutes + delta * 3).coerceAtLeast(3)
-                    store.copy(queue = QueueStatus(ahead, wait))
-                }
-            }
-        }
-        _stores.update { state -> if (state is LoadState.Success) LoadState.Success(updated) else state }
-    }
-
     override fun failNextLoad() {
         failNext.value = true
     }
@@ -154,11 +142,9 @@ class FakeStoreRepository(
     private fun tickQueues() {
         queueTicks++
         val offset = QUEUE_OFFSETS[queueTicks % QUEUE_OFFSETS.size]
-        // Ticks around the feed's own value, so a debug-panel queue change (adjustQueue) is kept.
-        val base = feed.value
         _stores.update { state ->
-            if (state !is LoadState.Success) return@update state
-            LoadState.Success(base.map { it.withQueueOffset(offset) })
+            val stores = (state as? LoadState.Success)?.data ?: return@update state
+            LoadState.Success(stores.map { it.withQueueOffset(offset) })
         }
     }
 }
@@ -166,22 +152,21 @@ class FakeStoreRepository(
 // A fixed pattern instead of random steps, so tests and demos are repeatable.
 private val QUEUE_OFFSETS = listOf(0, 1, 2, 1, 0, -1)
 
-/**
- * Moves an open store's queue around its feed value (the seed, unless the debug panel changed it).
- * Paused, full and empty queues stay as they are.
- */
+private val seedQueues: Map<String, QueueStatus?> = seedStores.associate { it.id to it.queue }
+
+/** Moves an open store's queue around its seed value. Paused, full and empty queues stay as seeded. */
 private fun Store.withQueueOffset(offset: Int): Store {
-    val base = queue ?: return this
-    if (availability != StoreAvailability.OPEN || base.ordersAhead == 0) return this
-    val ahead = (base.ordersAhead + offset).coerceAtLeast(0)
-    // Keeps the base's minutes per order, rounded half up.
-    val wait = (base.estimatedWaitMinutes * ahead + base.ordersAhead / 2) / base.ordersAhead
+    val seed = seedQueues[id] ?: return this
+    if (availability != StoreAvailability.OPEN || seed.ordersAhead == 0) return this
+    val ahead = (seed.ordersAhead + offset).coerceAtLeast(0)
+    // Keeps the seed's minutes per order, rounded half up.
+    val wait = (seed.estimatedWaitMinutes * ahead + seed.ordersAhead / 2) / seed.ordersAhead
     return copy(queue = QueueStatus(ahead, wait))
 }
 
-/** Debug-panel hooks for menus: what a store's own app does when an item runs out. */
+/** Debug-panel-only changes to a menu, as the store's own app would push them. */
 interface MenuSimulator {
-    /** "Stop Selling" (true) or resume selling (false) one item. Open menus update at once. */
+    /** Marks an item sold out or back on sale in a menu that is already loaded. */
     fun setItemSoldOut(storeId: String, itemId: String, soldOut: Boolean)
 }
 
@@ -192,36 +177,28 @@ class FakeMenuRepository(
 
     private val menus = mutableMapOf<String, MutableStateFlow<LoadState<Menu>>>()
 
-    /** Sold-out changes made from the debug panel, by store and item id. */
-    private val soldOutOverrides = MutableStateFlow<Map<String, Map<String, Boolean>>>(emptyMap())
-
     override fun menu(storeId: String): StateFlow<LoadState<Menu>> =
         menus.getOrPut(storeId) {
             MutableStateFlow<LoadState<Menu>>(LoadState.Loading).also { load(storeId, it) }
         }.asStateFlow()
 
     override fun setItemSoldOut(storeId: String, itemId: String, soldOut: Boolean) {
-        soldOutOverrides.update { all -> all + (storeId to (all[storeId].orEmpty() + (itemId to soldOut))) }
-        val menu = currentMenu(storeId) ?: return
-        menus[storeId]?.update { state -> if (state is LoadState.Success) LoadState.Success(menu) else state }
+        menus[storeId]?.update { state ->
+            val menu = (state as? LoadState.Success)?.data ?: return@update state
+            LoadState.Success(menu.copy(items = menu.items.map { if (it.id == itemId) it.copy(isSoldOut = soldOut) else it }))
+        }
     }
 
     override fun reset() {
-        soldOutOverrides.value = emptyMap()
         menus.forEach { (storeId, flow) -> load(storeId, flow) }
     }
 
-    private fun currentMenu(storeId: String): Menu? {
-        val menu = seedMenus[storeId] ?: return null
-        val overrides = soldOutOverrides.value[storeId].orEmpty()
-        return menu.copy(items = menu.items.map { item -> overrides[item.id]?.let { item.copy(isSoldOut = it) } ?: item })
-    }
-
     private fun load(storeId: String, target: MutableStateFlow<LoadState<Menu>>) {
-        if (seedMenus[storeId] == null) {
+        val menu = seedMenus[storeId]
+        if (menu == null) {
             target.value = LoadState.Error("No menu for store $storeId")
         } else {
-            scope.simulateLoad(target, config) { checkNotNull(currentMenu(storeId)) }
+            scope.simulateLoad(target, config) { menu }
         }
     }
 }
@@ -238,8 +215,6 @@ class FakeCartRepository : CartRepository, Resettable {
         _preferredMode.value = mode
     }
 
-    private val lineCounter = MutableStateFlow(0)
-
     override fun addLine(mode: FulfillmentMode, line: CartLine): Boolean {
         var added = false
         _cart.update { current ->
@@ -247,23 +222,14 @@ class FakeCartRepository : CartRepository, Resettable {
             when {
                 current == null -> Cart(line.item.storeId, mode).addLine(line).also { added = true }
                 current.storeId != line.item.storeId -> current
-                // The cart keeps the mode it started with; Cart Review is where it changes.
-                else -> current.addLine(line).also { added = true }
+                else -> current.copy(mode = mode).addLine(line).also { added = true }
             }
         }
         return added
     }
 
-    override fun newLineId(): String = "cart-line-${lineCounter.updateAndGet { it + 1 }}"
-
-    override fun replaceLine(lineId: String, line: CartLine) {
-        _cart.update { current ->
-            if (current?.line(lineId) == null) current else current.replaceLine(lineId, line)
-        }
-    }
-
-    override fun setMode(mode: FulfillmentMode) {
-        _cart.update { it?.copy(mode = mode) }
+    override fun replaceWith(mode: FulfillmentMode, line: CartLine) {
+        _cart.value = Cart(line.item.storeId, mode).addLine(line)
     }
 
     override fun updateQuantity(lineId: String, quantity: Int) {
@@ -291,10 +257,6 @@ class FakeOrderRepository(
     private val _orders = MutableStateFlow<LoadState<List<Order>>>(LoadState.Loading)
     override val orders: StateFlow<LoadState<List<Order>>> = _orders.asStateFlow()
 
-    // Declared before init: reset() uses it, and Kotlin runs initializers in declaration order.
-    /** Orders made in this session. A reload keeps them, as a server would. */
-    private val created = MutableStateFlow<List<Order>>(emptyList())
-
     private var loadJob: Job? = null
 
     init {
@@ -317,35 +279,14 @@ class FakeOrderRepository(
         return result
     }
 
-    override fun createDraft(cart: Cart, storeName: String): Order {
-        val known = (_orders.value as? LoadState.Success)?.data ?: (created.value + seedOrders(clock.now()))
-        val number = (known.maxOfOrNull { it.number } ?: 0) + 1
-        val order = Order.draft(
-            id = "order-$number",
-            number = number,
-            storeId = cart.storeId,
-            storeName = storeName,
-            mode = cart.mode,
-            lines = cart.lines,
-            // Eat-In is paid at check-in, so there is no payment method yet.
-            paymentMethodId = null,
-            at = clock.now(),
-        )
-        created.update { listOf(order) + it }
-        _orders.update { state -> if (state is LoadState.Success) LoadState.Success(listOf(order) + state.data) else state }
-        return order
-    }
-
     override fun reset() {
         loadJob?.cancel()
-        created.value = emptyList()
-        loadJob = scope.simulateLoad(_orders, config) { created.value + seedOrders(clock.now()) }
+        loadJob = scope.simulateLoad(_orders, config) { seedOrders(clock.now()) }
     }
 
     /** Debug only: removes every order, as for a customer who has never ordered. */
     fun clearAll() {
         loadJob?.cancel()
-        created.value = emptyList()
         _orders.value = LoadState.Success(emptyList())
     }
 }
@@ -395,5 +336,76 @@ class FakeInboxRepository(
     override fun reset() {
         loadJob?.cancel()
         loadJob = scope.simulateLoad(_messages, config) { seedInbox(clock.now()) }
+    }
+}
+
+/**
+ * Simulated sign-in. Each call waits the loading delay in the caller's coroutine, so a test dispatcher
+ * runs it on virtual time. Accepts only [SeedAuth.TEST_OTP]; Google and Apple fail when
+ * [MockConfig.forceSsoFailure] is on.
+ */
+class FakeAuthRepository(private val config: MockConfig) : AuthRepository, Resettable {
+
+    private val _session = MutableStateFlow<Session?>(null)
+    override val session: StateFlow<Session?> = _session.asStateFlow()
+
+    // Mock only: lowercase email to the password it was created with, so log-in works after sign-up.
+    // A real backend keeps a salted hash on the server and never holds or returns the password.
+    private val accounts = MutableStateFlow(seedAccounts)
+
+    override suspend fun requestOtp(phone: PhoneNumber) {
+        delay(config.loadingDelay.value)
+    }
+
+    override suspend fun verifyOtp(phone: PhoneNumber, code: String): AuthResult {
+        delay(config.loadingDelay.value)
+        if (code != SeedAuth.TEST_OTP) return AuthResult.Failure(AuthFailure.INVALID_CODE)
+        return signIn(UserProfile(seedUser.displayName, phone = phone.formatted()), SignInMethod.PHONE)
+    }
+
+    override suspend fun signUpWithEmail(email: String, password: String): AuthResult {
+        delay(config.loadingDelay.value)
+        var created = false
+        accounts.update { current ->
+            created = email.lowercase() !in current
+            if (created) current + (email.lowercase() to password) else current
+        }
+        if (!created) return AuthResult.Failure(AuthFailure.EMAIL_TAKEN)
+        return signIn(UserProfile(seedUser.displayName, email = email), SignInMethod.EMAIL)
+    }
+
+    override suspend fun signInWithEmail(email: String, password: String): AuthResult {
+        delay(config.loadingDelay.value)
+        // One answer for an unknown email and a wrong password, so the error can't reveal which accounts exist.
+        if (accounts.value[email.lowercase()] != password) return AuthResult.Failure(AuthFailure.WRONG_CREDENTIALS)
+        return signIn(UserProfile(seedUser.displayName, email = email), SignInMethod.EMAIL)
+    }
+
+    override suspend fun requestPasswordReset(email: String) {
+        delay(config.loadingDelay.value)
+    }
+
+    override suspend fun signInWith(provider: SsoProvider): AuthResult {
+        delay(config.loadingDelay.value)
+        if (config.forceSsoFailure.value) return AuthResult.Failure(AuthFailure.SSO_FAILED)
+        val method = when (provider) {
+            SsoProvider.GOOGLE -> SignInMethod.GOOGLE
+            SsoProvider.APPLE -> SignInMethod.APPLE
+        }
+        return signIn(seedUser, method)
+    }
+
+    override fun signOut() {
+        _session.value = null
+    }
+
+    override fun reset() {
+        signOut()
+        accounts.value = seedAccounts
+    }
+
+    private fun signIn(profile: UserProfile, method: SignInMethod): AuthResult {
+        _session.value = Session(profile, method)
+        return AuthResult.Success
     }
 }

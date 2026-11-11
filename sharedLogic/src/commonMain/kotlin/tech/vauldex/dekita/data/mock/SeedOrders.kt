@@ -5,6 +5,7 @@ import kotlin.time.Duration.Companion.days
 import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.seconds
 import kotlin.time.Instant
+import tech.vauldex.dekita.domain.Cart
 import tech.vauldex.dekita.domain.CartLine
 import tech.vauldex.dekita.domain.CompletionReason
 import tech.vauldex.dekita.domain.FulfillmentMode
@@ -12,7 +13,6 @@ import tech.vauldex.dekita.domain.Order
 import tech.vauldex.dekita.domain.OrderStatus
 import tech.vauldex.dekita.domain.OrderStatusMachine
 import tech.vauldex.dekita.domain.TransitionResult
-import tech.vauldex.dekita.domain.defaultMode
 
 /** A status change in a seed order, timed relative to the order's creation. */
 private class Step(val status: OrderStatus, val after: Duration, val reason: CompletionReason? = null)
@@ -36,6 +36,19 @@ private fun seedOrder(
             is TransitionResult.Rejected -> error("Invalid seed order $id: ${result.reason}")
         }
     }
+}
+
+/** The design's cart: Shoyu Ramen (Medium · Extra Egg) and Gyoza at Test Ramen Bar, ¥1,550 in store. */
+internal fun seedSampleCart(): Cart {
+    val shoyu = seedItem(SeedStoreIds.RAMEN_BAR, "item-shoyu-ramen")
+    return Cart(
+        storeId = SeedStoreIds.RAMEN_BAR,
+        mode = FulfillmentMode.IN_STORE,
+        lines = listOf(
+            CartLine("line-sample-1", shoyu, listOf(shoyu.seedOption("ramen-spice-medium"), shoyu.seedOption("topping-egg"))),
+            CartLine("line-sample-2", seedItem(SeedStoreIds.RAMEN_BAR, "item-gyoza")),
+        ),
+    )
 }
 
 internal fun seedOrders(now: Instant): List<Order> {
@@ -108,15 +121,3 @@ internal fun seedOrders(now: Instant): List<Order> {
         ),
     )
 }
-
-/** The design's cart: Shoyu Ramen (Mild) and Gyoza from Test Ramen Bar, which offers both modes. */
-internal fun sampleCartLines(newLineId: () -> String): List<CartLine> {
-    val shoyu = seedItem(SeedStoreIds.RAMEN_BAR, "item-shoyu-ramen")
-    return listOf(
-        CartLine(newLineId(), shoyu, listOf(shoyu.seedOption("ramen-spice-mild"))),
-        CartLine(newLineId(), seedItem(SeedStoreIds.RAMEN_BAR, "item-gyoza")),
-    )
-}
-
-internal fun sampleCartMode(preferred: FulfillmentMode?): FulfillmentMode =
-    seedStores.first { it.id == SeedStoreIds.RAMEN_BAR }.businessType.defaultMode(preferred)

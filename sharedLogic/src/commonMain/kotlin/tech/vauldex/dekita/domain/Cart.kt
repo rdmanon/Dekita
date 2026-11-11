@@ -13,6 +13,8 @@ data class CartLine(
     val unitPrice: Money get() = selectedOptions.fold(item.basePrice) { total, option -> total + option.priceDelta }
 
     val lineTotal: Money get() = unitPrice * quantity
+
+    internal val optionIds: Set<String> get() = selectedOptions.mapTo(mutableSetOf()) { it.id }
 }
 
 /** A cart holds items from one store only. Totals are for display; the server prices the real order. */
@@ -30,8 +32,13 @@ data class Cart(
     /** Menu prices in Japan include consumption tax, so the total shown equals the subtotal. */
     val total: Money get() = subtotal
 
+    /** Adds a line. The same item with the same options merges into the existing line's quantity. */
     fun addLine(line: CartLine): Cart {
         require(line.item.storeId == storeId) { "Cart belongs to $storeId, item is from ${line.item.storeId}" }
+        val same = lines.firstOrNull { it.item.id == line.item.id && it.optionIds == line.optionIds }
+        if (same != null) {
+            return copy(lines = lines.map { if (it === same) it.copy(quantity = it.quantity + line.quantity) else it })
+        }
         require(lines.none { it.lineId == line.lineId }) { "Duplicate line id ${line.lineId}" }
         return copy(lines = lines + line)
     }
@@ -47,13 +54,4 @@ data class Cart(
         }
         return copy(lines = updated)
     }
-
-    /** Replaces a line in place, keeping its position. Editing a line never adds a second one. */
-    fun replaceLine(lineId: String, line: CartLine): Cart {
-        require(line.item.storeId == storeId) { "Cart belongs to $storeId, item is from ${line.item.storeId}" }
-        require(lines.any { it.lineId == lineId }) { "No line $lineId in cart" }
-        return copy(lines = lines.map { if (it.lineId == lineId) line.copy(lineId = lineId) else it })
-    }
-
-    fun line(lineId: String): CartLine? = lines.firstOrNull { it.lineId == lineId }
 }

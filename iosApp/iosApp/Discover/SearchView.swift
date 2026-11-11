@@ -1,5 +1,5 @@
 import SwiftUI
-import SharedUI
+import SharedLogic
 
 /// The floating Search tab. Matches store names and item names, together with the mode and filters.
 /// It keeps its own search and filters; the In-store / Pickup choice is shared with Discover.

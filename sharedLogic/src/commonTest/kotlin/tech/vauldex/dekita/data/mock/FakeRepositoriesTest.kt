@@ -199,4 +199,29 @@ class FakeRepositoriesTest {
         repository.updateQuantity("l1", 0)
         assertNull(repository.cart.value, "Removing the last line clears the cart")
     }
+
+    @Test
+    fun replaceWithStartsANewCartForAnotherStore() {
+        val repository = FakeCartRepository()
+        repository.addLine(FulfillmentMode.IN_STORE, CartLine("l1", seedItem(SeedStoreIds.RAMEN_BAR, "item-gyoza")))
+
+        repository.replaceWith(FulfillmentMode.PICKUP, CartLine("l2", seedItem(SeedStoreIds.MART, "item-green-tea")))
+        val cart = repository.cart.value
+        assertEquals(SeedStoreIds.MART, cart?.storeId)
+        assertEquals(listOf("l2"), cart?.lines?.map { it.lineId })
+    }
+
+    @Test
+    fun itemSoldOutIsPushedToTheLoadedMenuAndResetRestoresIt() = runTest {
+        val repository = FakeMenuRepository(backgroundScope, MockConfig())
+        val menu = repository.menu(SeedStoreIds.RAMEN_BAR)
+        finishLoading()
+
+        repository.setItemSoldOut(SeedStoreIds.RAMEN_BAR, "item-gyoza", soldOut = true)
+        assertTrue(menu.value.dataOrNull()!!.items.first { it.id == "item-gyoza" }.isSoldOut)
+
+        repository.reset()
+        finishLoading()
+        assertFalse(menu.value.dataOrNull()!!.items.first { it.id == "item-gyoza" }.isSoldOut)
+    }
 }

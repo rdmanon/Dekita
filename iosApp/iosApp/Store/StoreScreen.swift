@@ -1,18 +1,16 @@
 import SwiftUI
-import SharedUI
+import SharedLogic
 
 /// The store screen: header, live queue, the paused/full banner, then the menu.
 /// SwiftUI draws the navigation bar, with a Liquid Glass favorite button on iOS 26.
-/// The menu rows are still the SETUP-01 placeholder until MENU-01; tapping one opens the item sheet.
+/// Tapping an item opens its customize sheet; a floating cart button appears once the cart has items.
 struct StoreScreen: View {
-    let storeId: String
     let name: String
     @StateObject private var model: StoreDetailModel
     @StateObject private var favorite: FavoriteStoreModel
-    @State private var sheet: ItemSheetTarget?
+    @State private var toast: String?
 
     init(storeId: String, name: String) {
-        self.storeId = storeId
         self.name = name
         _model = StateObject(wrappedValue: StoreDetailModel(storeId: storeId))
         _favorite = StateObject(wrappedValue: FavoriteStoreModel(storeId: storeId))
@@ -22,7 +20,7 @@ struct StoreScreen: View {
         Group {
             if let store = model.state.store {
                 ScrollView {
-                    VStack(alignment: .leading, spacing: 16) {
+                    LazyVStack(alignment: .leading, spacing: 16, pinnedViews: [.sectionHeaders]) {
                         StoreHeaderView(store: store)
                         LiveQueueCounterView(store: store)
                         if !store.isAcceptingOrders {
@@ -37,6 +35,23 @@ struct StoreScreen: View {
             }
         }
         .background(Palette.screen)
+        // The menu artboard's full-width cart capsule, once the cart has items.
+        .safeAreaInset(edge: .bottom) {
+            if let cart = model.state.cart {
+                NavigationLink(value: DiscoverRoute.cart) {
+                    CapsuleLabel(title: "View Cart · \(cart.itemCount) · \(cart.total.formatted())", systemImage: "cart")
+                }
+                .buttonStyle(CapsuleButtonStyle())
+                .shadow(color: Palette.action.opacity(0.3), radius: 12, y: 6)
+                .padding(.horizontal, 16)
+                .padding(.bottom, 8)
+            }
+        }
+        .overlay(alignment: .top) { toastView }
+        .sheet(isPresented: sheetPresented) {
+            ItemSheet(model: model, onAdded: showToast)
+                .presentationDetents([.medium, .large])
+        }
         .navigationTitle(name)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
@@ -47,57 +62,70 @@ struct StoreScreen: View {
                 .accessibilityLabel(favorite.isFavorite ? "Remove from favorites" : "Add to favorites")
             }
         }
-        .safeAreaInset(edge: .bottom) { viewCartButton }
-        .sheet(item: $sheet) { ItemSheetView(target: $0) }
-    }
-
-    /// Shown once the cart has items from this store (CART-01).
-    @ViewBuilder
-    private var viewCartButton: some View {
-        let state = model.state
-        if state.cartItemCount > 0 {
-            NavigationLink(value: DiscoverRoute.cart) {
-                Label("View cart (\(state.cartItemCount)) · \(state.cartTotal.formatted())", systemImage: "bag")
-                    .font(.headline)
-                    .frame(maxWidth: .infinity)
-                    .frame(minHeight: 44)
-            }
-            .modifier(ProminentGlassButton())
-            .padding(.horizontal, 16)
-            .padding(.bottom, 8)
-        }
     }
 
     @ViewBuilder
     private var menu: some View {
         if let menu = model.state.loadedMenu {
             ForEach(menu.categories, id: \.id) { category in
-                Text(category.name)
-                    .font(.title3.weight(.bold))
-                    .padding(.top, 8)
-                VStack(spacing: 0) {
-                    let items = menu.itemsIn(categoryId: category.id)
-                    ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
-                        // Items open the customize sheet (CART-01); sold-out items can't be added.
-                        Button {
-                            sheet = ItemSheetTarget(storeId: storeId, itemId: item.id, editingLineId: nil)
-                        } label: {
-                            MenuItemRowView(item: item)
-                        }
-                        .buttonStyle(.plain)
-                        .disabled(item.isSoldOut)
-                        .accessibilityHint(item.isSoldOut ? "" : "Opens options and Add to Cart")
-                        if index < items.count - 1 {
-                            Divider().padding(.leading, 16)
+                Section {
+                    VStack(spacing: 0) {
+                        let items = menu.itemsIn(categoryId: category.id)
+                        ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
+                            Button { model.viewModel.openItem(itemId: item.id) } label: {
+                                MenuItemRowView(item: item)
+                            }
+                            .buttonStyle(.plain)
+                            .disabled(item.isSoldOut)
+                            if index < items.count - 1 {
+                                Divider().padding(.leading, 16)
+                            }
                         }
                     }
+                    .background(Palette.card, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+                } header: {
+                    // Pinned while its items scroll past, on the screen's background.
+                    Text(category.name)
+                        .font(.title3.weight(.bold))
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.vertical, 8)
+                        .background(Palette.screen)
                 }
-                .background(Palette.card, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
             }
         } else if let error = model.state.menuError {
             Text(error).foregroundStyle(.secondary)
         } else {
             ProgressView("Loading menu…").frame(maxWidth: .infinity)
+        }
+    }
+
+    private var sheetPresented: Binding<Bool> {
+        Binding(
+            get: { model.state.sheet != nil },
+            set: { if !$0 { model.viewModel.closeItem() } }
+        )
+    }
+
+    @ViewBuilder
+    private var toastView: some View {
+        if let toast {
+            Text(toast)
+                .font(.subheadline.weight(.semibold))
+                .padding(.horizontal, 16)
+                .padding(.vertical, 10)
+                .background(.thickMaterial, in: Capsule())
+                .shadow(color: .black.opacity(0.15), radius: 8, y: 2)
+                .padding(.top, 8)
+                .transition(.move(edge: .top).combined(with: .opacity))
+                .accessibilityAddTraits(.isStaticText)
+        }
+    }
+
+    private func showToast(_ text: String) {
+        withAnimation { toast = text }
+        UIAccessibility.post(notification: .announcement, argument: text)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+            withAnimation { if toast == text { toast = nil } }
         }
     }
 }
@@ -219,7 +247,6 @@ private struct MenuItemRowView: View {
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
-        .contentShape(Rectangle())
         .accessibilityElement(children: .combine)
     }
 
