@@ -1,5 +1,5 @@
 import SwiftUI
-import SharedUI
+import SharedLogic
 
 /// Walking distance, category and status filters. They apply as you tap; the button just closes the sheet.
 struct FilterSheet: View {

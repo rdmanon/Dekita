@@ -1,0 +1,189 @@
+package tech.vauldex.dekita.ui.store
+
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.material3.ExtendedFloatingActionButton
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.IconToggleButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.material3.TopAppBar
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import tech.vauldex.dekita.R
+import tech.vauldex.dekita.data.LoadState
+import tech.vauldex.dekita.domain.FulfillmentMode
+import tech.vauldex.dekita.domain.MenuItem
+import tech.vauldex.dekita.domain.Store
+import tech.vauldex.dekita.domain.StoreAvailability
+import tech.vauldex.dekita.presentation.NOT_ACCEPTING_ORDERS_MESSAGE
+import tech.vauldex.dekita.presentation.optionsSummary
+import tech.vauldex.dekita.presentation.store.StoreDetailViewModel
+import tech.vauldex.dekita.ui.components.AvailabilityBadge
+import tech.vauldex.dekita.ui.components.BusinessTypeBadge
+import tech.vauldex.dekita.ui.components.LiveQueueCounter
+import tech.vauldex.dekita.ui.components.LoadingIndicator
+import tech.vauldex.dekita.ui.components.SectionTitle
+import tech.vauldex.dekita.ui.components.StatusPill
+import tech.vauldex.dekita.ui.components.StoreArt
+import tech.vauldex.dekita.ui.theme.DekitaTheme
+import tech.vauldex.dekita.ui.theme.Dimens
+
+/** Store header with the live queue. The menu list below is still a placeholder until MENU-01. */
+@Composable
+fun StoreDetailScreen(viewModel: StoreDetailViewModel, onBack: () -> Unit, onViewCart: () -> Unit) {
+    val state by viewModel.state.collectAsStateWithLifecycle()
+    val store = state.store
+
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text(store?.name.orEmpty(), maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                navigationIcon = {
+                    IconButton(onClick = onBack) {
+                        Icon(painterResource(R.drawable.ic_arrow_back), contentDescription = "Back")
+                    }
+                },
+                actions = {
+                    if (store != null) {
+                        IconToggleButton(checked = state.isFavorite, onCheckedChange = { viewModel.toggleFavorite() }) {
+                            Icon(
+                                painterResource(if (state.isFavorite) R.drawable.ic_favorite_filled else R.drawable.ic_favorite),
+                                contentDescription = if (state.isFavorite) "Remove from favorites" else "Add to favorites",
+                            )
+                        }
+                    }
+                },
+            )
+        },
+        floatingActionButton = {
+            // As on the Android menu artboard: an extended FAB once the cart has items.
+            state.cart?.let { cart ->
+                ExtendedFloatingActionButton(
+                    onClick = onViewCart,
+                    icon = { Icon(painterResource(R.drawable.ic_cart), contentDescription = null) },
+                    text = { Text("View cart · ${cart.itemCount} · ${cart.total.formatted()}") },
+                )
+            }
+        },
+    ) { padding ->
+        if (store == null) {
+            LoadingIndicator("Loading store…", Modifier.padding(padding))
+            return@Scaffold
+        }
+        LazyColumn(
+            contentPadding = PaddingValues(
+                start = Dimens.ScreenPadding,
+                end = Dimens.ScreenPadding,
+                top = padding.calculateTopPadding(),
+                // Room under the last row for the cart button.
+                bottom = padding.calculateBottomPadding() + Dimens.ScreenPadding + if (state.cart != null) 88.dp else 0.dp,
+            ),
+            modifier = Modifier.fillMaxSize(),
+        ) {
+            item(key = "header") { StoreHeader(store) }
+            when (val menu = state.menu) {
+                LoadState.Loading -> item(key = "menu-loading") { LoadingIndicator("Loading menu…") }
+                is LoadState.Error -> item(key = "menu-error") { Text(menu.message) }
+                is LoadState.Success -> menu.data.categories.forEach { category ->
+                    item(key = "category-${category.id}") { SectionTitle(category.name) }
+                    items(menu.data.itemsIn(category.id), key = { it.id }) { item -> MenuItemRow(item) }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun StoreHeader(store: Store) {
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.padding(top = 8.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+            StoreArt(store, Modifier.size(72.dp))
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(
+                    store.name,
+                    style = MaterialTheme.typography.headlineSmall,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    "${store.category} · ${store.walkMinutes} min walk",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            BusinessTypeBadge(store.businessType)
+            AvailabilityBadge(store.availability)
+            store.openLabel?.takeIf { store.availability == StoreAvailability.OPEN }?.let {
+                StatusPill(it, DekitaTheme.colors.open)
+            }
+        }
+        LiveQueueCounter(store)
+        if (!store.isAcceptingOrders) {
+            Surface(
+                color = DekitaTheme.colors.paused.container,
+                contentColor = DekitaTheme.colors.paused.content,
+                shape = MaterialTheme.shapes.large,
+            ) {
+                Text(
+                    NOT_ACCEPTING_ORDERS_MESSAGE,
+                    style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.fillMaxWidth().padding(16.dp),
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun MenuItemRow(item: MenuItem) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(16.dp),
+        modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+    ) {
+        Column(
+            verticalArrangement = Arrangement.spacedBy(2.dp),
+            modifier = Modifier.weight(1f).alpha(if (item.isSoldOut) 0.45f else 1f),
+        ) {
+            Text(item.name, style = MaterialTheme.typography.titleMedium)
+            Text(
+                item.description,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(item.basePrice.formatted(), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
+            item.optionsSummary()?.let {
+                Text(it, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+        when {
+            item.isSoldOut -> StatusPill("Sold out", DekitaTheme.colors.paused)
+            item.availableModes == setOf(FulfillmentMode.IN_STORE) -> StatusPill("In-store only", DekitaTheme.colors.inStore)
+            item.availableModes == setOf(FulfillmentMode.PICKUP) -> StatusPill("Pickup only", DekitaTheme.colors.pickup)
+        }
+    }
+}

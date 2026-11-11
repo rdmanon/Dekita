@@ -1,30 +1,23 @@
-This is a Kotlin Multiplatform project targeting Android, iOS.
+This is a Kotlin Multiplatform project targeting Android and iOS. Each platform has its own native UI;
+only the code below the screens is shared.
 
-* [/iosApp](./iosApp/iosApp) contains an iOS application. Even if you’re sharing your UI with Compose Multiplatform,
-  you need this entry point for your iOS app. This is also where you should add SwiftUI code for your project.
+* [/sharedLogic](./sharedLogic/src) holds everything both apps share: domain types and rules, the in-memory
+  mock data layer, and the view models ([commonMain](./sharedLogic/src/commonMain/kotlin)). It also builds the
+  `SharedLogic` framework that the iOS app links.
 
-* [/sharedLogic](./sharedLogic/src) is for the code that will be shared between app targets in the project.
-  The most important subfolder is [commonMain](./sharedLogic/src/commonMain/kotlin). If preferred, you
-  can add code to the platform-specific folders here too.
+* [/androidApp](./androidApp/src/main) is the Android app, written in Jetpack Compose with Material 3, following
+  the Android artboards of the design canvas.
 
-* [/sharedUI](./sharedUI/src) is for code that will be shared across your Compose Multiplatform applications.
-  It contains several subfolders:
-  - [commonMain](./sharedUI/src/commonMain/kotlin) is for code that’s common for all targets.
-  - Other folders are for Kotlin code that will be compiled for only the platform indicated in the folder name.
-    For example, if you want to use Apple’s CoreCrypto for the iOS part of your Kotlin app,
-    the [iosMain](./sharedUI/src/iosMain/kotlin) folder would be the right place for such calls.
-    Similarly, if you want to edit the Desktop (JVM) specific part, the [jvmMain](./sharedUI/src/jvmMain/kotlin)
-    folder is the appropriate location.
+* [/iosApp](./iosApp/iosApp) is the iOS app, written in SwiftUI, following the iOS artboards (Liquid Glass on
+  the navigation layer only).
 
 ### How the iOS app is put together
 
 * The iOS app has a SwiftUI shell ([ContentView.swift](./iosApp/iosApp/ContentView.swift)): a `TabView` that iOS 26
-  draws in Liquid Glass, with Search as its own tab. Discover, Search, Favorites and History are SwiftUI.
+  draws in Liquid Glass, with Search as its own tab. Every screen is SwiftUI.
 * SwiftUI screens use the shared Kotlin view models through small bridges in
-  [sharedUI/src/iosMain/.../ios](./sharedUI/src/iosMain/kotlin/tech/vauldex/dekita/ios), which turn each
+  [sharedLogic/src/iosMain/.../ios](./sharedLogic/src/iosMain/kotlin/tech/vauldex/dekita/ios), which turn each
   `StateFlow` into a callback and clear the view models when the screen goes away.
-* Screens without an iOS design yet (Orders, Account, the store screen, the debug panel) are the shared
-  Compose screens, embedded one at a time from `ComposeScreens.kt`.
 
 ### Running the apps
 
@@ -37,7 +30,7 @@ Use the run configurations provided by the run widget in your IDE's toolbar. You
 
 Use the run button in your IDE's editor gutter, or run tests using Gradle tasks:
 
-- Android tests: `./gradlew :sharedUI:testAndroidHostTest :sharedLogic:testAndroidHostTest`
+- Android tests: `./gradlew :sharedLogic:testAndroidHostTest`
 - iOS tests: `./gradlew :sharedLogic:iosSimulatorArm64Test`
 
 ---

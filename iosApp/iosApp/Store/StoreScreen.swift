@@ -1,5 +1,5 @@
 import SwiftUI
-import SharedUI
+import SharedLogic
 
 /// The store screen: header, live queue, the paused/full banner, then the menu.
 /// SwiftUI draws the navigation bar, with a Liquid Glass favorite button on iOS 26.
@@ -34,6 +34,18 @@ struct StoreScreen: View {
             }
         }
         .background(Palette.screen)
+        // The menu artboard's full-width cart capsule, once the cart has items.
+        .safeAreaInset(edge: .bottom) {
+            if let cart = model.state.cart {
+                NavigationLink(value: DiscoverRoute.cart) {
+                    CapsuleLabel(title: "View Cart · \(cart.itemCount) · \(cart.total.formatted())", systemImage: "cart")
+                }
+                .buttonStyle(CapsuleButtonStyle())
+                .shadow(color: Palette.action.opacity(0.3), radius: 12, y: 6)
+                .padding(.horizontal, 16)
+                .padding(.bottom, 8)
+            }
+        }
         .navigationTitle(name)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {

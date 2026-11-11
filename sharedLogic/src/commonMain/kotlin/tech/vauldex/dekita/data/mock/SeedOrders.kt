@@ -5,6 +5,7 @@ import kotlin.time.Duration.Companion.days
 import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.seconds
 import kotlin.time.Instant
+import tech.vauldex.dekita.domain.Cart
 import tech.vauldex.dekita.domain.CartLine
 import tech.vauldex.dekita.domain.CompletionReason
 import tech.vauldex.dekita.domain.FulfillmentMode
@@ -35,6 +36,19 @@ private fun seedOrder(
             is TransitionResult.Rejected -> error("Invalid seed order $id: ${result.reason}")
         }
     }
+}
+
+/** The design's cart: Shoyu Ramen (Medium · Extra Egg) and Gyoza at Test Ramen Bar, ¥1,550 in store. */
+internal fun seedSampleCart(): Cart {
+    val shoyu = seedItem(SeedStoreIds.RAMEN_BAR, "item-shoyu-ramen")
+    return Cart(
+        storeId = SeedStoreIds.RAMEN_BAR,
+        mode = FulfillmentMode.IN_STORE,
+        lines = listOf(
+            CartLine("line-sample-1", shoyu, listOf(shoyu.seedOption("ramen-spice-medium"), shoyu.seedOption("topping-egg"))),
+            CartLine("line-sample-2", seedItem(SeedStoreIds.RAMEN_BAR, "item-gyoza")),
+        ),
+    )
 }
 
 internal fun seedOrders(now: Instant): List<Order> {

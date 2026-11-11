@@ -11,6 +11,9 @@ import tech.vauldex.dekita.domain.Menu
 import tech.vauldex.dekita.domain.Order
 import tech.vauldex.dekita.domain.OrderStatus
 import tech.vauldex.dekita.domain.PaymentMethod
+import tech.vauldex.dekita.domain.PhoneNumber
+import tech.vauldex.dekita.domain.Session
+import tech.vauldex.dekita.domain.SsoProvider
 import tech.vauldex.dekita.domain.Store
 import tech.vauldex.dekita.domain.TransitionResult
 
@@ -74,3 +77,32 @@ interface InboxRepository {
 
     fun markRead(messageId: String)
 }
+
+interface AuthRepository {
+    /** Null while browsing as a guest. Held in memory only: nothing is written to disk and no token exists. */
+    val session: StateFlow<Session?>
+
+    /** Sends a 6-digit code to [phone]. */
+    suspend fun requestOtp(phone: PhoneNumber)
+
+    suspend fun verifyOtp(phone: PhoneNumber, code: String): AuthResult
+
+    suspend fun signUpWithEmail(email: String, password: String): AuthResult
+
+    suspend fun signInWithEmail(email: String, password: String): AuthResult
+
+    /** Has the same outcome whether or not the account exists, so it can't reveal which emails are registered. */
+    suspend fun requestPasswordReset(email: String)
+
+    suspend fun signInWith(provider: SsoProvider): AuthResult
+
+    fun signOut()
+}
+
+sealed interface AuthResult {
+    data object Success : AuthResult
+
+    data class Failure(val reason: AuthFailure) : AuthResult
+}
+
+enum class AuthFailure { INVALID_CODE, WRONG_CREDENTIALS, EMAIL_TAKEN, SSO_FAILED }

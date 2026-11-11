@@ -11,7 +11,7 @@
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
-		62432F38F755B251D6C86907 /* Exceptions for "iosApp" folder in "iosApp" target */ = {
+		62432F38F755B251D6C86907 /* PBXFileSystemSynchronizedBuildFileExceptionSet */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
 				Info.plist,
@@ -23,13 +23,21 @@
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		6D5476DAFA0B41570F92B5FF /* Configuration */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			explicitFileTypes = {
+			};
+			explicitFolders = (
+			);
 			path = Configuration;
 			sourceTree = "<group>";
 		};
 		C696D14F2C833E701530C354 /* iosApp */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			exceptions = (
-				62432F38F755B251D6C86907 /* Exceptions for "iosApp" folder in "iosApp" target */,
+				62432F38F755B251D6C86907 /* PBXFileSystemSynchronizedBuildFileExceptionSet */,
+			);
+			explicitFileTypes = {
+			};
+			explicitFolders = (
 			);
 			path = iosApp;
 			sourceTree = "<group>";
@@ -152,7 +160,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "if [ \"YES\" = \"$OVERRIDE_KOTLIN_BUILD_IDE_SUPPORTED\" ]; then\n  echo \"Skipping Gradle build task invocation due to OVERRIDE_KOTLIN_BUILD_IDE_SUPPORTED environment variable set to \\\"YES\\\"\"\n  exit 0\nfi\n\nexport PATH=\"/opt/homebrew/bin:/usr/local/bin:$PATH\"\n\nif [ -z \"$JAVA_HOME\" ] || [ ! -x \"$JAVA_HOME/bin/java\" ]; then\n  if /usr/libexec/java_home >/dev/null 2>&1; then\n    export JAVA_HOME=\"$(/usr/libexec/java_home)\"\n  elif [ -d \"/Applications/Android Studio.app/Contents/jbr/Contents/Home\" ]; then\n    export JAVA_HOME=\"/Applications/Android Studio.app/Contents/jbr/Contents/Home\"\n  elif [ -d \"$HOME/Applications/Android Studio.app/Contents/jbr/Contents/Home\" ]; then\n    export JAVA_HOME=\"$HOME/Applications/Android Studio.app/Contents/jbr/Contents/Home\"\n  elif [ -d \"/opt/homebrew/opt/openjdk@21\" ]; then\n    export JAVA_HOME=\"/opt/homebrew/opt/openjdk@21\"\n  elif [ -d \"/opt/homebrew/opt/openjdk\" ]; then\n    export JAVA_HOME=\"/opt/homebrew/opt/openjdk\"\n  elif [ -d \"/Applications/JetBrains Toolbox.app/Contents/jre/Contents/Home\" ]; then\n    export JAVA_HOME=\"/Applications/JetBrains Toolbox.app/Contents/jre/Contents/Home\"\n  else\n    GRADLE_JDK=$(ls -d \"$HOME\"/.gradle/jdks/*/*.jdk/Contents/Home 2>/dev/null | tail -n 1)\n    if [ -n \"$GRADLE_JDK\" ] && [ -x \"$GRADLE_JDK/bin/java\" ]; then\n      export JAVA_HOME=\"$GRADLE_JDK\"\n    fi\n  fi\nfi\n\nif [ -n \"$JAVA_HOME\" ]; then\n  export PATH=\"$JAVA_HOME/bin:$PATH\"\n  echo \"Using JAVA_HOME: $JAVA_HOME\"\nfi\n\ncd \"$SRCROOT/..\"\n./gradlew :sharedUI:embedAndSignAppleFrameworkForXcode\n";
+			shellScript = "if [ \"YES\" = \"$OVERRIDE_KOTLIN_BUILD_IDE_SUPPORTED\" ]; then\n  echo \"Skipping Gradle build task invocation due to OVERRIDE_KOTLIN_BUILD_IDE_SUPPORTED environment variable set to \\\"YES\\\"\"\n  exit 0\nfi\n\nexport PATH=\"/opt/homebrew/bin:/usr/local/bin:$PATH\"\n\nif [ -z \"$JAVA_HOME\" ] || [ ! -x \"$JAVA_HOME/bin/java\" ]; then\n  if /usr/libexec/java_home >/dev/null 2>&1; then\n    export JAVA_HOME=\"$(/usr/libexec/java_home)\"\n  elif [ -d \"/Applications/Android Studio.app/Contents/jbr/Contents/Home\" ]; then\n    export JAVA_HOME=\"/Applications/Android Studio.app/Contents/jbr/Contents/Home\"\n  elif [ -d \"$HOME/Applications/Android Studio.app/Contents/jbr/Contents/Home\" ]; then\n    export JAVA_HOME=\"$HOME/Applications/Android Studio.app/Contents/jbr/Contents/Home\"\n  elif [ -d \"/opt/homebrew/opt/openjdk@21\" ]; then\n    export JAVA_HOME=\"/opt/homebrew/opt/openjdk@21\"\n  elif [ -d \"/opt/homebrew/opt/openjdk\" ]; then\n    export JAVA_HOME=\"/opt/homebrew/opt/openjdk\"\n  elif [ -d \"/Applications/JetBrains Toolbox.app/Contents/jre/Contents/Home\" ]; then\n    export JAVA_HOME=\"/Applications/JetBrains Toolbox.app/Contents/jre/Contents/Home\"\n  else\n    GRADLE_JDK=$(ls -d \"$HOME\"/.gradle/jdks/*/*.jdk/Contents/Home 2>/dev/null | tail -n 1)\n    if [ -n \"$GRADLE_JDK\" ] && [ -x \"$GRADLE_JDK/bin/java\" ]; then\n      export JAVA_HOME=\"$GRADLE_JDK\"\n    fi\n  fi\nfi\n\nif [ -n \"$JAVA_HOME\" ]; then\n  export PATH=\"$JAVA_HOME/bin:$PATH\"\n  echo \"Using JAVA_HOME: $JAVA_HOME\"\nfi\n\ncd \"$SRCROOT/..\"\n./gradlew :sharedLogic:embedAndSignAppleFrameworkForXcode\n";
 		};
 /* End PBXShellScriptBuildPhase section */
 

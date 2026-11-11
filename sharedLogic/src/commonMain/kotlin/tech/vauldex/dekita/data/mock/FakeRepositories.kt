@@ -11,6 +11,9 @@ import kotlinx.coroutines.flow.getAndUpdate
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.updateAndGet
 import kotlinx.coroutines.launch
+import tech.vauldex.dekita.data.AuthFailure
+import tech.vauldex.dekita.data.AuthRepository
+import tech.vauldex.dekita.data.AuthResult
 import tech.vauldex.dekita.data.CartRepository
 import tech.vauldex.dekita.data.InboxRepository
 import tech.vauldex.dekita.data.LoadState
@@ -29,10 +32,15 @@ import tech.vauldex.dekita.domain.Order
 import tech.vauldex.dekita.domain.OrderStatus
 import tech.vauldex.dekita.domain.OrderStatusMachine
 import tech.vauldex.dekita.domain.PaymentMethod
+import tech.vauldex.dekita.domain.PhoneNumber
 import tech.vauldex.dekita.domain.QueueStatus
+import tech.vauldex.dekita.domain.Session
+import tech.vauldex.dekita.domain.SignInMethod
+import tech.vauldex.dekita.domain.SsoProvider
 import tech.vauldex.dekita.domain.Store
 import tech.vauldex.dekita.domain.StoreAvailability
 import tech.vauldex.dekita.domain.TransitionResult
+import tech.vauldex.dekita.domain.UserProfile
 
 // In-memory fakes over the seed data. They never touch the network or disk.
 // Pass a test scope in tests so the simulated delay runs on virtual time.
@@ -311,5 +319,76 @@ class FakeInboxRepository(
     override fun reset() {
         loadJob?.cancel()
         loadJob = scope.simulateLoad(_messages, config) { seedInbox(clock.now()) }
+    }
+}
+
+/**
+ * Simulated sign-in. Each call waits the loading delay in the caller's coroutine, so a test dispatcher
+ * runs it on virtual time. Accepts only [SeedAuth.TEST_OTP]; Google and Apple fail when
+ * [MockConfig.forceSsoFailure] is on.
+ */
+class FakeAuthRepository(private val config: MockConfig) : AuthRepository, Resettable {
+
+    private val _session = MutableStateFlow<Session?>(null)
+    override val session: StateFlow<Session?> = _session.asStateFlow()
+
+    // Mock only: lowercase email to the password it was created with, so log-in works after sign-up.
+    // A real backend keeps a salted hash on the server and never holds or returns the password.
+    private val accounts = MutableStateFlow(seedAccounts)
+
+    override suspend fun requestOtp(phone: PhoneNumber) {
+        delay(config.loadingDelay.value)
+    }
+
+    override suspend fun verifyOtp(phone: PhoneNumber, code: String): AuthResult {
+        delay(config.loadingDelay.value)
+        if (code != SeedAuth.TEST_OTP) return AuthResult.Failure(AuthFailure.INVALID_CODE)
+        return signIn(UserProfile(seedUser.displayName, phone = phone.formatted()), SignInMethod.PHONE)
+    }
+
+    override suspend fun signUpWithEmail(email: String, password: String): AuthResult {
+        delay(config.loadingDelay.value)
+        var created = false
+        accounts.update { current ->
+            created = email.lowercase() !in current
+            if (created) current + (email.lowercase() to password) else current
+        }
+        if (!created) return AuthResult.Failure(AuthFailure.EMAIL_TAKEN)
+        return signIn(UserProfile(seedUser.displayName, email = email), SignInMethod.EMAIL)
+    }
+
+    override suspend fun signInWithEmail(email: String, password: String): AuthResult {
+        delay(config.loadingDelay.value)
+        // One answer for an unknown email and a wrong password, so the error can't reveal which accounts exist.
+        if (accounts.value[email.lowercase()] != password) return AuthResult.Failure(AuthFailure.WRONG_CREDENTIALS)
+        return signIn(UserProfile(seedUser.displayName, email = email), SignInMethod.EMAIL)
+    }
+
+    override suspend fun requestPasswordReset(email: String) {
+        delay(config.loadingDelay.value)
+    }
+
+    override suspend fun signInWith(provider: SsoProvider): AuthResult {
+        delay(config.loadingDelay.value)
+        if (config.forceSsoFailure.value) return AuthResult.Failure(AuthFailure.SSO_FAILED)
+        val method = when (provider) {
+            SsoProvider.GOOGLE -> SignInMethod.GOOGLE
+            SsoProvider.APPLE -> SignInMethod.APPLE
+        }
+        return signIn(seedUser, method)
+    }
+
+    override fun signOut() {
+        _session.value = null
+    }
+
+    override fun reset() {
+        signOut()
+        accounts.value = seedAccounts
+    }
+
+    private fun signIn(profile: UserProfile, method: SignInMethod): AuthResult {
+        _session.value = Session(profile, method)
+        return AuthResult.Success
     }
 }

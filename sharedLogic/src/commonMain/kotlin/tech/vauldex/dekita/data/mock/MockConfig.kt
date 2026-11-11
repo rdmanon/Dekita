@@ -17,6 +17,9 @@ class MockConfig(loadingDelay: Duration = DEFAULT_LOADING_DELAY) {
     /** When false, the mock queue counts stop changing, so QA can check exact values. */
     val liveQueue = MutableStateFlow(true)
 
+    /** When true, "Continue with Google" and "Continue with Apple" fail after the loading delay. */
+    val forceSsoFailure = MutableStateFlow(false)
+
     companion object {
         val DEFAULT_LOADING_DELAY = 800.milliseconds
         val QUEUE_TICK_INTERVAL = 5.seconds

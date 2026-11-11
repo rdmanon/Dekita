@@ -4,6 +4,7 @@ import kotlin.time.Instant
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
+import tech.vauldex.dekita.domain.AuthInput
 import tech.vauldex.dekita.domain.BusinessType
 import tech.vauldex.dekita.domain.CompletionReason
 import tech.vauldex.dekita.domain.Money
@@ -133,9 +134,27 @@ class MockSeedTest {
     fun namesAndAccountsAreObviouslyFake() {
         seedStores.forEach { assertTrue(obviouslyFake.containsMatchIn(it.name), "Store name looks real: ${it.name}") }
         assertTrue(obviouslyFake.containsMatchIn(seedUser.displayName))
-        assertTrue(seedUser.email.endsWith("@example.com"))
+        assertTrue(seedUser.email.orEmpty().endsWith("@example.com"))
         seedPaymentMethods
             .filter { it.type == PaymentType.CARD || it.type == PaymentType.PAYPAY || it.type == PaymentType.RAKUTEN_PAY }
             .forEach { assertTrue(obviouslyFake.containsMatchIn(it.label), "Payment label looks real: ${it.label}") }
+    }
+
+    @Test
+    fun authValuesAreTheDocumentedFakes() {
+        assertEquals("123456", SeedAuth.TEST_OTP)
+        assertTrue(SeedAuth.TEST_EMAIL.endsWith("@example.com"))
+        // No word boundary inside "Test1234", so check the prefix rather than the obviouslyFake regex.
+        assertTrue(SeedAuth.TEST_PASSWORD.startsWith("Test"))
+        // The test account must also pass the sign-up rule, so it works on either form.
+        assertTrue(AuthInput.isValidPassword(SeedAuth.TEST_PASSWORD))
+        assertTrue(seedAccounts.keys.all { it == it.lowercase() && it.endsWith("@example.com") })
+    }
+
+    @Test
+    fun sampleCartMatchesTheDesign() {
+        val cart = seedSampleCart()
+        assertEquals(2, cart.itemCount)
+        assertEquals(Money.yen(1550), cart.total)
     }
 }

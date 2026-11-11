@@ -1,0 +1,286 @@
+package tech.vauldex.dekita.ui.navigation
+
+import androidx.annotation.DrawableRes
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.consumeWindowInsets
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.Icon
+import androidx.compose.material3.NavigationBar
+import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.painterResource
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.navigation.NavBackStackEntry
+import androidx.navigation.NavController
+import androidx.navigation.NavDestination.Companion.hasRoute
+import androidx.navigation.NavDestination.Companion.hierarchy
+import androidx.navigation.NavGraph.Companion.findStartDestination
+import androidx.navigation.NavGraphBuilder
+import androidx.navigation.compose.NavHost
+import androidx.navigation.compose.composable
+import androidx.navigation.compose.currentBackStackEntryAsState
+import androidx.navigation.compose.navigation
+import androidx.navigation.compose.rememberNavController
+import androidx.navigation.toRoute
+import kotlin.reflect.KClass
+import kotlinx.serialization.Serializable
+import tech.vauldex.dekita.R
+import tech.vauldex.dekita.di.AppContainer
+import tech.vauldex.dekita.presentation.account.AccountViewModel
+import tech.vauldex.dekita.presentation.auth.EmailAuthMode
+import tech.vauldex.dekita.presentation.auth.EmailAuthViewModel
+import tech.vauldex.dekita.presentation.auth.ForgotPasswordViewModel
+import tech.vauldex.dekita.presentation.auth.OtpViewModel
+import tech.vauldex.dekita.presentation.auth.PhoneEntryViewModel
+import tech.vauldex.dekita.presentation.auth.SignInViewModel
+import tech.vauldex.dekita.presentation.cart.CartReviewViewModel
+import tech.vauldex.dekita.presentation.discover.DiscoverViewModel
+import tech.vauldex.dekita.presentation.discover.FavoritesViewModel
+import tech.vauldex.dekita.presentation.discover.HistoryViewModel
+import tech.vauldex.dekita.presentation.orders.OrdersViewModel
+import tech.vauldex.dekita.presentation.store.StoreDetailViewModel
+import tech.vauldex.dekita.ui.account.AccountScreen
+import tech.vauldex.dekita.ui.auth.EmailAuthScreen
+import tech.vauldex.dekita.ui.auth.ForgotPasswordScreen
+import tech.vauldex.dekita.ui.auth.OtpScreen
+import tech.vauldex.dekita.ui.auth.PhoneEntryScreen
+import tech.vauldex.dekita.ui.auth.SignInScreen
+import tech.vauldex.dekita.ui.cart.CartReviewScreen
+import tech.vauldex.dekita.ui.discover.DiscoverScreen
+import tech.vauldex.dekita.ui.discover.FavoritesScreen
+import tech.vauldex.dekita.ui.discover.HistoryScreen
+import tech.vauldex.dekita.ui.orders.OrdersScreen
+import tech.vauldex.dekita.ui.store.StoreDetailScreen
+
+// One nested graph per tab, so each tab keeps its own back stack when you switch away and back.
+@Serializable data object DiscoverGraph
+@Serializable data object OrdersGraph
+@Serializable data object AccountGraph
+
+@Serializable data object DiscoverRoute
+@Serializable data object OrdersRoute
+@Serializable data object AccountRoute
+@Serializable data class StoreDetailRoute(val storeId: String)
+@Serializable data object FavoritesRoute
+@Serializable data object HistoryRoute
+@Serializable data object CartRoute
+
+// Auth screens sit outside the tab graphs so any tab, or the cart, can push them.
+/** [isRoot] after sign-out: the only screen left, offering "Browse as guest" instead of Close. */
+@Serializable data class SignInRoute(val isRoot: Boolean = false)
+@Serializable data object PhoneEntryRoute
+@Serializable data class OtpRoute(val phoneE164: String)
+@Serializable data class EmailAuthRoute(val signUp: Boolean)
+@Serializable data object ForgotPasswordRoute
+
+private enum class TopLevelTab(
+    val graph: Any,
+    val graphClass: KClass<*>,
+    val rootClass: KClass<*>,
+    val label: String,
+    @DrawableRes val icon: Int,
+) {
+    DISCOVER(DiscoverGraph, DiscoverGraph::class, DiscoverRoute::class, "Discover", R.drawable.ic_discover),
+    ORDERS(OrdersGraph, OrdersGraph::class, OrdersRoute::class, "Orders", R.drawable.ic_orders),
+    ACCOUNT(AccountGraph, AccountGraph::class, AccountRoute::class, "Account", R.drawable.ic_account),
+}
+
+/**
+ * Bottom tabs plus the back stack. Back and predictive back pop through NavHost.
+ */
+@Composable
+fun AppShell(container: AppContainer, modifier: Modifier = Modifier) {
+    val navController = rememberNavController()
+    val backStackEntry by navController.currentBackStackEntryAsState()
+    val destination = backStackEntry?.destination
+    // As in the design, the bar shows on tab roots only and hides on pushed screens.
+    val showBottomBar = destination == null || TopLevelTab.entries.any { destination.hasRoute(it.rootClass) }
+
+    Scaffold(
+        modifier = modifier,
+        // Each screen handles its own top inset; the bar handles the bottom one.
+        contentWindowInsets = WindowInsets(0),
+        bottomBar = {
+            if (showBottomBar) {
+                NavigationBar {
+                    TopLevelTab.entries.forEach { tab ->
+                        NavigationBarItem(
+                            selected = destination?.hierarchy?.any { it.hasRoute(tab.graphClass) } == true,
+                            onClick = { navController.navigateToTab(tab) },
+                            icon = { Icon(painterResource(tab.icon), contentDescription = null) },
+                            label = { Text(tab.label) },
+                        )
+                    }
+                }
+            }
+        },
+    ) { innerPadding ->
+        NavHost(
+            navController = navController,
+            startDestination = DiscoverGraph,
+            modifier = Modifier.padding(innerPadding).consumeWindowInsets(innerPadding),
+        ) {
+            navigation<DiscoverGraph>(startDestination = DiscoverRoute) {
+                composable<DiscoverRoute> { entry ->
+                    DiscoverScreen(
+                        viewModel = viewModel {
+                            DiscoverViewModel(container.storeRepository, container.orderRepository, container.cartRepository)
+                        },
+                        onStoreClick = { storeId ->
+                            if (entry.isResumed()) navController.navigate(StoreDetailRoute(storeId))
+                        },
+                        onFavoritesClick = { if (entry.isResumed()) navController.navigate(FavoritesRoute) },
+                        onHistoryClick = { if (entry.isResumed()) navController.navigate(HistoryRoute) },
+                    )
+                }
+                composable<FavoritesRoute> { entry ->
+                    FavoritesScreen(
+                        viewModel = viewModel { FavoritesViewModel(container.storeRepository) },
+                        onStoreClick = { storeId ->
+                            if (entry.isResumed()) navController.navigate(StoreDetailRoute(storeId))
+                        },
+                        onBack = { if (entry.isResumed()) navController.popBackStack() },
+                    )
+                }
+                composable<HistoryRoute> { entry ->
+                    HistoryScreen(
+                        viewModel = viewModel { HistoryViewModel(container.storeRepository, container.orderRepository) },
+                        onStoreClick = { storeId ->
+                            if (entry.isResumed()) navController.navigate(StoreDetailRoute(storeId))
+                        },
+                        onBack = { if (entry.isResumed()) navController.popBackStack() },
+                    )
+                }
+                composable<StoreDetailRoute> { entry ->
+                    val storeId = entry.toRoute<StoreDetailRoute>().storeId
+                    StoreDetailScreen(
+                        viewModel = viewModel {
+                            StoreDetailViewModel(
+                                storeId,
+                                container.storeRepository,
+                                container.menuRepository,
+                                container.cartRepository,
+                            )
+                        },
+                        onBack = { if (entry.isResumed()) navController.popBackStack() },
+                        onViewCart = { if (entry.isResumed()) navController.navigate(CartRoute) },
+                    )
+                }
+                composable<CartRoute> { entry ->
+                    CartReviewScreen(
+                        viewModel = viewModel {
+                            CartReviewViewModel(container.cartRepository, container.storeRepository, container.authRepository)
+                        },
+                        onBack = { if (entry.isResumed()) navController.popBackStack() },
+                        onSignInRequired = { if (entry.isResumed()) navController.navigate(SignInRoute()) },
+                    )
+                }
+            }
+            navigation<OrdersGraph>(startDestination = OrdersRoute) {
+                composable<OrdersRoute> { entry ->
+                    OrdersScreen(
+                        viewModel = viewModel { OrdersViewModel(container.orderRepository, container.authRepository) },
+                        onSignIn = { if (entry.isResumed()) navController.navigate(SignInRoute()) },
+                    )
+                }
+            }
+            navigation<AccountGraph>(startDestination = AccountRoute) {
+                composable<AccountRoute> { entry ->
+                    AccountScreen(
+                        viewModel = viewModel {
+                            AccountViewModel(container.authRepository, container.paymentRepository, container.inboxRepository)
+                        },
+                        onSignIn = { if (entry.isResumed()) navController.navigate(SignInRoute()) },
+                        onSignedOut = { navController.showSignInAfterSignOut() },
+                    )
+                }
+            }
+            authDestinations(container, navController)
+        }
+    }
+}
+
+private fun NavGraphBuilder.authDestinations(container: AppContainer, navController: NavController) {
+    composable<SignInRoute> { entry ->
+        val isRoot = entry.toRoute<SignInRoute>().isRoot
+        SignInScreen(
+            viewModel = viewModel { SignInViewModel(container.authRepository) },
+            isRoot = isRoot,
+            onClose = {
+                if (entry.isResumed()) {
+                    if (isRoot) navController.showFreshDiscover() else navController.popBackStack()
+                }
+            },
+            onPhone = { if (entry.isResumed()) navController.navigate(PhoneEntryRoute) },
+            onEmail = { if (entry.isResumed()) navController.navigate(EmailAuthRoute(signUp = true)) },
+            onSignedIn = { navController.finishSignIn() },
+        )
+    }
+    composable<PhoneEntryRoute> { entry ->
+        PhoneEntryScreen(
+            viewModel = viewModel { PhoneEntryViewModel(container.authRepository) },
+            onBack = { if (entry.isResumed()) navController.popBackStack() },
+            onCodeSent = { phone -> if (entry.isResumed()) navController.navigate(OtpRoute(phone.e164)) },
+        )
+    }
+    composable<OtpRoute> { entry ->
+        val phoneE164 = entry.toRoute<OtpRoute>().phoneE164
+        OtpScreen(
+            viewModel = viewModel { OtpViewModel(phoneE164, container.authRepository) },
+            onBack = { if (entry.isResumed()) navController.popBackStack() },
+            onSignedIn = { navController.finishSignIn() },
+        )
+    }
+    composable<EmailAuthRoute> { entry ->
+        val mode = if (entry.toRoute<EmailAuthRoute>().signUp) EmailAuthMode.SIGN_UP else EmailAuthMode.LOG_IN
+        EmailAuthScreen(
+            viewModel = viewModel { EmailAuthViewModel(mode, container.authRepository) },
+            onBack = { if (entry.isResumed()) navController.popBackStack() },
+            onForgotPassword = { if (entry.isResumed()) navController.navigate(ForgotPasswordRoute) },
+            onSignedIn = { navController.finishSignIn() },
+        )
+    }
+    composable<ForgotPasswordRoute> { entry ->
+        ForgotPasswordScreen(
+            viewModel = viewModel { ForgotPasswordViewModel(container.authRepository) },
+            onBack = { if (entry.isResumed()) navController.popBackStack() },
+        )
+    }
+}
+
+/**
+ * Leaves the auth flow. Started from "Pay now", the cart is still on the back stack (switching tabs saves and
+ * pops the Discover stack, so it is there only in that case), and the user returns to it with its items.
+ * Otherwise the user lands on a fresh Discover with nothing to go back to.
+ */
+private fun NavController.finishSignIn() {
+    if (popBackStack<CartRoute>(inclusive = false)) return
+    showFreshDiscover()
+}
+
+private fun NavController.showFreshDiscover() {
+    navigate(DiscoverGraph) { popUpTo(graph.id) { inclusive = true } }
+}
+
+/** After sign-out only the sign-in screen is left, so Back can't reach a signed-in screen. */
+private fun NavController.showSignInAfterSignOut() {
+    navigate(SignInRoute(isRoot = true)) { popUpTo(graph.id) { inclusive = true } }
+    // Tabs saved by earlier tab switches would otherwise come back on the next visit.
+    listOf(DiscoverGraph, OrdersGraph, AccountGraph).forEach { clearBackStack(it) }
+}
+
+private fun NavController.navigateToTab(tab: TopLevelTab) {
+    navigate(tab.graph) {
+        popUpTo(graph.findStartDestination().id) { saveState = true }
+        launchSingleTop = true
+        restoreState = true
+    }
+}
+
+/** Ignores taps that land while a transition is still running, so a double tap can't push or pop twice. */
+private fun NavBackStackEntry.isResumed() = lifecycle.currentState == Lifecycle.State.RESUMED

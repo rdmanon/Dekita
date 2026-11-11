@@ -1,5 +1,5 @@
 import SwiftUI
-import SharedUI
+import SharedLogic
 
 /// The store's photo slot. The mockup loads no remote images, so each store shows a local illustration
 /// that fills the frame the caller gives it. Paused stores are dimmed. Hidden from VoiceOver.
