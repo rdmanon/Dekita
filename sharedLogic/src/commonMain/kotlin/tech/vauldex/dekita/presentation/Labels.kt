@@ -125,6 +125,9 @@ val WalkLimit.label: String
 /** The item sheet's message when the item sold out while it was open. */
 const val ITEM_SOLD_OUT_MESSAGE = "This item just sold out, so it can't be added."
 
+/** The item sheet's message when an option the customer picked sold out while it was open. */
+const val OPTION_SOLD_OUT_MESSAGE = "A choice you picked just sold out. Pick another to add this item."
+
 /** The item sheet's message when the store is paused or full. */
 const val STORE_NOT_TAKING_ORDERS_MESSAGE = "This store isn't taking orders right now."
 
