@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Launch window only; Compose draws everything after that. The color matches the app background. -->
+    <style name="Theme.Dekita" parent="@android:style/Theme.Material.Light.NoActionBar">
+        <item name="android:windowBackground">@color/dekita_background</item>
+    </style>
+
+    <color name="dekita_background">#FFF8F6</color>
+</resources>

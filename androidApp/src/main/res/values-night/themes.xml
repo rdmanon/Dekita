@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Dark launch window so dark mode doesn't flash light before Compose draws. -->
+    <style name="Theme.Dekita" parent="@android:style/Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/dekita_background</item>
+    </style>
+
+    <color name="dekita_background">#1A110E</color>
+</resources>

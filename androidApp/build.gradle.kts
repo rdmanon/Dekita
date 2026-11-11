@@ -50,5 +50,7 @@ android {
     }
     buildFeatures {
         compose = true
+        // MainActivity passes BuildConfig.DEBUG to App() so release builds never show the debug panel.
+        buildConfig = true
     }
 }

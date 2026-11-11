@@ -5,9 +5,21 @@ plugins {
     alias(libs.plugins.androidMultiplatformLibrary)
     alias(libs.plugins.composeMultiplatform)
     alias(libs.plugins.composeCompiler)
+    alias(libs.plugins.kotlinSerialization)
 }
 
 kotlin {
+    // The one Kotlin framework the iOS app links. It bundles sharedLogic through the api dependency.
+    listOf(
+        iosArm64(),
+        iosSimulatorArm64()
+    ).forEach { iosTarget ->
+        iosTarget.binaries.framework {
+            baseName = "SharedUI"
+            isStatic = true
+            binaryOption("bundleId", "tech.vauldex.dekita.SharedUI")
+        }
+    }
     android {
        namespace = "tech.vauldex.dekita.sharedUI"
        compileSdk = libs.versions.android.compileSdk.get().toInt()
@@ -28,6 +40,10 @@ kotlin {
        }
     }
     sourceSets {
+        all {
+            languageSettings.optIn("kotlin.time.ExperimentalTime")
+            languageSettings.optIn("androidx.compose.material3.ExperimentalMaterial3Api")
+        }
         androidMain.dependencies {
             implementation(libs.compose.uiToolingPreview)
             implementation(libs.compose.uiTooling)
@@ -42,6 +58,7 @@ kotlin {
             implementation(libs.compose.uiToolingPreview)
             implementation(libs.androidx.lifecycle.viewmodelCompose)
             implementation(libs.androidx.lifecycle.runtimeCompose)
+            implementation(libs.androidx.navigation.compose)
         }
         commonTest.dependencies {
             implementation(libs.kotlin.test)

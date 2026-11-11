@@ -1,0 +1,130 @@
+package tech.vauldex.dekita.ui.debug
+
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.Button
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import kotlin.time.Duration.Companion.milliseconds
+import kotlin.time.Duration.Companion.seconds
+import tech.vauldex.dekita.di.AppContainer
+import tech.vauldex.dekita.getPlatform
+
+/** Opens the debug panel. Null in release builds, so screens can hide their debug entry points. */
+val LocalOpenDebugPanel = staticCompositionLocalOf<(() -> Unit)?> { null }
+
+/** A titled block of controls in the debug panel. */
+class DebugSection(val title: String, val content: @Composable (AppContainer) -> Unit)
+
+/** The panel's sections, in order. Later tickets add their simulation controls to this list. */
+internal val debugSections: List<DebugSection> = listOf(
+    DebugSection("Build") { BuildInfo() },
+    DebugSection("Mock data") { container -> MockDataControls(container) },
+)
+
+@Composable
+internal fun DebugPanel(container: AppContainer, onDismiss: () -> Unit) {
+    ModalBottomSheet(onDismissRequest = onDismiss) {
+        Column(
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
+                .padding(start = 16.dp, end = 16.dp, bottom = 24.dp),
+        ) {
+            Text("Debug panel", style = MaterialTheme.typography.headlineSmall)
+            Text(
+                "Debug builds only. Release builds never show this panel.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            debugSections.forEach { section ->
+                Surface(color = MaterialTheme.colorScheme.surfaceContainer, shape = MaterialTheme.shapes.large) {
+                    Column(
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier.fillMaxWidth().padding(16.dp),
+                    ) {
+                        Text(section.title, style = MaterialTheme.typography.titleMedium)
+                        section.content(container)
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun BuildInfo() {
+    val platform = remember { getPlatform().name }
+    Text("Platform: $platform", style = MaterialTheme.typography.bodyMedium)
+    Text("Build: debug", style = MaterialTheme.typography.bodyMedium)
+    Text("Data: in-memory mock data, no network", style = MaterialTheme.typography.bodyMedium)
+}
+
+private val loadingDelayOptions = listOf(0.milliseconds, 800.milliseconds, 2.seconds)
+
+@Composable
+private fun MockDataControls(container: AppContainer) {
+    val loadingDelay by container.mockConfig.loadingDelay.collectAsStateWithLifecycle()
+    Text("Loading delay", style = MaterialTheme.typography.bodyMedium)
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        loadingDelayOptions.forEach { option ->
+            FilterChip(
+                selected = loadingDelay == option,
+                onClick = { container.mockConfig.loadingDelay.value = option },
+                label = { Text(option.toString()) },
+            )
+        }
+    }
+    Button(onClick = { container.resetMockData() }) { Text("Reset mock data") }
+}
+
+private const val HOLD_MILLIS = 1_000L
+
+/**
+ * Calls [onTrigger] when two fingers rest still for about a second, anywhere on screen.
+ * It only watches touches and never consumes them, so the screen underneath behaves as usual.
+ */
+internal fun Modifier.twoFingerLongPress(onTrigger: () -> Unit): Modifier = pointerInput(onTrigger) {
+    awaitEachGesture {
+        awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
+        var pressed = currentEvent.changes.filter { it.pressed }
+        while (pressed.size == 1) {
+            pressed = awaitPointerEvent(PointerEventPass.Initial).changes.filter { it.pressed }
+        }
+        if (pressed.size < 2) return@awaitEachGesture
+
+        val origins = pressed.associate { it.id to it.position }
+        val interrupted = withTimeoutOrNull(HOLD_MILLIS) {
+            while (true) {
+                val now = awaitPointerEvent(PointerEventPass.Initial).changes.filter { it.pressed }
+                val moved = now.any { change ->
+                    val origin = origins[change.id]
+                    origin == null || (change.position - origin).getDistance() > viewConfiguration.touchSlop
+                }
+                if (now.size < 2 || moved) break
+            }
+            true
+        }
+        if (interrupted == null) onTrigger()
+    }
+}

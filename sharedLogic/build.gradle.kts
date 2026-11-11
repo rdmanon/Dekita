@@ -6,15 +6,11 @@ plugins {
 }
 
 kotlin {
-    listOf(
-        iosArm64(),
-        iosSimulatorArm64()
-    ).forEach { iosTarget ->
-        iosTarget.binaries.framework {
-            baseName = "SharedLogic"
-            isStatic = true
-        }
-    }
+    // No framework here: the iOS app links the SharedUI framework, which bundles this module.
+    // Linking two static Kotlin frameworks would duplicate the Kotlin runtime and these types.
+    iosArm64()
+    iosSimulatorArm64()
+
     android {
        namespace = "tech.vauldex.dekita.sharedLogic"
        compileSdk = libs.versions.android.compileSdk.get().toInt()
@@ -30,11 +26,16 @@ kotlin {
        }
     }
     sourceSets {
+        all {
+            languageSettings.optIn("kotlin.time.ExperimentalTime")
+        }
         commonMain.dependencies {
-            // put your Multiplatform dependencies here
+            api(libs.kotlinx.coroutines.core)
+            api(libs.androidx.lifecycle.viewmodel)
         }
         commonTest.dependencies {
             implementation(libs.kotlin.test)
+            implementation(libs.kotlinx.coroutines.test)
         }
     }
 }
