@@ -1,22 +1,35 @@
 package tech.vauldex.dekita.presentation.discover
 
+import kotlin.time.Clock
+import kotlin.time.Instant
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
+import tech.vauldex.dekita.data.mock.FakeCartRepository
+import tech.vauldex.dekita.data.mock.FakeOrderRepository
 import tech.vauldex.dekita.data.mock.FakeStoreRepository
 import tech.vauldex.dekita.data.mock.MockConfig
+import tech.vauldex.dekita.data.mock.SeedStoreIds
+import tech.vauldex.dekita.data.mock.seedStores
+import tech.vauldex.dekita.domain.FulfillmentMode
+import tech.vauldex.dekita.domain.StoreAvailability
+import tech.vauldex.dekita.domain.StoreBadge
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class DiscoverViewModelTest {
@@ -33,20 +46,153 @@ class DiscoverViewModelTest {
         Dispatchers.resetMain()
     }
 
-    @Test
-    fun showsLoadingThenSeedStores() = runTest(mainDispatcher) {
-        val viewModel = DiscoverViewModel(FakeStoreRepository(backgroundScope, MockConfig()))
-        backgroundScope.launch { viewModel.state.collect {} }
+    private class Fixture(scope: CoroutineScope) {
+        val stores = FakeStoreRepository(scope, MockConfig())
+        val orders = FakeOrderRepository(scope, MockConfig(), object : Clock {
+            override fun now() = Instant.fromEpochSeconds(1_800_000_000)
+        })
+        val cart = FakeCartRepository()
+        val viewModel = DiscoverViewModel(stores, orders, cart)
+    }
 
+    /** Builds the view model, subscribes to it, and waits out the simulated loading delay. */
+    private fun TestScope.loadedFixture(): Fixture {
+        val fixture = Fixture(backgroundScope)
+        backgroundScope.launch { fixture.viewModel.state.collect {} }
+        finishLoading()
+        return fixture
+    }
+
+    /** The fakes run in backgroundScope, which advanceUntilIdle() does not wait for. */
+    private fun TestScope.finishLoading() {
         runCurrent()
-        assertTrue(viewModel.state.value.isLoading)
-
-        // The fake runs in backgroundScope, which advanceUntilIdle() does not wait for.
         advanceTimeBy(MockConfig.DEFAULT_LOADING_DELAY)
         runCurrent()
-        val state = viewModel.state.value
+    }
+
+    @Test
+    fun showsLoadingThenSeedStores() = runTest(mainDispatcher) {
+        val fixture = Fixture(backgroundScope)
+        backgroundScope.launch { fixture.viewModel.state.collect {} }
+
+        runCurrent()
+        assertTrue(fixture.viewModel.state.value.isLoading)
+
+        advanceTimeBy(MockConfig.DEFAULT_LOADING_DELAY)
+        runCurrent()
+        val state = fixture.viewModel.state.value
         assertFalse(state.isLoading)
-        assertEquals(7, state.stores.size)
-        assertEquals(4, state.favoritesCount)
+        assertEquals(seedStores.size, state.stores.size)
+        assertEquals(4, state.favoriteItemCount)
+        assertEquals("Test Ramen Bar", state.lastOrderStoreName, "The design's History tile: Last: Test Ramen Bar")
+        assertTrue(state.recommended.isNotEmpty())
+        assertFalse(state.showsResults)
+    }
+
+    @Test
+    fun categoriesIncludeNonRestaurantBusinesses() = runTest(mainDispatcher) {
+        val categories = loadedFixture().viewModel.state.value.categories
+        assertTrue(listOf("Ramen", "Curry", "Salon", "Convenience store").all { it in categories }, "Got $categories")
+    }
+
+    @Test
+    fun selectingPickupFiltersStoresAndBecomesTheCartMode() = runTest(mainDispatcher) {
+        val fixture = loadedFixture()
+
+        fixture.viewModel.selectMode(FulfillmentMode.PICKUP)
+        runCurrent()
+
+        val names = fixture.viewModel.state.value.stores.map { it.store.name }
+        assertTrue("Sample Massage Studio" !in names)
+        assertTrue("Test Ramen Bar" in names)
+        assertEquals(FulfillmentMode.PICKUP, fixture.cart.preferredMode.value)
+        // The mode alone keeps the home sections.
+        assertFalse(fixture.viewModel.state.value.showsResults)
+    }
+
+    @Test
+    fun clearingTheModeShowsAllStores() = runTest(mainDispatcher) {
+        val fixture = loadedFixture()
+        fixture.viewModel.selectMode(FulfillmentMode.IN_STORE)
+        fixture.viewModel.selectMode(null)
+        runCurrent()
+
+        assertEquals(seedStores.size, fixture.viewModel.state.value.stores.size)
+        assertNull(fixture.cart.preferredMode.value)
+    }
+
+    @Test
+    fun tappingACategoryListsItsStoresNearestFirst() = runTest(mainDispatcher) {
+        val fixture = loadedFixture()
+        fixture.viewModel.toggleCategory("Curry")
+        runCurrent()
+
+        val state = fixture.viewModel.state.value
+        assertTrue(state.showsResults)
+        assertEquals(listOf("Sample Curry Stand"), state.stores.map { it.store.name })
+    }
+
+    @Test
+    fun noMatchesThenClearFiltersRestoresTheFullList() = runTest(mainDispatcher) {
+        val fixture = loadedFixture()
+        fixture.viewModel.selectMode(FulfillmentMode.PICKUP)
+        fixture.viewModel.toggleCategory("Salon")
+        runCurrent()
+        assertTrue(fixture.viewModel.state.value.hasNoMatches, "Salons are in-store only, so Pickup + Salon matches nothing")
+
+        fixture.viewModel.clearFilters()
+        runCurrent()
+        val state = fixture.viewModel.state.value
+        assertFalse(state.hasNoMatches)
+        assertEquals(seedStores.size, state.stores.size)
+        assertTrue(state.filters.isCleared)
+        assertNull(fixture.cart.preferredMode.value)
+    }
+
+    @Test
+    fun walkLimitTogglesOffWhenPickedAgain() = runTest(mainDispatcher) {
+        val fixture = loadedFixture()
+        fixture.viewModel.selectWalkLimit(WalkLimit.FIVE)
+        fixture.viewModel.selectWalkLimit(WalkLimit.FIVE)
+        runCurrent()
+        assertNull(fixture.viewModel.state.value.filters.walkLimit)
+    }
+
+    @Test
+    fun badgeUpdatesLiveWhenAStoreStopsAcceptingOrders() = runTest(mainDispatcher) {
+        val fixture = loadedFixture()
+        fun ramenBadge() = fixture.viewModel.state.value.stores.first { it.store.id == SeedStoreIds.RAMEN_BAR }.store.badge
+        assertEquals(StoreBadge.OPEN_FOR_LUNCH, ramenBadge())
+
+        fixture.stores.setAvailability(SeedStoreIds.RAMEN_BAR, StoreAvailability.PAUSED)
+        runCurrent()
+
+        assertEquals(StoreBadge.PAUSED, ramenBadge(), "Scenario 5: no refresh needed")
+        assertFalse(fixture.viewModel.state.value.isLoading)
+    }
+
+    @Test
+    fun errorStateRetriesToTheFullList() = runTest(mainDispatcher) {
+        val fixture = loadedFixture()
+        fixture.stores.failNextLoad()
+        fixture.stores.refresh()
+        finishLoading()
+        assertNotNull(fixture.viewModel.state.value.error)
+        assertTrue(fixture.viewModel.state.value.stores.isEmpty())
+
+        fixture.viewModel.retry()
+        finishLoading()
+        val state = fixture.viewModel.state.value
+        assertNull(state.error)
+        assertEquals(seedStores.size, state.stores.size)
+    }
+
+    @Test
+    fun modeIsRestoredFromTheCartWhenTheScreenIsRebuilt() = runTest(mainDispatcher) {
+        val fixture = loadedFixture()
+        fixture.viewModel.selectMode(FulfillmentMode.PICKUP)
+
+        val rebuilt = DiscoverViewModel(fixture.stores, fixture.orders, fixture.cart)
+        assertEquals(FulfillmentMode.PICKUP, rebuilt.state.value.filters.mode)
     }
 }

@@ -19,6 +19,7 @@ import tech.vauldex.dekita.data.dataOrNull
 import tech.vauldex.dekita.domain.CartLine
 import tech.vauldex.dekita.domain.FulfillmentMode
 import tech.vauldex.dekita.domain.OrderStatus
+import tech.vauldex.dekita.domain.StoreAvailability
 import tech.vauldex.dekita.domain.TransitionResult
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -73,6 +74,59 @@ class FakeRepositoriesTest {
 
         finishLoading()
         assertIs<LoadState.Success<*>>(repository.stores.value)
+    }
+
+    @Test
+    fun availabilityChangesArePushedWithoutAReload() = runTest {
+        val repository = FakeStoreRepository(backgroundScope, MockConfig())
+        finishLoading()
+
+        repository.setAvailability(SeedStoreIds.RAMEN_BAR, StoreAvailability.PAUSED)
+        val paused = repository.stores.value.dataOrNull().orEmpty().first { it.id == SeedStoreIds.RAMEN_BAR }
+        assertEquals(StoreAvailability.PAUSED, paused.availability)
+        assertNull(paused.queue, "A paused store has no queue")
+
+        repository.setAvailability(SeedStoreIds.RAMEN_BAR, StoreAvailability.OPEN)
+        val reopened = repository.stores.value.dataOrNull().orEmpty().first { it.id == SeedStoreIds.RAMEN_BAR }
+        assertEquals(StoreAvailability.OPEN, reopened.availability)
+        assertEquals(seedStores.first { it.id == SeedStoreIds.RAMEN_BAR }.queue, reopened.queue)
+    }
+
+    @Test
+    fun availabilityChangesSurviveARefresh() = runTest {
+        val repository = FakeStoreRepository(backgroundScope, MockConfig())
+        finishLoading()
+        repository.setAvailability(SeedStoreIds.MART, StoreAvailability.PAUSED)
+
+        repository.refresh()
+        finishLoading()
+        val mart = repository.stores.value.dataOrNull().orEmpty().first { it.id == SeedStoreIds.MART }
+        assertEquals(StoreAvailability.PAUSED, mart.availability)
+    }
+
+    @Test
+    fun failNextLoadFailsOnlyOnce() = runTest {
+        val repository = FakeStoreRepository(backgroundScope, MockConfig())
+        finishLoading()
+
+        repository.failNextLoad()
+        repository.refresh()
+        finishLoading()
+        assertIs<LoadState.Error>(repository.stores.value)
+
+        repository.refresh()
+        finishLoading()
+        assertIs<LoadState.Success<*>>(repository.stores.value)
+    }
+
+    @Test
+    fun preferredModeIsClearedOnReset() {
+        val repository = FakeCartRepository()
+        repository.setPreferredMode(FulfillmentMode.PICKUP)
+        assertEquals(FulfillmentMode.PICKUP, repository.preferredMode.value)
+
+        repository.reset()
+        assertNull(repository.preferredMode.value)
     }
 
     @Test

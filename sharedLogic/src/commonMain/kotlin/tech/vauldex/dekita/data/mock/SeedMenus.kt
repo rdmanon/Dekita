@@ -234,6 +234,42 @@ private val udonHallMenu = SeedStoreIds.UDON_HALL.let { store ->
     )
 }
 
+private val teishokuMenu = SeedStoreIds.TEISHOKU.let { store ->
+    Menu(
+        storeId = store,
+        categories = listOf(MenuCategory("teishoku", "Set meals")),
+        items = listOf(
+            MenuItem(
+                id = "item-saba-teishoku", storeId = store, categoryId = "teishoku",
+                name = "鯖の塩焼き定食 (Grilled Mackerel Set)", description = "Rice, miso soup, pickles",
+                basePrice = yen(1100),
+            ),
+            MenuItem(
+                id = "item-nanban-teishoku", storeId = store, categoryId = "teishoku",
+                name = "チキン南蛮定食 (Chicken Nanban Set)", description = "Fried chicken, tartar sauce, rice",
+                basePrice = yen(1050),
+            ),
+        ),
+    )
+}
+
+private val hairSalonMenu = SeedStoreIds.HAIR_SALON.let { store ->
+    Menu(
+        storeId = store,
+        categories = listOf(MenuCategory("hair", "Hair"), MenuCategory("nails", "Nails")),
+        items = listOf(
+            MenuItem(
+                id = "item-quick-cut", storeId = store, categoryId = "hair",
+                name = "Lunchtime Quick Cut", description = "30 minutes, no shampoo", basePrice = yen(2500),
+            ),
+            MenuItem(
+                id = "item-gel-nails", storeId = store, categoryId = "nails",
+                name = "One-color Gel Nails", description = "Hands, about 45 minutes", basePrice = yen(4500),
+            ),
+        ),
+    )
+}
+
 internal val seedMenus: Map<String, Menu> = listOf(
     ramenBarMenu,
     martMenu,
@@ -242,6 +278,8 @@ internal val seedMenus: Map<String, Menu> = listOf(
     sobaHouseMenu,
     bentoKitchenMenu,
     udonHallMenu,
+    teishokuMenu,
+    hairSalonMenu,
 ).associateBy { it.storeId }
 
 internal fun seedItem(storeId: String, itemId: String): MenuItem =

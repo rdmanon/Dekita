@@ -38,6 +38,33 @@ data class Store(
     val queue: QueueStatus?,
     /** Picks a local placeholder illustration. The mockup loads no remote images. */
     val artKey: String,
+    /** Names of the store's menu items, sent with the feed so Discover search can match dishes. */
+    val itemNames: List<String> = emptyList(),
 ) {
     val isAcceptingOrders: Boolean get() = availability == StoreAvailability.OPEN
+
+    fun supports(mode: FulfillmentMode): Boolean = mode in businessType.supportedModes
+
+    /**
+     * The one status badge a store card shows. Not taking orders wins over everything,
+     * then a single-mode store says which mode it has, and a store with both modes is open for lunch.
+     */
+    val badge: StoreBadge
+        get() = when {
+            availability == StoreAvailability.PAUSED -> StoreBadge.PAUSED
+            availability == StoreAvailability.FULL -> StoreBadge.FULL
+            businessType == BusinessType.PICKUP_ONLY -> StoreBadge.PICKUP_ONLY
+            businessType == BusinessType.IN_STORE_ONLY -> StoreBadge.IN_STORE_ONLY
+            else -> StoreBadge.OPEN_FOR_LUNCH
+        }
 }
+
+enum class StoreBadge { OPEN_FOR_LUNCH, PICKUP_ONLY, IN_STORE_ONLY, PAUSED, FULL }
+
+/** A favorited menu item. Tapping it opens [storeId]. */
+data class FavoriteItem(
+    val storeId: String,
+    val itemId: String,
+    val itemName: String,
+    val price: Money,
+)

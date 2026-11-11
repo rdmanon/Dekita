@@ -13,20 +13,26 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
+import tech.vauldex.dekita.data.dataOrNull
 import tech.vauldex.dekita.di.AppContainer
+import tech.vauldex.dekita.domain.StoreAvailability
 import tech.vauldex.dekita.getPlatform
 
 /** Opens the debug panel. Null in release builds, so screens can hide their debug entry points. */
@@ -39,6 +45,7 @@ class DebugSection(val title: String, val content: @Composable (AppContainer) ->
 internal val debugSections: List<DebugSection> = listOf(
     DebugSection("Build") { BuildInfo() },
     DebugSection("Mock data") { container -> MockDataControls(container) },
+    DebugSection("Discover") { container -> DiscoverControls(container) },
 )
 
 @Composable
@@ -96,6 +103,48 @@ private fun MockDataControls(container: AppContainer) {
         }
     }
     Button(onClick = { container.resetMockData() }) { Text("Reset mock data") }
+}
+
+/** Live store changes for DISC-01: pause a store, break the feed, or start as a new customer. */
+@Composable
+private fun DiscoverControls(container: AppContainer) {
+    val stores by container.storeRepository.stores.collectAsStateWithLifecycle()
+    val simulator = container.storeFeedSimulator
+
+    Text(
+        "Changes reach Discover at once, with no refresh.",
+        style = MaterialTheme.typography.bodyMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+    val loaded = stores.dataOrNull()
+    if (loaded == null) {
+        Text("The store feed is not loaded.", style = MaterialTheme.typography.bodyMedium)
+    }
+    loaded.orEmpty().forEach { store ->
+        val paused = store.availability == StoreAvailability.PAUSED
+        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+            Text(
+                store.name,
+                style = MaterialTheme.typography.bodyMedium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f),
+            )
+            TextButton(
+                onClick = {
+                    simulator.setAvailability(store.id, if (paused) StoreAvailability.OPEN else StoreAvailability.PAUSED)
+                },
+            ) { Text(if (paused) "Resume orders" else "Stop Accepting Orders") }
+        }
+    }
+
+    OutlinedButton(
+        onClick = {
+            simulator.failNextLoad()
+            container.storeRepository.refresh()
+        },
+    ) { Text("Simulate store feed error") }
+    OutlinedButton(onClick = { container.simulateNewUser() }) { Text("Simulate new user (no favorites or history)") }
 }
 
 private const val HOLD_MILLIS = 1_000L

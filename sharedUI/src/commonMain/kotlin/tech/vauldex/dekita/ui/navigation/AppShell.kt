@@ -35,10 +35,14 @@ import org.jetbrains.compose.resources.painterResource
 import tech.vauldex.dekita.di.AppContainer
 import tech.vauldex.dekita.presentation.account.AccountViewModel
 import tech.vauldex.dekita.presentation.discover.DiscoverViewModel
+import tech.vauldex.dekita.presentation.discover.FavoritesViewModel
+import tech.vauldex.dekita.presentation.discover.HistoryViewModel
 import tech.vauldex.dekita.presentation.orders.OrdersViewModel
 import tech.vauldex.dekita.presentation.store.StoreDetailViewModel
 import tech.vauldex.dekita.ui.account.AccountScreen
 import tech.vauldex.dekita.ui.discover.DiscoverScreen
+import tech.vauldex.dekita.ui.discover.FavoritesScreen
+import tech.vauldex.dekita.ui.discover.HistoryScreen
 import tech.vauldex.dekita.ui.orders.OrdersScreen
 import tech.vauldex.dekita.ui.store.StoreDetailScreen
 
@@ -51,6 +55,8 @@ import tech.vauldex.dekita.ui.store.StoreDetailScreen
 @Serializable data object OrdersRoute
 @Serializable data object AccountRoute
 @Serializable data class StoreDetailRoute(val storeId: String)
+@Serializable data object FavoritesRoute
+@Serializable data object HistoryRoute
 
 private enum class TopLevelTab(
     val graph: Any,
@@ -103,10 +109,32 @@ fun AppShell(container: AppContainer, modifier: Modifier = Modifier) {
             navigation<DiscoverGraph>(startDestination = DiscoverRoute) {
                 composable<DiscoverRoute> { entry ->
                     DiscoverScreen(
-                        viewModel = viewModel { DiscoverViewModel(container.storeRepository) },
+                        viewModel = viewModel {
+                            DiscoverViewModel(container.storeRepository, container.orderRepository, container.cartRepository)
+                        },
                         onStoreClick = { storeId ->
                             if (entry.isResumed()) navController.navigate(StoreDetailRoute(storeId))
                         },
+                        onFavoritesClick = { if (entry.isResumed()) navController.navigate(FavoritesRoute) },
+                        onHistoryClick = { if (entry.isResumed()) navController.navigate(HistoryRoute) },
+                    )
+                }
+                composable<FavoritesRoute> { entry ->
+                    FavoritesScreen(
+                        viewModel = viewModel { FavoritesViewModel(container.storeRepository) },
+                        onStoreClick = { storeId ->
+                            if (entry.isResumed()) navController.navigate(StoreDetailRoute(storeId))
+                        },
+                        onBack = { if (entry.isResumed()) navController.popBackStack() },
+                    )
+                }
+                composable<HistoryRoute> { entry ->
+                    HistoryScreen(
+                        viewModel = viewModel { HistoryViewModel(container.storeRepository, container.orderRepository) },
+                        onStoreClick = { storeId ->
+                            if (entry.isResumed()) navController.navigate(StoreDetailRoute(storeId))
+                        },
+                        onBack = { if (entry.isResumed()) navController.popBackStack() },
                     )
                 }
                 composable<StoreDetailRoute> { entry ->
