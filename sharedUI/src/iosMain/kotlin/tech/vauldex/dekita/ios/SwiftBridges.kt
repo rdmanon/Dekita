@@ -14,9 +14,12 @@ import kotlinx.coroutines.launch
 import tech.vauldex.dekita.data.LoadState
 import tech.vauldex.dekita.data.dataOrNull
 import tech.vauldex.dekita.di.AppContainer
+import tech.vauldex.dekita.domain.ItemSelection
 import tech.vauldex.dekita.domain.Menu
 import tech.vauldex.dekita.domain.Order
 import tech.vauldex.dekita.domain.StoreAvailability
+import tech.vauldex.dekita.presentation.cart.CartReviewUiState
+import tech.vauldex.dekita.presentation.cart.CartReviewViewModel
 import tech.vauldex.dekita.presentation.discover.DiscoverUiState
 import tech.vauldex.dekita.presentation.discover.DiscoverViewModel
 import tech.vauldex.dekita.presentation.discover.FavoritesUiState
@@ -24,6 +27,8 @@ import tech.vauldex.dekita.presentation.discover.FavoritesViewModel
 import tech.vauldex.dekita.presentation.discover.HistoryUiState
 import tech.vauldex.dekita.presentation.discover.HistoryViewModel
 import tech.vauldex.dekita.presentation.discover.WalkLimit
+import tech.vauldex.dekita.presentation.menu.ItemSheetUiState
+import tech.vauldex.dekita.presentation.menu.ItemSheetViewModel
 import tech.vauldex.dekita.presentation.store.StoreDetailUiState
 import tech.vauldex.dekita.presentation.store.StoreDetailViewModel
 
@@ -110,6 +115,30 @@ val StoreDetailUiState.loadedMenu: Menu? get() = menu.dataOrNull()
 
 /** The menu's error message, or null. */
 val StoreDetailUiState.menuError: String? get() = (menu as? LoadState.Error)?.message
+
+class ItemSheetBridge(storeId: String, itemId: String, editingLineId: String?) : ScreenBridge() {
+    val viewModel: ItemSheetViewModel = makeViewModel(ItemSheetViewModel::class) {
+        ItemSheetViewModel(storeId, itemId, editingLineId, container.menuRepository, container.storeRepository, container.cartRepository)
+    }
+
+    val currentState: ItemSheetUiState get() = viewModel.state.value
+
+    fun watch(onState: (ItemSheetUiState) -> Unit): FlowWatch = viewModel.state.watch(onState)
+
+    val maxQuantity: Int = ItemSelection.MAX_QUANTITY
+}
+
+class CartReviewBridge : ScreenBridge() {
+    val viewModel: CartReviewViewModel = makeViewModel(CartReviewViewModel::class) {
+        CartReviewViewModel(container.cartRepository, container.storeRepository, container.menuRepository, container.orderRepository)
+    }
+
+    val currentState: CartReviewUiState get() = viewModel.state.value
+
+    fun watch(onState: (CartReviewUiState) -> Unit): FlowWatch = viewModel.state.watch(onState)
+
+    val maxQuantity: Int = ItemSelection.MAX_QUANTITY
+}
 
 /** The heart button in the iOS store screen's navigation bar. */
 class FavoriteStoreBridge(private val storeId: String) {

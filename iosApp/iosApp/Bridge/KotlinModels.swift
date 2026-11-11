@@ -102,3 +102,44 @@ final class StoreDetailModel: ObservableObject {
         bridge.close()
     }
 }
+
+final class ItemSheetModel: ObservableObject {
+    private let bridge: ItemSheetBridge
+    private var watch: FlowWatch?
+
+    @Published private(set) var state: ItemSheetUiState
+
+    var viewModel: ItemSheetViewModel { bridge.viewModel }
+    var maxQuantity: Int { Int(bridge.maxQuantity) }
+
+    init(target: ItemSheetTarget) {
+        bridge = ItemSheetBridge(storeId: target.storeId, itemId: target.itemId, editingLineId: target.editingLineId)
+        state = bridge.currentState
+        watch = bridge.watch { [weak self] state in self?.state = state }
+    }
+
+    deinit {
+        watch?.cancel()
+        bridge.close()
+    }
+}
+
+final class CartReviewModel: ObservableObject {
+    private let bridge = CartReviewBridge()
+    private var watch: FlowWatch?
+
+    @Published private(set) var state: CartReviewUiState
+
+    var viewModel: CartReviewViewModel { bridge.viewModel }
+    var maxQuantity: Int { Int(bridge.maxQuantity) }
+
+    init() {
+        state = bridge.currentState
+        watch = bridge.watch { [weak self] state in self?.state = state }
+    }
+
+    deinit {
+        watch?.cancel()
+        bridge.close()
+    }
+}

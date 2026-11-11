@@ -3,13 +3,16 @@ import SharedUI
 
 /// The store screen: header, live queue, the paused/full banner, then the menu.
 /// SwiftUI draws the navigation bar, with a Liquid Glass favorite button on iOS 26.
-/// The menu rows are still the SETUP-01 placeholder until MENU-01.
+/// The menu rows are still the SETUP-01 placeholder until MENU-01; tapping one opens the item sheet.
 struct StoreScreen: View {
+    let storeId: String
     let name: String
     @StateObject private var model: StoreDetailModel
     @StateObject private var favorite: FavoriteStoreModel
+    @State private var sheet: ItemSheetTarget?
 
     init(storeId: String, name: String) {
+        self.storeId = storeId
         self.name = name
         _model = StateObject(wrappedValue: StoreDetailModel(storeId: storeId))
         _favorite = StateObject(wrappedValue: FavoriteStoreModel(storeId: storeId))
@@ -44,6 +47,25 @@ struct StoreScreen: View {
                 .accessibilityLabel(favorite.isFavorite ? "Remove from favorites" : "Add to favorites")
             }
         }
+        .safeAreaInset(edge: .bottom) { viewCartButton }
+        .sheet(item: $sheet) { ItemSheetView(target: $0) }
+    }
+
+    /// Shown once the cart has items from this store (CART-01).
+    @ViewBuilder
+    private var viewCartButton: some View {
+        let state = model.state
+        if state.cartItemCount > 0 {
+            NavigationLink(value: DiscoverRoute.cart) {
+                Label("View cart (\(state.cartItemCount)) · \(state.cartTotal.formatted())", systemImage: "bag")
+                    .font(.headline)
+                    .frame(maxWidth: .infinity)
+                    .frame(minHeight: 44)
+            }
+            .modifier(ProminentGlassButton())
+            .padding(.horizontal, 16)
+            .padding(.bottom, 8)
+        }
     }
 
     @ViewBuilder
@@ -56,7 +78,15 @@ struct StoreScreen: View {
                 VStack(spacing: 0) {
                     let items = menu.itemsIn(categoryId: category.id)
                     ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
-                        MenuItemRowView(item: item)
+                        // Items open the customize sheet (CART-01); sold-out items can't be added.
+                        Button {
+                            sheet = ItemSheetTarget(storeId: storeId, itemId: item.id, editingLineId: nil)
+                        } label: {
+                            MenuItemRowView(item: item)
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(item.isSoldOut)
+                        .accessibilityHint(item.isSoldOut ? "" : "Opens options and Add to Cart")
                         if index < items.count - 1 {
                             Divider().padding(.leading, 16)
                         }
@@ -189,6 +219,7 @@ private struct MenuItemRowView: View {
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
+        .contentShape(Rectangle())
         .accessibilityElement(children: .combine)
     }
 
