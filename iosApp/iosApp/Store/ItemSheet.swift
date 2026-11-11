@@ -28,6 +28,43 @@ struct ItemSheet: View {
     }
 
     private func content(_ sheet: ItemSheetState) -> some View {
+        ItemSheetContent(
+            sheet: sheet,
+            actionTitle: LabelsKt.addButtonLabel(total: sheet.draft.totalPrice),
+            onToggle: { model.viewModel.toggleOption(groupId: $0, optionId: $1) },
+            onQuantity: { model.viewModel.setQuantity(quantity: $0) },
+            onAction: {
+                let name = sheet.draft.item.name
+                if model.viewModel.addToCart() == AddResult.added {
+                    onAdded("Added \(name)")
+                }
+            },
+            onClose: { model.viewModel.closeItem() },
+            onStopSelling: { model.viewModel.stopSellingOpenItem() }
+        )
+    }
+
+    private var replacePresented: Binding<Bool> {
+        Binding(
+            get: { model.state.pendingReplaceStoreName != nil },
+            set: { if !$0 { model.viewModel.dismissReplace() } }
+        )
+    }
+}
+
+/// The item sheet's content, shared by Add on the store screen and Update on Cart Review (CART-01).
+/// The caller owns the draft and decides what the bottom button does.
+struct ItemSheetContent: View {
+    let sheet: ItemSheetState
+    let actionTitle: String
+    let onToggle: (String, String) -> Void
+    let onQuantity: (Int32) -> Void
+    let onAction: () -> Void
+    let onClose: () -> Void
+    /// Debug builds show "Stop selling this item" when this is set.
+    var onStopSelling: (() -> Void)? = nil
+
+    var body: some View {
         let draft = sheet.draft
         let item = draft.item
         let missing = Set(draft.missingRequiredGroups.map(\.id))
@@ -43,9 +80,9 @@ struct ItemSheet: View {
                 }
 
                 // Debug builds only. Kept away from the Add button so it can't be hit by mistake.
-                if AppBuild.isDebug && !item.isSoldOut {
+                if AppBuild.isDebug && !item.isSoldOut, let onStopSelling {
                     Section {
-                        Button("Stop selling this item (debug)") { model.viewModel.stopSellingOpenItem() }
+                        Button("Stop selling this item (debug)", action: onStopSelling)
                     }
                 }
 
@@ -69,7 +106,7 @@ struct ItemSheet: View {
                         "Quantity: \(draft.quantity)",
                         value: Binding(
                             get: { Int(draft.quantity) },
-                            set: { model.viewModel.setQuantity(quantity: Int32($0)) }
+                            set: { onQuantity(Int32($0)) }
                         ),
                         in: 1...Int(ItemDraftKt.MAX_QUANTITY)
                     )
@@ -80,19 +117,14 @@ struct ItemSheet: View {
 
             }
             .safeAreaInset(edge: .bottom) {
-                BottomAction(action: {
-                    let name = item.name
-                    if model.viewModel.addToCart() == AddResult.added {
-                        onAdded("Added \(name)")
-                    }
-                }) {
-                    CapsuleLabel(title: LabelsKt.addButtonLabel(total: draft.totalPrice))
+                BottomAction(action: onAction) {
+                    CapsuleLabel(title: actionTitle)
                 }
                 .disabled(!sheet.canAdd)
             }
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button { model.viewModel.closeItem() } label: { Image(systemName: "xmark") }
+                    Button(action: onClose) { Image(systemName: "xmark") }
                         .accessibilityLabel("Close")
                 }
             }
@@ -104,7 +136,7 @@ struct ItemSheet: View {
     private func optionRow(group: ModifierGroup, option: ModifierOption, selected: Bool) -> some View {
         let single = group.maxSelections == 1
         return Button {
-            model.viewModel.toggleOption(groupId: group.id, optionId: option.id)
+            onToggle(group.id, option.id)
         } label: {
             HStack {
                 if !single {
@@ -126,10 +158,4 @@ struct ItemSheet: View {
         .accessibilityAddTraits(selected ? .isSelected : [])
     }
 
-    private var replacePresented: Binding<Bool> {
-        Binding(
-            get: { model.state.pendingReplaceStoreName != nil },
-            set: { if !$0 { model.viewModel.dismissReplace() } }
-        )
-    }
 }

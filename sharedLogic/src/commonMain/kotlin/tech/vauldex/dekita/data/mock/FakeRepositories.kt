@@ -55,6 +55,9 @@ interface StoreFeedSimulator {
 
     /** Empties favorite stores and items, as for a customer who has none yet. */
     fun clearFavorites()
+
+    /** Moves a store's queue by [delta] orders, as orders come in or are served. Never below zero. */
+    fun adjustQueue(storeId: String, delta: Int)
 }
 
 class FakeStoreRepository(
@@ -111,6 +114,23 @@ class FakeStoreRepository(
         _stores.update { state -> if (state is LoadState.Success) LoadState.Success(updated) else state }
     }
 
+    override fun adjustQueue(storeId: String, delta: Int) {
+        val updated = feed.updateAndGet { stores ->
+            stores.map { store ->
+                val queue = store.queue
+                if (store.id != storeId || queue == null) {
+                    store
+                } else {
+                    val ahead = (queue.ordersAhead + delta).coerceAtLeast(0)
+                    // About three minutes per order, as in the seed data; no queue means no wait.
+                    val wait = if (ahead == 0) 0 else (queue.estimatedWaitMinutes + delta * 3).coerceAtLeast(3)
+                    store.copy(queue = QueueStatus(ahead, wait))
+                }
+            }
+        }
+        _stores.update { state -> if (state is LoadState.Success) LoadState.Success(updated) else state }
+    }
+
     override fun failNextLoad() {
         failNext.value = true
     }
@@ -142,9 +162,11 @@ class FakeStoreRepository(
     private fun tickQueues() {
         queueTicks++
         val offset = QUEUE_OFFSETS[queueTicks % QUEUE_OFFSETS.size]
+        // Ticks around the feed's own value, so a debug-panel queue change (adjustQueue) is kept.
+        val base = feed.value
         _stores.update { state ->
-            val stores = (state as? LoadState.Success)?.data ?: return@update state
-            LoadState.Success(stores.map { it.withQueueOffset(offset) })
+            if (state !is LoadState.Success) return@update state
+            LoadState.Success(base.map { it.withQueueOffset(offset) })
         }
     }
 }
@@ -152,15 +174,16 @@ class FakeStoreRepository(
 // A fixed pattern instead of random steps, so tests and demos are repeatable.
 private val QUEUE_OFFSETS = listOf(0, 1, 2, 1, 0, -1)
 
-private val seedQueues: Map<String, QueueStatus?> = seedStores.associate { it.id to it.queue }
-
-/** Moves an open store's queue around its seed value. Paused, full and empty queues stay as seeded. */
+/**
+ * Moves an open store's queue around its feed value (the seed, unless the debug panel changed it).
+ * Paused, full and empty queues stay as they are.
+ */
 private fun Store.withQueueOffset(offset: Int): Store {
-    val seed = seedQueues[id] ?: return this
-    if (availability != StoreAvailability.OPEN || seed.ordersAhead == 0) return this
-    val ahead = (seed.ordersAhead + offset).coerceAtLeast(0)
-    // Keeps the seed's minutes per order, rounded half up.
-    val wait = (seed.estimatedWaitMinutes * ahead + seed.ordersAhead / 2) / seed.ordersAhead
+    val base = queue ?: return this
+    if (availability != StoreAvailability.OPEN || base.ordersAhead == 0) return this
+    val ahead = (base.ordersAhead + offset).coerceAtLeast(0)
+    // Keeps the base's minutes per order, rounded half up.
+    val wait = (base.estimatedWaitMinutes * ahead + base.ordersAhead / 2) / base.ordersAhead
     return copy(queue = QueueStatus(ahead, wait))
 }
 
@@ -232,6 +255,16 @@ class FakeCartRepository : CartRepository, Resettable {
         _cart.value = Cart(line.item.storeId, mode).addLine(line)
     }
 
+    override fun replaceLine(lineId: String, line: CartLine) {
+        _cart.update { current ->
+            if (current?.line(lineId) == null) current else current.replaceLine(lineId, line)
+        }
+    }
+
+    override fun setMode(mode: FulfillmentMode) {
+        _cart.update { it?.copy(mode = mode) }
+    }
+
     override fun updateQuantity(lineId: String, quantity: Int) {
         _cart.update { current ->
             current?.updateQuantity(lineId, quantity)?.takeUnless { it.isEmpty }
@@ -257,6 +290,10 @@ class FakeOrderRepository(
     private val _orders = MutableStateFlow<LoadState<List<Order>>>(LoadState.Loading)
     override val orders: StateFlow<LoadState<List<Order>>> = _orders.asStateFlow()
 
+    // Declared before init: reset() uses it, and Kotlin runs initializers in declaration order.
+    /** Orders made in this session. A reload keeps them, as a server would. */
+    private val created = MutableStateFlow<List<Order>>(emptyList())
+
     private var loadJob: Job? = null
 
     init {
@@ -279,14 +316,35 @@ class FakeOrderRepository(
         return result
     }
 
+    override fun createDraft(cart: Cart, storeName: String): Order {
+        val known = (_orders.value as? LoadState.Success)?.data ?: (created.value + seedOrders(clock.now()))
+        val number = (known.maxOfOrNull { it.number } ?: 0) + 1
+        val order = Order.draft(
+            id = "order-$number",
+            number = number,
+            storeId = cart.storeId,
+            storeName = storeName,
+            mode = cart.mode,
+            lines = cart.lines,
+            // Eat-In is paid at check-in, so there is no payment method yet.
+            paymentMethodId = null,
+            at = clock.now(),
+        )
+        created.update { listOf(order) + it }
+        _orders.update { state -> if (state is LoadState.Success) LoadState.Success(listOf(order) + state.data) else state }
+        return order
+    }
+
     override fun reset() {
         loadJob?.cancel()
-        loadJob = scope.simulateLoad(_orders, config) { seedOrders(clock.now()) }
+        created.value = emptyList()
+        loadJob = scope.simulateLoad(_orders, config) { created.value + seedOrders(clock.now()) }
     }
 
     /** Debug only: removes every order, as for a customer who has never ordered. */
     fun clearAll() {
         loadJob?.cancel()
+        created.value = emptyList()
         _orders.value = LoadState.Success(emptyList())
     }
 }

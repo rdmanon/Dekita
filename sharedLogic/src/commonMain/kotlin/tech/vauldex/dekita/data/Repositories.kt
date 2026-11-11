@@ -58,6 +58,12 @@ interface CartRepository {
     /** Drops the current cart, even one from another store, and starts a new one with [line]. */
     fun replaceWith(mode: FulfillmentMode, line: CartLine)
 
+    /** Puts an edited line in place of [lineId]. Does nothing if the line is gone. See [Cart.replaceLine]. */
+    fun replaceLine(lineId: String, line: CartLine)
+
+    /** Eat-In or Takeout, for a store that offers both. Does nothing without a cart. */
+    fun setMode(mode: FulfillmentMode)
+
     /** A quantity of 0 removes the line; removing the last line clears the cart. */
     fun updateQuantity(lineId: String, quantity: Int)
 
@@ -69,6 +75,12 @@ interface OrderRepository {
 
     /** Returns null when the orders are not loaded or there is no order with [orderId]. */
     fun transition(orderId: String, to: OrderStatus, reason: CompletionReason? = null): TransitionResult?
+
+    /**
+     * Saves [cart] as a DRAFT order: an Eat-In order that is paid on arrival with [Start Cooking].
+     * Returns the new order, which also appears in [orders].
+     */
+    fun createDraft(cart: Cart, storeName: String): Order
 }
 
 interface PaymentRepository {

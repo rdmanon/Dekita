@@ -51,4 +51,16 @@ data class ItemDraft(
         val lineId = (listOf(item.id) + options.map { it.id }.sorted()).joinToString("|")
         return CartLine(lineId, item, options, quantity)
     }
+
+    companion object {
+        /** Editing a cart line: its choices and quantity, against the latest version of the item. */
+        fun fromLine(line: CartLine, latest: MenuItem = line.item): ItemDraft {
+            val chosen = line.optionIds
+            return ItemDraft(
+                item = latest,
+                selected = latest.modifierGroups.associate { group -> group.id to group.options.filter { it.id in chosen } },
+                quantity = line.quantity.coerceIn(1, MAX_QUANTITY),
+            )
+        }
+    }
 }

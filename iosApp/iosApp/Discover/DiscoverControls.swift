@@ -7,6 +7,8 @@ enum DiscoverRoute: Hashable {
     case history
     case store(id: String, name: String)
     case cart
+    /// CART-01: after Eat-In saves a DRAFT order. Replaces the cart in the stack.
+    case checkIn(orderNumber: Int, storeName: String)
 }
 
 /// Opens the screen for a route. Attach with `.navigationDestination(for: DiscoverRoute.self)`.
@@ -19,6 +21,7 @@ struct DiscoverDestination: View {
         case .history: HistoryView()
         case let .store(id, name): StoreScreen(storeId: id, name: name)
         case .cart: CartReviewView()
+        case let .checkIn(orderNumber, storeName): CheckInPlaceholderView(orderNumber: orderNumber, storeName: storeName)
         }
     }
 }
