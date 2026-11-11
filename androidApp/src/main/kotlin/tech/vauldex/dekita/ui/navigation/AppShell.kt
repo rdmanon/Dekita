@@ -31,6 +31,7 @@ import kotlin.reflect.KClass
 import kotlinx.serialization.Serializable
 import tech.vauldex.dekita.R
 import tech.vauldex.dekita.di.AppContainer
+import tech.vauldex.dekita.domain.PaymentType
 import tech.vauldex.dekita.presentation.account.AccountViewModel
 import tech.vauldex.dekita.presentation.auth.EmailAuthMode
 import tech.vauldex.dekita.presentation.auth.EmailAuthViewModel
@@ -39,6 +40,7 @@ import tech.vauldex.dekita.presentation.auth.OtpViewModel
 import tech.vauldex.dekita.presentation.auth.PhoneEntryViewModel
 import tech.vauldex.dekita.presentation.auth.SignInViewModel
 import tech.vauldex.dekita.presentation.cart.CartReviewViewModel
+import tech.vauldex.dekita.presentation.checkin.CheckInViewModel
 import tech.vauldex.dekita.presentation.discover.DiscoverViewModel
 import tech.vauldex.dekita.presentation.discover.FavoritesViewModel
 import tech.vauldex.dekita.presentation.discover.HistoryViewModel
@@ -51,7 +53,7 @@ import tech.vauldex.dekita.ui.auth.OtpScreen
 import tech.vauldex.dekita.ui.auth.PhoneEntryScreen
 import tech.vauldex.dekita.ui.auth.SignInScreen
 import tech.vauldex.dekita.ui.cart.CartReviewScreen
-import tech.vauldex.dekita.ui.cart.CheckInPlaceholderScreen
+import tech.vauldex.dekita.ui.checkin.CheckInScreen
 import tech.vauldex.dekita.ui.discover.DiscoverScreen
 import tech.vauldex.dekita.ui.discover.FavoritesScreen
 import tech.vauldex.dekita.ui.discover.HistoryScreen
@@ -70,7 +72,7 @@ import tech.vauldex.dekita.ui.store.StoreDetailScreen
 @Serializable data object FavoritesRoute
 @Serializable data object HistoryRoute
 @Serializable data object CartRoute
-@Serializable data class CheckInRoute(val orderNumber: Int, val storeName: String)
+@Serializable data class CheckInRoute(val orderId: String)
 
 // Auth screens sit outside the tab graphs so any tab, or the cart, can push them.
 /** [isRoot] after sign-out: the only screen left, offering "Browse as guest" instead of Close. */
@@ -131,13 +133,19 @@ fun AppShell(container: AppContainer, modifier: Modifier = Modifier) {
                 composable<DiscoverRoute> { entry ->
                     DiscoverScreen(
                         viewModel = viewModel {
-                            DiscoverViewModel(container.storeRepository, container.orderRepository, container.cartRepository)
+                            DiscoverViewModel(
+                                container.storeRepository,
+                                container.orderRepository,
+                                container.cartRepository,
+                                container.authRepository,
+                            )
                         },
                         onStoreClick = { storeId ->
                             if (entry.isResumed()) navController.navigate(StoreDetailRoute(storeId))
                         },
                         onFavoritesClick = { if (entry.isResumed()) navController.navigate(FavoritesRoute) },
                         onHistoryClick = { if (entry.isResumed()) navController.navigate(HistoryRoute) },
+                        onResumeDraft = { orderId -> if (entry.isResumed()) navController.navigate(CheckInRoute(orderId)) },
                     )
                 }
                 composable<FavoritesRoute> { entry ->
@@ -189,8 +197,8 @@ fun AppShell(container: AppContainer, modifier: Modifier = Modifier) {
                         // The cart is opened from its store's screen, so the menu is one step back.
                         onBrowseMenu = { if (entry.isResumed()) navController.popBackStack() },
                         onSignInRequired = { if (entry.isResumed()) navController.navigate(SignInRoute()) },
-                        onDraftSaved = { number, storeName ->
-                            navController.navigate(CheckInRoute(number, storeName)) {
+                        onDraftSaved = { orderId ->
+                            navController.navigate(CheckInRoute(orderId)) {
                                 // The cart is now a draft order, so Back from check-in skips the empty cart.
                                 popUpTo<CartRoute> { inclusive = true }
                             }
@@ -198,12 +206,30 @@ fun AppShell(container: AppContainer, modifier: Modifier = Modifier) {
                     )
                 }
                 composable<CheckInRoute> { entry ->
-                    val route = entry.toRoute<CheckInRoute>()
-                    CheckInPlaceholderScreen(
-                        orderNumber = route.orderNumber,
-                        storeName = route.storeName,
+                    val orderId = entry.toRoute<CheckInRoute>().orderId
+                    CheckInScreen(
+                        viewModel = viewModel {
+                            CheckInViewModel(
+                                orderId,
+                                container.orderRepository,
+                                container.storeRepository,
+                                container.cartRepository,
+                                container.paymentRepository,
+                                PaymentType.GOOGLE_PAY,
+                            )
+                        },
                         onBack = { if (entry.isResumed()) navController.popBackStack() },
-                        onDone = { if (entry.isResumed()) navController.popBackStack<DiscoverRoute>(inclusive = false) },
+                        onSwitchedToTakeout = { storeId ->
+                            // Cart Review sits on the store's menu, so "Add more items" and Back lead there.
+                            navController.navigate(StoreDetailRoute(storeId)) { popUpTo<CheckInRoute> { inclusive = true } }
+                            navController.navigate(CartRoute)
+                        },
+                        // Cancel / Exit: the draft is kept in Orders and on the Discover banner.
+                        onExit = { navController.popBackStack<DiscoverRoute>(inclusive = false) },
+                        onViewOrders = {
+                            navController.popBackStack<DiscoverRoute>(inclusive = false)
+                            navController.navigateToTab(TopLevelTab.ORDERS)
+                        },
                     )
                 }
             }
@@ -212,6 +238,13 @@ fun AppShell(container: AppContainer, modifier: Modifier = Modifier) {
                     OrdersScreen(
                         viewModel = viewModel { OrdersViewModel(container.orderRepository, container.authRepository) },
                         onSignIn = { if (entry.isResumed()) navController.navigate(SignInRoute()) },
+                        // Check-in lives in the Discover tab, with the cart and the store it can lead back to.
+                        onResumeDraft = { orderId ->
+                            if (entry.isResumed()) {
+                                navController.navigateToTab(TopLevelTab.DISCOVER)
+                                navController.navigate(CheckInRoute(orderId))
+                            }
+                        },
                     )
                 }
             }

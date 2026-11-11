@@ -8,6 +8,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
+import tech.vauldex.dekita.data.AuthRepository
 import tech.vauldex.dekita.data.CartRepository
 import tech.vauldex.dekita.data.LoadState
 import tech.vauldex.dekita.data.OrderRepository
@@ -16,6 +17,7 @@ import tech.vauldex.dekita.data.dataOrNull
 import tech.vauldex.dekita.domain.FavoriteItem
 import tech.vauldex.dekita.domain.FulfillmentMode
 import tech.vauldex.dekita.domain.Order
+import tech.vauldex.dekita.domain.OrderStatus
 import tech.vauldex.dekita.domain.Store
 import tech.vauldex.dekita.domain.StoreAvailability
 import tech.vauldex.dekita.presentation.STOP_TIMEOUT_MILLIS
@@ -32,6 +34,8 @@ data class DiscoverUiState(
     val favoriteItemCount: Int = 0,
     /** The store of the most recent order, for the History shortcut. Null when there are no orders. */
     val lastOrderStoreName: String? = null,
+    /** SEAT-01: the newest Eat-In draft kept from check-in, for the "Resume check-in" banner. Signed in only. */
+    val draft: Order? = null,
 ) {
     /** When a filter other than the mode is on, Discover shows only the result list. */
     val showsResults: Boolean get() = filters.isRefined
@@ -43,6 +47,7 @@ class DiscoverViewModel(
     private val storeRepository: StoreRepository,
     orderRepository: OrderRepository,
     private val cartRepository: CartRepository,
+    authRepository: AuthRepository,
 ) : ViewModel() {
 
     // Every filter except the mode. The mode lives in the cart repository, so every Discover screen
@@ -51,12 +56,17 @@ class DiscoverViewModel(
 
     private val filtersWithMode = combine(filters, cartRepository.preferredMode) { current, mode -> current.copy(mode = mode) }
 
+    /** Orders, and whether they belong to a signed-in customer (drafts are only shown then). */
+    private val ordersForCustomer = combine(orderRepository.orders, authRepository.session) { orders, session ->
+        CustomerOrders(orders, isSignedIn = session != null)
+    }
+
     val state: StateFlow<DiscoverUiState> =
         combine(
             storeRepository.stores,
             storeRepository.recommendedStoreIds,
             storeRepository.favoriteItems,
-            orderRepository.orders,
+            ordersForCustomer,
             filtersWithMode,
             ::toUiState,
         ).stateIn(
@@ -66,7 +76,7 @@ class DiscoverViewModel(
                 storeRepository.stores.value,
                 storeRepository.recommendedStoreIds.value,
                 storeRepository.favoriteItems.value,
-                orderRepository.orders.value,
+                CustomerOrders(orderRepository.orders.value, isSignedIn = authRepository.session.value != null),
                 filters.value.copy(mode = cartRepository.preferredMode.value),
             ),
         )
@@ -95,13 +105,18 @@ class DiscoverViewModel(
         stores: LoadState<List<Store>>,
         recommendedIds: List<String>,
         favoriteItems: List<FavoriteItem>,
-        orders: LoadState<List<Order>>,
+        customerOrders: CustomerOrders,
         filters: StoreFilters,
     ): DiscoverUiState {
+        val orders = customerOrders.orders.dataOrNull()
         val base = DiscoverUiState(
             filters = filters,
             favoriteItemCount = favoriteItems.size,
-            lastOrderStoreName = orders.dataOrNull()?.maxByOrNull { it.createdAt }?.storeName,
+            lastOrderStoreName = orders?.maxByOrNull { it.createdAt }?.storeName,
+            draft = orders
+                ?.takeIf { customerOrders.isSignedIn }
+                ?.filter { it.status == OrderStatus.DRAFT }
+                ?.maxByOrNull { it.createdAt },
         )
         return when (stores) {
             LoadState.Loading -> base.copy(isLoading = true)
@@ -119,5 +134,7 @@ class DiscoverViewModel(
         }
     }
 }
+
+private data class CustomerOrders(val orders: LoadState<List<Order>>, val isSignedIn: Boolean)
 
 private fun <T> Set<T>.toggle(value: T): Set<T> = if (value in this) this - value else this + value

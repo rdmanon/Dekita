@@ -25,19 +25,25 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import tech.vauldex.dekita.domain.Order
+import tech.vauldex.dekita.domain.OrderStatus
+import tech.vauldex.dekita.presentation.RESUME_CHECK_IN
+import tech.vauldex.dekita.presentation.label
 import tech.vauldex.dekita.presentation.orders.OrdersViewModel
 import tech.vauldex.dekita.ui.components.LoadingIndicator
+import tech.vauldex.dekita.ui.components.PrimaryButton
 import tech.vauldex.dekita.ui.components.SectionTitle
 import tech.vauldex.dekita.ui.components.SignInPrompt
 import tech.vauldex.dekita.ui.components.StatusPill
 import tech.vauldex.dekita.ui.components.groupedShape
-import tech.vauldex.dekita.presentation.label
 import tech.vauldex.dekita.ui.theme.DekitaTheme
 import tech.vauldex.dekita.ui.theme.Dimens
 
-/** Placeholder Orders tab: active tickets and history from the seed. The real screen is a later ticket. */
+/**
+ * Placeholder Orders tab: active tickets and history from the seed. The real screen is a later ticket.
+ * SEAT-01: a draft kept from check-in offers "Resume check-in".
+ */
 @Composable
-fun OrdersScreen(viewModel: OrdersViewModel, onSignIn: () -> Unit) {
+fun OrdersScreen(viewModel: OrdersViewModel, onSignIn: () -> Unit, onResumeDraft: (orderId: String) -> Unit) {
     val state by viewModel.state.collectAsStateWithLifecycle()
 
     Scaffold(topBar = { TopAppBar(title = { Text("Orders") }) }) { padding ->
@@ -69,7 +75,7 @@ fun OrdersScreen(viewModel: OrdersViewModel, onSignIn: () -> Unit) {
                 item(key = "active-empty") { Text("No active orders.", style = MaterialTheme.typography.bodyMedium) }
             }
             items(state.active, key = { it.id }) { order ->
-                ActiveOrderCard(order, Modifier.padding(bottom = 12.dp))
+                ActiveOrderCard(order, onResumeDraft = { onResumeDraft(order.id) }, modifier = Modifier.padding(bottom = 12.dp))
             }
             item(key = "history-title") { SectionTitle("History") }
             itemsIndexed(state.history, key = { _, order -> order.id }) { index, order ->
@@ -80,7 +86,7 @@ fun OrdersScreen(viewModel: OrdersViewModel, onSignIn: () -> Unit) {
 }
 
 @Composable
-private fun ActiveOrderCard(order: Order, modifier: Modifier = Modifier) {
+private fun ActiveOrderCard(order: Order, onResumeDraft: () -> Unit, modifier: Modifier = Modifier) {
     val numberColors = DekitaTheme.colors.orderNumber
     Surface(color = MaterialTheme.colorScheme.surfaceContainer, shape = MaterialTheme.shapes.extraLarge, modifier = modifier) {
         Column(verticalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth().padding(16.dp)) {
@@ -102,6 +108,14 @@ private fun ActiveOrderCard(order: Order, modifier: Modifier = Modifier) {
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             StatusPill(order.status.label, DekitaTheme.colors.bothModes)
+            if (order.status == OrderStatus.DRAFT) {
+                Text(
+                    "Not cooked or charged yet. Check in at the store to start cooking.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                PrimaryButton(RESUME_CHECK_IN, onClick = onResumeDraft)
+            }
         }
     }
 }

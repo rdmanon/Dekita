@@ -9,6 +9,7 @@ import tech.vauldex.dekita.domain.MenuItem
 import tech.vauldex.dekita.domain.ModifierGroup
 import tech.vauldex.dekita.domain.ModifierOption
 import tech.vauldex.dekita.domain.Money
+import tech.vauldex.dekita.domain.Order
 import tech.vauldex.dekita.domain.OrderStatus
 import tech.vauldex.dekita.domain.QueueStatus
 import tech.vauldex.dekita.domain.Store
@@ -170,3 +171,52 @@ fun CheckoutBlock.message(storeName: String): String = when (this) {
 /** A cart line's choices, as "Medium · Extra Egg". Empty when there are none. */
 val CartLine.optionsLabel: String
     get() = selectedOptions.joinToString(" · ") { it.name }
+
+// SEAT-01: check-in, the seat question and its fallbacks.
+
+/** "2 items · ¥1,550" for an order. */
+val Order.itemsLabel: String
+    get() = "${if (itemCount == 1) "1 item" else "$itemCount items"} · ${total.formatted()}"
+
+/** The check-in queue row: "3 orders ahead · ~8 min", or "No wait". */
+fun QueueStatus.summary(): String =
+    if (ordersAhead == 0 || estimatedWaitMinutes == 0) headline() else "${headline()} · ~$estimatedWaitMinutes min"
+
+const val SEAT_QUESTION = "Have you found a seat?"
+
+const val SEAT_QUESTION_DETAIL = "Cooking starts when you pay, so make sure you have a seat first."
+
+/** The fallbacks' title: the store is full, or the customer said they have no seat yet. */
+fun noSeatTitle(storeName: String, storeIsFull: Boolean): String =
+    if (storeIsFull) "$storeName is full right now" else "No seat yet?"
+
+const val NO_SEAT_DETAIL = "Your order is saved. Nothing is cooked or charged until you start cooking."
+
+const val SWITCH_TO_TAKEOUT = "Switch to Takeout"
+const val SWITCH_TO_TAKEOUT_DETAIL = "Pay now and take your food with you."
+const val WAIT_IN_LINE = "Wait in line"
+const val WAIT_IN_LINE_DETAIL = "Stay here and start cooking once you have a seat."
+const val CANCEL_EXIT = "Cancel / Exit"
+const val CANCEL_EXIT_DETAIL = "Back to Discover. Your order stays in Orders as a draft."
+
+/** Shown on check-in after "Wait in line". */
+const val WAITING_FOR_SEAT_MESSAGE = "Waiting for a seat. Your order is kept until you start cooking."
+
+const val FOUND_SEAT_BUTTON = "I've found a seat"
+
+/** Shown instead of Start Cooking while the store has paused orders. */
+fun checkInPausedMessage(storeName: String): String =
+    "$storeName has paused orders. Your order is kept, so you can start cooking when it reopens."
+
+/** The payment sheet's button, for example "Pay ¥1,550". */
+fun payButtonLabel(total: Money): String = "Pay ${total.formatted()}"
+
+/** Shown after paying at check-in. */
+fun sentToKitchenTitle(orderNumber: Int): String = "Order #$orderNumber sent to the kitchen"
+
+const val SENT_TO_KITCHEN_DETAIL = "Cooking starts now. Follow your order in the Orders tab."
+
+/** Discover's banner for a kept draft. */
+fun draftBannerTitle(storeName: String): String = "Draft order at $storeName"
+
+const val RESUME_CHECK_IN = "Resume check-in"

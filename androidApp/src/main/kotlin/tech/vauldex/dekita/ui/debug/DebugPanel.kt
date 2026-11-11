@@ -33,6 +33,7 @@ import kotlin.time.Duration.Companion.seconds
 import tech.vauldex.dekita.data.dataOrNull
 import tech.vauldex.dekita.data.mock.SeedAuth
 import tech.vauldex.dekita.di.AppContainer
+import tech.vauldex.dekita.domain.FulfillmentMode
 import tech.vauldex.dekita.domain.StoreAvailability
 import tech.vauldex.dekita.getPlatform
 
@@ -49,6 +50,7 @@ internal val debugSections: List<DebugSection> = listOf(
     DebugSection("Discover") { container -> DiscoverControls(container) },
     DebugSection("Auth") { container -> AuthControls(container) },
     DebugSection("Cart") { container -> CartControls(container) },
+    DebugSection("Check-in") { container -> CheckInControls(container) },
 )
 
 @Composable
@@ -213,6 +215,32 @@ private fun CartControls(container: AppContainer) {
             )
             TextButton(onClick = { container.menuSimulator.setItemSoldOut(storeId, item.id, !item.isSoldOut) }) {
                 Text(if (item.isSoldOut) "Resume selling" else "Stop Selling")
+            }
+        }
+    }
+}
+
+/** SEAT-01: a ready-made draft, and "seats full" per Eat-In store, to try the seat question and its fallbacks. */
+@Composable
+private fun CheckInControls(container: AppContainer) {
+    val stores by container.storeRepository.stores.collectAsStateWithLifecycle()
+    OutlinedButton(onClick = { container.addSampleDraft() }) { Text("Add sample draft order") }
+    Text(
+        "Saves the sample cart as an Eat-In draft at Test Ramen Bar. Sign in to see it in Orders and on Discover.",
+        style = MaterialTheme.typography.bodyMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+    stores.dataOrNull().orEmpty().filter { it.supports(FulfillmentMode.IN_STORE) }.forEach { store ->
+        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+            Text(
+                store.name,
+                style = MaterialTheme.typography.bodyMedium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f),
+            )
+            TextButton(onClick = { container.storeFeedSimulator.setSeatsFull(store.id, !store.seatsFull) }) {
+                Text(if (store.seatsFull) "Free seats" else "Seats full")
             }
         }
     }

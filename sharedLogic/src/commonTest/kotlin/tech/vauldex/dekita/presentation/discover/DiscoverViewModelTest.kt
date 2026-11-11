@@ -1,7 +1,5 @@
 package tech.vauldex.dekita.presentation.discover
 
-import kotlin.time.Clock
-import kotlin.time.Instant
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
@@ -10,6 +8,8 @@ import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import kotlin.time.Clock
+import kotlin.time.Instant
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -21,6 +21,7 @@ import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
+import tech.vauldex.dekita.data.mock.FakeAuthRepository
 import tech.vauldex.dekita.data.mock.FakeCartRepository
 import tech.vauldex.dekita.data.mock.FakeOrderRepository
 import tech.vauldex.dekita.data.mock.FakeStoreRepository
@@ -52,7 +53,8 @@ class DiscoverViewModelTest {
             override fun now() = Instant.fromEpochSeconds(1_800_000_000)
         })
         val cart = FakeCartRepository()
-        val viewModel = DiscoverViewModel(stores, orders, cart)
+        val auth = FakeAuthRepository(MockConfig())
+        val viewModel = DiscoverViewModel(stores, orders, cart, auth)
     }
 
     /** Builds the view model, subscribes to it, and waits out the simulated loading delay. */
@@ -192,7 +194,7 @@ class DiscoverViewModelTest {
         val fixture = loadedFixture()
         fixture.viewModel.selectMode(FulfillmentMode.PICKUP)
 
-        val rebuilt = DiscoverViewModel(fixture.stores, fixture.orders, fixture.cart)
+        val rebuilt = DiscoverViewModel(fixture.stores, fixture.orders, fixture.cart, fixture.auth)
         assertEquals(FulfillmentMode.PICKUP, rebuilt.state.value.filters.mode)
     }
 }

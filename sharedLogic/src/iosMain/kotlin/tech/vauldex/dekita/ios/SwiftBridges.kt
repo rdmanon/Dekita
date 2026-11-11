@@ -17,13 +17,14 @@ import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import tech.vauldex.dekita.data.LoadState
-import tech.vauldex.dekita.data.mock.SeedAuth
 import tech.vauldex.dekita.data.dataOrNull
+import tech.vauldex.dekita.data.mock.SeedAuth
 import tech.vauldex.dekita.di.AppContainer
 import tech.vauldex.dekita.domain.DialCode
 import tech.vauldex.dekita.domain.Menu
 import tech.vauldex.dekita.domain.MenuItem
 import tech.vauldex.dekita.domain.Order
+import tech.vauldex.dekita.domain.PaymentType
 import tech.vauldex.dekita.domain.SignInMethod
 import tech.vauldex.dekita.domain.Store
 import tech.vauldex.dekita.domain.StoreAvailability
@@ -44,6 +45,9 @@ import tech.vauldex.dekita.presentation.auth.SignInViewModel
 import tech.vauldex.dekita.presentation.cart.CartReviewEvent
 import tech.vauldex.dekita.presentation.cart.CartReviewUiState
 import tech.vauldex.dekita.presentation.cart.CartReviewViewModel
+import tech.vauldex.dekita.presentation.checkin.CheckInEvent
+import tech.vauldex.dekita.presentation.checkin.CheckInUiState
+import tech.vauldex.dekita.presentation.checkin.CheckInViewModel
 import tech.vauldex.dekita.presentation.discover.DiscoverUiState
 import tech.vauldex.dekita.presentation.discover.DiscoverViewModel
 import tech.vauldex.dekita.presentation.discover.FavoritesUiState
@@ -90,7 +94,7 @@ abstract class ScreenBridge {
 
 class DiscoverBridge : ScreenBridge() {
     val viewModel: DiscoverViewModel = makeViewModel(DiscoverViewModel::class) {
-        DiscoverViewModel(container.storeRepository, container.orderRepository, container.cartRepository)
+        DiscoverViewModel(container.storeRepository, container.orderRepository, container.cartRepository, container.authRepository)
     }
 
     val currentState: DiscoverUiState get() = viewModel.state.value
@@ -256,6 +260,26 @@ class CartReviewBridge : ScreenBridge() {
     fun watchEvents(onEvent: (CartReviewEvent) -> Unit): FlowWatch = viewModel.events.watch(onEvent)
 }
 
+/** SEAT-01 check-in for one draft order. iOS offers Apple Pay as its wallet. */
+class CheckInBridge(orderId: String) : ScreenBridge() {
+    val viewModel: CheckInViewModel = makeViewModel(CheckInViewModel::class) {
+        CheckInViewModel(
+            orderId,
+            container.orderRepository,
+            container.storeRepository,
+            container.cartRepository,
+            container.paymentRepository,
+            PaymentType.APPLE_PAY,
+        )
+    }
+
+    val currentState: CheckInUiState get() = viewModel.state.value
+
+    fun watch(onState: (CheckInUiState) -> Unit): FlowWatch = viewModel.state.watch(onState)
+
+    fun watchEvents(onEvent: (CheckInEvent) -> Unit): FlowWatch = viewModel.events.watch(onEvent)
+}
+
 /** What the debug panel shows. Durations are milliseconds, which Swift can use directly. */
 data class DebugState(
     val loadingDelayMillis: Long,
@@ -333,6 +357,14 @@ class DebugBridge {
     fun simulateNewUser() = container.simulateNewUser()
 
     fun fillSampleCart() = container.fillSampleCart()
+
+    /** SEAT-01: saves the sample cart as an Eat-In draft, to try check-in and its resume entry points. */
+    fun addSampleDraft() = container.addSampleDraft()
+
+    /** SEAT-01: every seat taken, or free again. */
+    fun toggleSeatsFull(store: Store) {
+        container.storeFeedSimulator.setSeatsFull(store.id, !store.seatsFull)
+    }
 
     fun toggleSoldOut(item: MenuItem) {
         container.menuSimulator.setItemSoldOut(item.storeId, item.id, !item.isSoldOut)

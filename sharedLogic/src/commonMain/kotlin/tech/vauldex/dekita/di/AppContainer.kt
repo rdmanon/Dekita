@@ -18,10 +18,11 @@ import tech.vauldex.dekita.data.mock.FakeMenuRepository
 import tech.vauldex.dekita.data.mock.FakeOrderRepository
 import tech.vauldex.dekita.data.mock.FakePaymentRepository
 import tech.vauldex.dekita.data.mock.FakeStoreRepository
-import tech.vauldex.dekita.data.mock.MockConfig
 import tech.vauldex.dekita.data.mock.MenuSimulator
+import tech.vauldex.dekita.data.mock.MockConfig
 import tech.vauldex.dekita.data.mock.StoreFeedSimulator
 import tech.vauldex.dekita.data.mock.seedSampleCart
+import tech.vauldex.dekita.data.mock.seedStores
 
 /** Manual wiring for the mockup. Every repository is an in-memory fake over seed data. */
 class AppContainer(
@@ -63,6 +64,16 @@ class AppContainer(
         val sample = seedSampleCart()
         cart.clear()
         sample.lines.forEach { cart.addLine(sample.mode, it) }
+    }
+
+    /**
+     * Debug panel only (SEAT-01): saves the sample cart as an Eat-In DRAFT order, as "Head to store" does,
+     * so check-in and its resume entry points can be tried without going through the cart.
+     */
+    fun addSampleDraft() {
+        val sample = seedSampleCart()
+        val storeName = seedStores.firstOrNull { it.id == sample.storeId }?.name ?: sample.storeId
+        orders.createDraft(sample, storeName)
     }
 
     /** Puts every repository back to the seed data, with the loading delay. Also signs out. */

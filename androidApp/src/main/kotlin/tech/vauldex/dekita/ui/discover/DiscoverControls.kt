@@ -42,6 +42,10 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import tech.vauldex.dekita.R
 import tech.vauldex.dekita.domain.FulfillmentMode
+import tech.vauldex.dekita.domain.Order
+import tech.vauldex.dekita.presentation.RESUME_CHECK_IN
+import tech.vauldex.dekita.presentation.draftBannerTitle
+import tech.vauldex.dekita.presentation.itemsLabel
 
 /** The search bar at the top of Discover. Search covers store names and item names. */
 @Composable
@@ -242,6 +246,31 @@ private fun ShortcutTile(
                     overflow = TextOverflow.Ellipsis,
                 )
             }
+        }
+    }
+}
+
+/** SEAT-01: a draft kept from check-in, so the customer can pick it up again. Tapping it resumes check-in. */
+@Composable
+internal fun DraftBanner(order: Order, onResume: () -> Unit, modifier: Modifier = Modifier) {
+    Surface(
+        onClick = onResume,
+        shape = MaterialTheme.shapes.large,
+        color = MaterialTheme.colorScheme.primaryContainer,
+        contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+        modifier = modifier.fillMaxWidth(),
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
+            modifier = Modifier.padding(16.dp),
+        ) {
+            Icon(painterResource(R.drawable.ic_restaurant), contentDescription = null)
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(draftBannerTitle(order.storeName), style = MaterialTheme.typography.titleMedium)
+                Text(order.itemsLabel, style = MaterialTheme.typography.bodyMedium)
+            }
+            Text(RESUME_CHECK_IN, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
         }
     }
 }
