@@ -19,6 +19,7 @@ import tech.vauldex.dekita.data.mock.FakeOrderRepository
 import tech.vauldex.dekita.data.mock.FakePaymentRepository
 import tech.vauldex.dekita.data.mock.FakeStoreRepository
 import tech.vauldex.dekita.data.mock.MockConfig
+import tech.vauldex.dekita.data.mock.MenuSimulator
 import tech.vauldex.dekita.data.mock.StoreFeedSimulator
 import tech.vauldex.dekita.data.mock.seedSampleCart
 
@@ -47,6 +48,9 @@ class AppContainer(
 
     /** Debug panel only: live changes to the store feed. */
     val storeFeedSimulator: StoreFeedSimulator get() = stores
+
+    /** Debug only: items selling out while a customer looks at them. */
+    val menuSimulator: MenuSimulator get() = menus
 
     /** Debug panel only: no favorites and no orders, to check the empty Favorites and History states. */
     fun simulateNewUser() {

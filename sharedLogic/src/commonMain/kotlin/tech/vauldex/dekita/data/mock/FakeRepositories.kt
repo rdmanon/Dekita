@@ -164,10 +164,16 @@ private fun Store.withQueueOffset(offset: Int): Store {
     return copy(queue = QueueStatus(ahead, wait))
 }
 
+/** Debug-panel-only changes to a menu, as the store's own app would push them. */
+interface MenuSimulator {
+    /** Marks an item sold out or back on sale in a menu that is already loaded. */
+    fun setItemSoldOut(storeId: String, itemId: String, soldOut: Boolean)
+}
+
 class FakeMenuRepository(
     private val scope: CoroutineScope,
     private val config: MockConfig,
-) : MenuRepository, Resettable {
+) : MenuRepository, MenuSimulator, Resettable {
 
     private val menus = mutableMapOf<String, MutableStateFlow<LoadState<Menu>>>()
 
@@ -175,6 +181,13 @@ class FakeMenuRepository(
         menus.getOrPut(storeId) {
             MutableStateFlow<LoadState<Menu>>(LoadState.Loading).also { load(storeId, it) }
         }.asStateFlow()
+
+    override fun setItemSoldOut(storeId: String, itemId: String, soldOut: Boolean) {
+        menus[storeId]?.update { state ->
+            val menu = (state as? LoadState.Success)?.data ?: return@update state
+            LoadState.Success(menu.copy(items = menu.items.map { if (it.id == itemId) it.copy(isSoldOut = soldOut) else it }))
+        }
+    }
 
     override fun reset() {
         menus.forEach { (storeId, flow) -> load(storeId, flow) }
@@ -213,6 +226,10 @@ class FakeCartRepository : CartRepository, Resettable {
             }
         }
         return added
+    }
+
+    override fun replaceWith(mode: FulfillmentMode, line: CartLine) {
+        _cart.value = Cart(line.item.storeId, mode).addLine(line)
     }
 
     override fun updateQuantity(lineId: String, quantity: Int) {

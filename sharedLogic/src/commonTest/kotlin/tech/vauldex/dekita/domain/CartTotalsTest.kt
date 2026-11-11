@@ -97,4 +97,17 @@ class CartTotalsTest {
     fun addingDifferentCurrenciesIsRejected() {
         assertFailsWith<IllegalArgumentException> { Money.yen(100) + Money(100, "USD") }
     }
+
+    @Test
+    fun sameItemAndOptionsMergeIntoOneLine() {
+        val cart = designCart().addLine(CartLine("l3", ramen, listOf(egg, medium), quantity = 2))
+        assertEquals(2, cart.lines.size)
+        assertEquals(3, cart.lines.first().quantity)
+    }
+
+    @Test
+    fun differentOptionsMakeANewLine() {
+        val cart = designCart().addLine(CartLine("l3", ramen, listOf(medium)))
+        assertEquals(3, cart.lines.size)
+    }
 }

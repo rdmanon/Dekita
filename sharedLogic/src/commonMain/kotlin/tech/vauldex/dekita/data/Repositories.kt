@@ -55,6 +55,9 @@ interface CartRepository {
      */
     fun addLine(mode: FulfillmentMode, line: CartLine): Boolean
 
+    /** Drops the current cart, even one from another store, and starts a new one with [line]. */
+    fun replaceWith(mode: FulfillmentMode, line: CartLine)
+
     /** A quantity of 0 removes the line; removing the last line clears the cart. */
     fun updateQuantity(lineId: String, quantity: Int)
 

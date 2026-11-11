@@ -1,5 +1,8 @@
 package tech.vauldex.dekita.ui.store
 
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -10,17 +13,23 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconToggleButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -29,6 +38,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import kotlinx.coroutines.launch
 import tech.vauldex.dekita.R
 import tech.vauldex.dekita.data.LoadState
 import tech.vauldex.dekita.domain.FulfillmentMode
@@ -37,6 +47,7 @@ import tech.vauldex.dekita.domain.Store
 import tech.vauldex.dekita.domain.StoreAvailability
 import tech.vauldex.dekita.presentation.NOT_ACCEPTING_ORDERS_MESSAGE
 import tech.vauldex.dekita.presentation.optionsSummary
+import tech.vauldex.dekita.presentation.store.AddResult
 import tech.vauldex.dekita.presentation.store.StoreDetailViewModel
 import tech.vauldex.dekita.ui.components.AvailabilityBadge
 import tech.vauldex.dekita.ui.components.BusinessTypeBadge
@@ -45,16 +56,25 @@ import tech.vauldex.dekita.ui.components.LoadingIndicator
 import tech.vauldex.dekita.ui.components.SectionTitle
 import tech.vauldex.dekita.ui.components.StatusPill
 import tech.vauldex.dekita.ui.components.StoreArt
+import tech.vauldex.dekita.ui.debug.LocalOpenDebugPanel
 import tech.vauldex.dekita.ui.theme.DekitaTheme
 import tech.vauldex.dekita.ui.theme.Dimens
 
-/** Store header with the live queue. The menu list below is still a placeholder until MENU-01. */
+/** Store header with the live queue, then the menu. Tapping an item opens its customize sheet. */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun StoreDetailScreen(viewModel: StoreDetailViewModel, onBack: () -> Unit, onViewCart: () -> Unit) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val store = state.store
+    val snackbarHostState = remember { SnackbarHostState() }
+    val scope = rememberCoroutineScope()
+    val isDebug = LocalOpenDebugPanel.current != null
+    fun announceAdded(name: String) {
+        scope.launch { snackbarHostState.showSnackbar("Added $name") }
+    }
 
     Scaffold(
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             TopAppBar(
                 title = { Text(store?.name.orEmpty(), maxLines = 1, overflow = TextOverflow.Ellipsis) },
@@ -105,11 +125,44 @@ fun StoreDetailScreen(viewModel: StoreDetailViewModel, onBack: () -> Unit, onVie
                 LoadState.Loading -> item(key = "menu-loading") { LoadingIndicator("Loading menu…") }
                 is LoadState.Error -> item(key = "menu-error") { Text(menu.message) }
                 is LoadState.Success -> menu.data.categories.forEach { category ->
-                    item(key = "category-${category.id}") { SectionTitle(category.name) }
-                    items(menu.data.itemsIn(category.id), key = { it.id }) { item -> MenuItemRow(item) }
+                    stickyHeader(key = "category-${category.id}") {
+                        SectionTitle(category.name, Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface))
+                    }
+                    items(menu.data.itemsIn(category.id), key = { it.id }) { item ->
+                        MenuItemRow(item) { viewModel.openItem(item.id) }
+                    }
                 }
             }
         }
+    }
+
+    state.sheet?.let { sheet ->
+        ItemSheet(
+            sheet = sheet,
+            onToggle = viewModel::toggleOption,
+            onQuantity = viewModel::setQuantity,
+            onAdd = {
+                val name = sheet.draft.item.name
+                if (viewModel.addToCart() == AddResult.ADDED) announceAdded(name)
+            },
+            onDismiss = viewModel::closeItem,
+            onStopSelling = if (isDebug) viewModel::stopSellingOpenItem else null,
+        )
+    }
+    state.pendingReplaceStoreName?.let { otherStore ->
+        AlertDialog(
+            onDismissRequest = viewModel::dismissReplace,
+            title = { Text("Start a new cart?") },
+            text = { Text("Your cart has items from $otherStore. Start a new cart with ${store?.name.orEmpty()}?") },
+            confirmButton = {
+                TextButton(onClick = {
+                    val name = state.sheet?.draft?.item?.name.orEmpty()
+                    viewModel.confirmReplace()
+                    announceAdded(name)
+                }) { Text("Start new cart") }
+            },
+            dismissButton = { TextButton(onClick = viewModel::dismissReplace) { Text("Cancel") } },
+        )
     }
 }
 
@@ -157,11 +210,14 @@ private fun StoreHeader(store: Store) {
 }
 
 @Composable
-private fun MenuItemRow(item: MenuItem) {
+private fun MenuItemRow(item: MenuItem, onClick: () -> Unit) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(16.dp),
-        modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(enabled = !item.isSoldOut, onClick = onClick)
+            .padding(vertical = 8.dp),
     ) {
         Column(
             verticalArrangement = Arrangement.spacedBy(2.dp),
