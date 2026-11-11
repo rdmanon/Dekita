@@ -92,6 +92,9 @@ final class StoreDetailModel: ObservableObject {
 
     @Published private(set) var state: StoreDetailUiState
 
+    /** Actions (open an item, add to cart and so on) go straight to the shared view model. */
+    var viewModel: StoreDetailViewModel { bridge.viewModel }
+
     init(storeId: String) {
         bridge = StoreDetailBridge(storeId: storeId)
         state = bridge.currentState
