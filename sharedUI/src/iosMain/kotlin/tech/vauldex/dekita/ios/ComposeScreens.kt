@@ -49,8 +49,15 @@ fun AccountViewController(isDebug: Boolean): UIViewController = ComposeUIViewCon
     }
 }
 
-/** The store screen's content. SwiftUI draws the navigation bar, so the Compose top bar is off. */
-fun StoreDetailViewController(storeId: String, isDebug: Boolean): UIViewController = ComposeUIViewController {
+/**
+ * The store screen's content. SwiftUI draws the navigation bar and the View cart button, so the
+ * Compose top bar is off. Tapping an item calls [onItemClick], which opens the SwiftUI item sheet.
+ */
+fun StoreDetailViewController(
+    storeId: String,
+    isDebug: Boolean,
+    onItemClick: (itemId: String) -> Unit,
+): UIViewController = ComposeUIViewController {
     HostedScreen(isDebug) {
         val container = AppContainer.instance
         StoreDetailScreen(
@@ -59,6 +66,7 @@ fun StoreDetailViewController(storeId: String, isDebug: Boolean): UIViewControll
             },
             onBack = {},
             showTopBar = false,
+            onItemClick = onItemClick,
         )
     }
 }

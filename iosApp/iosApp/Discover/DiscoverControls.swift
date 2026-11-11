@@ -6,6 +6,9 @@ enum DiscoverRoute: Hashable {
     case favorites
     case history
     case store(id: String, name: String)
+    case cart
+    case payment
+    case checkIn(orderNumber: Int, storeName: String)
 }
 
 /// Opens the screen for a route. Attach with `.navigationDestination(for: DiscoverRoute.self)`.
@@ -17,6 +20,9 @@ struct DiscoverDestination: View {
         case .favorites: FavoritesView()
         case .history: HistoryView()
         case let .store(id, name): StoreScreen(storeId: id, name: name)
+        case .cart: CartReviewView()
+        case .payment: PaymentPlaceholderView()
+        case let .checkIn(number, storeName): CheckInPlaceholderView(orderNumber: number, storeName: storeName)
         }
     }
 }

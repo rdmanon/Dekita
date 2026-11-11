@@ -12,8 +12,12 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import tech.vauldex.dekita.di.AppContainer
+import tech.vauldex.dekita.domain.Cart
+import tech.vauldex.dekita.domain.ItemSelection
 import tech.vauldex.dekita.domain.Order
 import tech.vauldex.dekita.domain.StoreAvailability
+import tech.vauldex.dekita.presentation.cart.CartReviewUiState
+import tech.vauldex.dekita.presentation.cart.CartReviewViewModel
 import tech.vauldex.dekita.presentation.discover.DiscoverUiState
 import tech.vauldex.dekita.presentation.discover.DiscoverViewModel
 import tech.vauldex.dekita.presentation.discover.FavoritesUiState
@@ -21,6 +25,8 @@ import tech.vauldex.dekita.presentation.discover.FavoritesViewModel
 import tech.vauldex.dekita.presentation.discover.HistoryUiState
 import tech.vauldex.dekita.presentation.discover.HistoryViewModel
 import tech.vauldex.dekita.presentation.discover.WalkLimit
+import tech.vauldex.dekita.presentation.menu.ItemSheetUiState
+import tech.vauldex.dekita.presentation.menu.ItemSheetViewModel
 
 // Swift-facing wrappers around the shared view models. Swift can't collect a Kotlin Flow, so each
 // bridge exposes its state as a typed callback, and owns its view models so they are cleared when
@@ -88,6 +94,44 @@ class HistoryBridge : ScreenBridge() {
     val currentState: HistoryUiState get() = viewModel.state.value
 
     fun watch(onState: (HistoryUiState) -> Unit): FlowWatch = viewModel.state.watch(onState)
+}
+
+class ItemSheetBridge(storeId: String, itemId: String, editingLineId: String?) : ScreenBridge() {
+    val viewModel: ItemSheetViewModel = makeViewModel(ItemSheetViewModel::class) {
+        ItemSheetViewModel(storeId, itemId, editingLineId, container.menuRepository, container.storeRepository, container.cartRepository)
+    }
+
+    val currentState: ItemSheetUiState get() = viewModel.state.value
+
+    fun watch(onState: (ItemSheetUiState) -> Unit): FlowWatch = viewModel.state.watch(onState)
+
+    val maxQuantity: Int = ItemSelection.MAX_QUANTITY
+}
+
+class CartReviewBridge : ScreenBridge() {
+    val viewModel: CartReviewViewModel = makeViewModel(CartReviewViewModel::class) {
+        CartReviewViewModel(container.cartRepository, container.storeRepository, container.menuRepository, container.orderRepository)
+    }
+
+    val currentState: CartReviewUiState get() = viewModel.state.value
+
+    fun watch(onState: (CartReviewUiState) -> Unit): FlowWatch = viewModel.state.watch(onState)
+
+    val maxQuantity: Int = ItemSelection.MAX_QUANTITY
+}
+
+/** What the store screen's View cart button shows. [itemCount] is 0 when the cart is empty or another store's. */
+data class CartSummary(val itemCount: Int, val total: String)
+
+class CartSummaryBridge(private val storeId: String) {
+    private val cart get() = AppContainer.instance.cartRepository.cart
+
+    val current: CartSummary get() = summarize(cart.value)
+
+    fun watch(onChange: (CartSummary) -> Unit): FlowWatch = cart.map { summarize(it) }.distinctUntilChanged().watch(onChange)
+
+    private fun summarize(cart: Cart?): CartSummary =
+        cart?.takeIf { it.storeId == storeId }?.let { CartSummary(it.itemCount, it.total.formatted()) } ?: CartSummary(0, "")
 }
 
 /** The heart button in the iOS store screen's navigation bar. */

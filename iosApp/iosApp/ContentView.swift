@@ -7,11 +7,14 @@ import SharedUI
 /// the shared Compose screens until their iOS designs are built.
 struct ContentView: View {
     @State private var selection: AppTab = .discover
+    @StateObject private var discoverNavigation = NavigationModel()
+    @StateObject private var searchNavigation = NavigationModel()
 
     var body: some View {
         TabView(selection: $selection) {
             Tab("Discover", systemImage: "safari", value: AppTab.discover) {
-                NavigationStack { DiscoverView() }
+                NavigationStack(path: $discoverNavigation.path) { DiscoverView() }
+                    .environmentObject(discoverNavigation)
             }
             Tab("Orders", systemImage: "receipt", value: AppTab.orders) {
                 ComposeController { ComposeScreensKt.OrdersViewController(isDebug: AppBuild.isDebug) }
@@ -22,10 +25,26 @@ struct ContentView: View {
                     .ignoresSafeArea()
             }
             Tab(value: AppTab.search, role: .search) {
-                NavigationStack { SearchView() }
+                NavigationStack(path: $searchNavigation.path) { SearchView() }
+                    .environmentObject(searchNavigation)
             }
         }
         .modifier(MinimizeTabBarOnScroll())
+    }
+}
+
+/// One tab's navigation stack, so a screen can replace itself (Cart → Check-in) or return to the tab's root.
+final class NavigationModel: ObservableObject {
+    @Published var path = NavigationPath()
+
+    /// Replaces the top screen with [route], so Back skips the screen that was replaced.
+    func replaceTop(with route: DiscoverRoute) {
+        if !path.isEmpty { path.removeLast() }
+        path.append(route)
+    }
+
+    func popToRoot() {
+        path = NavigationPath()
     }
 }
 

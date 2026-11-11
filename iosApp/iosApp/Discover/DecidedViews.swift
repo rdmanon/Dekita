@@ -159,32 +159,3 @@ private struct HistoryOrderRow: View {
         return "\(first)\(more) · \(order.mode.label) · \(order.total.formatted())"
     }
 }
-
-/// The store screen. SwiftUI draws the navigation bar, with the back button and a Liquid Glass favorite
-/// button on iOS 26; the content is the shared Compose store screen until its iOS design is built.
-struct StoreScreen: View {
-    let storeId: String
-    let name: String
-    @StateObject private var favorite: FavoriteStoreModel
-
-    init(storeId: String, name: String) {
-        self.storeId = storeId
-        self.name = name
-        _favorite = StateObject(wrappedValue: FavoriteStoreModel(storeId: storeId))
-    }
-
-    var body: some View {
-        ComposeController { ComposeScreensKt.StoreDetailViewController(storeId: storeId, isDebug: AppBuild.isDebug) }
-            .ignoresSafeArea(edges: .bottom)
-            .navigationTitle(name)
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button { favorite.toggle() } label: {
-                        Image(systemName: favorite.isFavorite ? "heart.fill" : "heart")
-                    }
-                    .accessibilityLabel(favorite.isFavorite ? "Remove from favorites" : "Add to favorites")
-                }
-            }
-    }
-}

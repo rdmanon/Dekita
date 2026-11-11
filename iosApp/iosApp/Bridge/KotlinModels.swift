@@ -84,3 +84,62 @@ final class FavoriteStoreModel: ObservableObject {
         watch?.cancel()
     }
 }
+
+final class ItemSheetModel: ObservableObject {
+    private let bridge: ItemSheetBridge
+    private var watch: FlowWatch?
+
+    @Published private(set) var state: ItemSheetUiState
+
+    var viewModel: ItemSheetViewModel { bridge.viewModel }
+    var maxQuantity: Int { Int(bridge.maxQuantity) }
+
+    init(target: ItemSheetTarget) {
+        bridge = ItemSheetBridge(storeId: target.storeId, itemId: target.itemId, editingLineId: target.editingLineId)
+        state = bridge.currentState
+        watch = bridge.watch { [weak self] state in self?.state = state }
+    }
+
+    deinit {
+        watch?.cancel()
+        bridge.close()
+    }
+}
+
+final class CartReviewModel: ObservableObject {
+    private let bridge = CartReviewBridge()
+    private var watch: FlowWatch?
+
+    @Published private(set) var state: CartReviewUiState
+
+    var viewModel: CartReviewViewModel { bridge.viewModel }
+    var maxQuantity: Int { Int(bridge.maxQuantity) }
+
+    init() {
+        state = bridge.currentState
+        watch = bridge.watch { [weak self] state in self?.state = state }
+    }
+
+    deinit {
+        watch?.cancel()
+        bridge.close()
+    }
+}
+
+/// The store screen's View cart button.
+final class CartSummaryModel: ObservableObject {
+    private let bridge: CartSummaryBridge
+    private var watch: FlowWatch?
+
+    @Published private(set) var summary: CartSummary
+
+    init(storeId: String) {
+        bridge = CartSummaryBridge(storeId: storeId)
+        summary = bridge.current
+        watch = bridge.watch { [weak self] summary in self?.summary = summary }
+    }
+
+    deinit {
+        watch?.cancel()
+    }
+}
