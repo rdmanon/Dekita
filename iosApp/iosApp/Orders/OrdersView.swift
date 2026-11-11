@@ -3,9 +3,11 @@ import SharedLogic
 
 /// Orders tab: active tickets and history from the seed data. Guests see a sign-in card instead.
 /// The real Orders screen is a later ticket; this matches the content the Android tab shows.
+/// An in-store draft waiting for check-in can be resumed here, so leaving check-in never loses it.
 struct OrdersView: View {
     @EnvironmentObject private var flow: AuthFlow
     @StateObject private var model = OrdersModel()
+    @Environment(\.openCheckIn) private var openCheckIn
 
     var body: some View {
         let state = model.state
@@ -24,7 +26,11 @@ struct OrdersView: View {
                         Text("No active orders.").foregroundStyle(.secondary)
                     }
                     ForEach(state.active, id: \.id) { order in
-                        ActiveOrderCard(order: order)
+                        if order.awaitsCheckIn {
+                            DraftCard(order: order) { openCheckIn(order.id) }
+                        } else {
+                            ActiveOrderCard(order: order)
+                        }
                     }
                     Text("History").font(.title3.weight(.bold)).padding(.top, 8)
                     VStack(spacing: 0) {
@@ -72,6 +78,42 @@ private struct ActiveOrderCard: View {
                 .frame(minHeight: 22)
                 .foregroundStyle(Color.accentColor)
                 .background(Palette.tileIcon, in: Capsule())
+        }
+        .padding(16)
+        .background(Palette.card, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+    }
+}
+
+/// An in-store order built on the way. It has no ticket yet: the kitchen starts after check-in.
+private struct DraftCard: View {
+    let order: Order
+    let onResume: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Waiting for check-in")
+                .font(.caption.weight(.semibold))
+                .padding(.horizontal, 8)
+                .frame(minHeight: 22)
+                .foregroundStyle(Color.accentColor)
+                .background(Palette.tileIcon, in: Capsule())
+            Text("\(order.storeName) · Eat-In").font(.headline)
+            Text("\(order.itemCount) items · \(order.total.formatted())")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+            if let checkIn = order.checkIn {
+                Text(checkIn.label)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
+            Button(action: onResume) {
+                Text("Resume check-in")
+                    .font(.headline)
+                    .frame(maxWidth: .infinity, minHeight: 44)
+            }
+            .buttonStyle(.borderedProminent)
+            .buttonBorderShape(.capsule)
+            .padding(.top, 4)
         }
         .padding(16)
         .background(Palette.card, in: RoundedRectangle(cornerRadius: 24, style: .continuous))

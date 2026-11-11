@@ -87,7 +87,7 @@ fun CartReviewScreen(
     onBack: () -> Unit,
     onBrowseMenu: () -> Unit,
     onSignInRequired: () -> Unit,
-    onDraftSaved: (orderNumber: Int, storeName: String) -> Unit,
+    onDraftSaved: (orderId: String) -> Unit,
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
@@ -100,7 +100,7 @@ fun CartReviewScreen(
                 CartReviewEvent.PaymentComingLater -> launch {
                     snackbarHostState.showSnackbar("You're signed in. Payment isn't built in this mockup yet.")
                 }
-                is CartReviewEvent.DraftSaved -> currentOnDraftSaved(event.orderNumber, event.storeName)
+                is CartReviewEvent.DraftSaved -> currentOnDraftSaved(event.orderId)
             }
         }
     }

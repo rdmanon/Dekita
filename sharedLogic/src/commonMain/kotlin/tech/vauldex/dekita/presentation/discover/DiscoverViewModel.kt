@@ -16,6 +16,7 @@ import tech.vauldex.dekita.data.dataOrNull
 import tech.vauldex.dekita.domain.FavoriteItem
 import tech.vauldex.dekita.domain.FulfillmentMode
 import tech.vauldex.dekita.domain.Order
+import tech.vauldex.dekita.domain.OrderStatus
 import tech.vauldex.dekita.domain.Store
 import tech.vauldex.dekita.domain.StoreAvailability
 import tech.vauldex.dekita.presentation.STOP_TIMEOUT_MILLIS
@@ -32,6 +33,8 @@ data class DiscoverUiState(
     val favoriteItemCount: Int = 0,
     /** The store of the most recent order, for the History shortcut. Null when there are no orders. */
     val lastOrderStoreName: String? = null,
+    /** An in-store draft waiting for check-in, for the Resume banner. Null when there is none. */
+    val draftToResume: Order? = null,
 ) {
     /** When a filter other than the mode is on, Discover shows only the result list. */
     val showsResults: Boolean get() = filters.isRefined
@@ -98,10 +101,13 @@ class DiscoverViewModel(
         orders: LoadState<List<Order>>,
         filters: StoreFilters,
     ): DiscoverUiState {
+        val loadedOrders = orders.dataOrNull().orEmpty()
         val base = DiscoverUiState(
             filters = filters,
             favoriteItemCount = favoriteItems.size,
-            lastOrderStoreName = orders.dataOrNull()?.maxByOrNull { it.createdAt }?.storeName,
+            // A draft hasn't been placed yet, so it isn't the last order.
+            lastOrderStoreName = loadedOrders.filter { it.status != OrderStatus.DRAFT }.maxByOrNull { it.createdAt }?.storeName,
+            draftToResume = loadedOrders.filter { it.awaitsCheckIn }.maxByOrNull { it.createdAt },
         )
         return when (stores) {
             LoadState.Loading -> base.copy(isLoading = true)

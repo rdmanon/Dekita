@@ -41,14 +41,12 @@ final class AuthFlow: ObservableObject {
         showFreshDiscover()
     }
 
-    /// Replaces the top screen of the current tab's stack, so Back skips it. CART-01: cart → check-in.
-    func replaceTop(with route: DiscoverRoute) {
+    /// Closes the top screen of the current tab's stack. CART-01: the cart, once it is a draft order.
+    func popTop() {
         if selection == .search {
             if !searchPath.isEmpty { searchPath.removeLast() }
-            searchPath.append(route)
         } else {
             if !discoverPath.isEmpty { discoverPath.removeLast() }
-            discoverPath.append(route)
         }
     }
 

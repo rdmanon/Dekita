@@ -10,6 +10,7 @@ import tech.vauldex.dekita.data.LoadState
 import tech.vauldex.dekita.data.OrderRepository
 import tech.vauldex.dekita.data.StoreRepository
 import tech.vauldex.dekita.domain.Order
+import tech.vauldex.dekita.domain.OrderStatus
 import tech.vauldex.dekita.domain.Store
 import tech.vauldex.dekita.presentation.STOP_TIMEOUT_MILLIS
 
@@ -40,7 +41,8 @@ class HistoryViewModel(
                 orders is LoadState.Error -> HistoryUiState(isLoading = false, error = orders.message)
                 stores is LoadState.Success && orders is LoadState.Success -> {
                     val byId = stores.data.associateBy { it.id }
-                    val recent = orders.data.sortedByDescending { it.createdAt }
+                    // Drafts aren't placed yet; they resume from Orders and the Discover banner instead.
+                    val recent = orders.data.filter { it.status != OrderStatus.DRAFT }.sortedByDescending { it.createdAt }
                     HistoryUiState(
                         isLoading = false,
                         recentStores = recent.map { it.storeId }.distinct().mapNotNull { byId[it] },

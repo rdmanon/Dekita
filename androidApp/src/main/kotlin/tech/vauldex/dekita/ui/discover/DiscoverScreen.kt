@@ -39,7 +39,7 @@ import tech.vauldex.dekita.ui.theme.Dimens
 
 /**
  * Discover, the start of every order. From the top: search, the In-store / Pickup selector,
- * the decided customer's Favorites and History, then the undecided customer's categories,
+ * a banner for an in-store draft waiting for check-in, the decided customer's Favorites and History, then the undecided customer's categories,
  * Recommended and Nearby. Any search or filter swaps the home sections for one result list.
  */
 @Composable
@@ -48,6 +48,7 @@ fun DiscoverScreen(
     onStoreClick: (String) -> Unit,
     onFavoritesClick: () -> Unit,
     onHistoryClick: () -> Unit,
+    onResumeDraft: (orderId: String) -> Unit,
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     // Kept above the loading branch so the saved scroll position is still here when the list comes back.
@@ -87,6 +88,15 @@ fun DiscoverScreen(
                     onSelect = viewModel::selectMode,
                     modifier = Modifier.screenPadding().padding(top = 12.dp),
                 )
+            }
+            state.draftToResume?.let { draft ->
+                item(key = "draft") {
+                    DraftBanner(
+                        draft = draft,
+                        onResume = { onResumeDraft(draft.id) },
+                        modifier = Modifier.screenPadding().padding(top = 12.dp),
+                    )
+                }
             }
             item(key = "shortcuts") {
                 DecidedShortcuts(

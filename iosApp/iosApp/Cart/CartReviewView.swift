@@ -8,6 +8,7 @@ import SharedLogic
 struct CartReviewView: View {
     @EnvironmentObject private var flow: AuthFlow
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.openCheckIn) private var openCheckIn
     @StateObject private var model = CartReviewModel()
     @State private var showPaymentNote = false
 
@@ -104,7 +105,9 @@ struct CartReviewView: View {
             if event is CartReviewEventRequireSignIn {
                 flow.requestSignIn(from: .checkout)
             } else if let saved = event as? CartReviewEventDraftSaved {
-                flow.replaceTop(with: .checkIn(orderNumber: Int(saved.orderNumber), storeName: saved.storeName))
+                // The cart is now a draft order: close it, then check in over the tabs (CHECKIN-01).
+                flow.popTop()
+                openCheckIn(saved.orderId)
             } else {
                 showPaymentNote = true
             }

@@ -1,11 +1,14 @@
 package tech.vauldex.dekita.data
 
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.StateFlow
 import tech.vauldex.dekita.domain.Cart
 import tech.vauldex.dekita.domain.CartLine
+import tech.vauldex.dekita.domain.CheckIn
 import tech.vauldex.dekita.domain.CompletionReason
 import tech.vauldex.dekita.domain.FavoriteItem
 import tech.vauldex.dekita.domain.FulfillmentMode
+import tech.vauldex.dekita.domain.GeoPoint
 import tech.vauldex.dekita.domain.InboxMessage
 import tech.vauldex.dekita.domain.Menu
 import tech.vauldex.dekita.domain.Order
@@ -81,6 +84,23 @@ interface OrderRepository {
      * Returns the new order, which also appears in [orders].
      */
     fun createDraft(cart: Cart, storeName: String): Order
+
+    /**
+     * Records arrival on an in-store draft, replacing an earlier check-in. Returns false, and changes
+     * nothing, when the orders are not loaded or [orderId] is not an in-store draft.
+     */
+    fun checkIn(orderId: String, checkIn: CheckIn): Boolean
+}
+
+/** Where the customer is. GPS in production; the mockup never reads the real location. */
+interface LocationRepository {
+    /** The customer's position, or null when it is unknown. */
+    val customerLocation: StateFlow<GeoPoint?>
+}
+
+/** The camera's QR reader. Emits each code's raw text once, while someone collects. */
+interface QrScanner {
+    val scans: Flow<String>
 }
 
 interface PaymentRepository {

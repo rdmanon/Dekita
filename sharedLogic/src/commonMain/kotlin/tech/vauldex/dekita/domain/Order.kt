@@ -37,8 +37,16 @@ data class Order internal constructor(
     val status: OrderStatus,
     val history: List<StatusChange>,
     val completionReason: CompletionReason?,
+    /** Set when an in-store customer checks in on arrival. Null until then, and always for pickup. */
+    val checkIn: CheckIn? = null,
 ) {
     val itemCount: Int get() = lines.sumOf { it.quantity }
+
+    /** An in-store draft waits for check-in before the kitchen starts. */
+    val awaitsCheckIn: Boolean get() = status == OrderStatus.DRAFT && mode == FulfillmentMode.IN_STORE
+
+    /** Records arrival. Returns null for an order that can't be checked in: anything but an in-store draft. */
+    fun checkedIn(checkIn: CheckIn): Order? = if (awaitsCheckIn) copy(checkIn = checkIn) else null
 
     val createdAt: Instant get() = history.first().at
 

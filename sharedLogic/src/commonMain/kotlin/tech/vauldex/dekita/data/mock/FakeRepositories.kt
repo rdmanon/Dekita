@@ -23,6 +23,7 @@ import tech.vauldex.dekita.data.PaymentRepository
 import tech.vauldex.dekita.data.StoreRepository
 import tech.vauldex.dekita.domain.Cart
 import tech.vauldex.dekita.domain.CartLine
+import tech.vauldex.dekita.domain.CheckIn
 import tech.vauldex.dekita.domain.CompletionReason
 import tech.vauldex.dekita.domain.FavoriteItem
 import tech.vauldex.dekita.domain.FulfillmentMode
@@ -333,6 +334,18 @@ class FakeOrderRepository(
         created.update { listOf(order) + it }
         _orders.update { state -> if (state is LoadState.Success) LoadState.Success(listOf(order) + state.data) else state }
         return order
+    }
+
+    override fun checkIn(orderId: String, checkIn: CheckIn): Boolean {
+        var recorded = false
+        _orders.update { state ->
+            recorded = false
+            val orders = (state as? LoadState.Success)?.data ?: return@update state
+            val updated = orders.firstOrNull { it.id == orderId }?.checkedIn(checkIn) ?: return@update state
+            recorded = true
+            LoadState.Success(orders.map { if (it.id == orderId) updated else it })
+        }
+        return recorded
     }
 
     override fun reset() {

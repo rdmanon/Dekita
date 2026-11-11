@@ -2,9 +2,10 @@ import SwiftUI
 import SharedLogic
 
 /// The debug panel, as a native sheet. Only debug builds open it (`AppBuild.isDebug`).
-/// The same controls as the Android panel: build info, mock data, live store changes and sign-in.
+/// The same controls as the Android panel: build info, mock data, live store changes, sign-in and check-in.
 struct DebugPanelView: View {
     @StateObject private var model = DebugModel()
+    @State private var tableNumber = ""
 
     var body: some View {
         let state = model.state
@@ -14,11 +15,11 @@ struct DebugPanelView: View {
                 Section {
                     LabeledContent("Platform", value: "iOS \(UIDevice.current.systemVersion)")
                     LabeledContent("Build", value: "debug")
-                    LabeledContent("Data", value: "in-memory mock data, no network")
+                    LabeledContent("Data", value: "in-memory mock data")
                 } header: {
                     Text("Build")
                 } footer: {
-                    Text("Debug builds only. Release builds never show this panel.")
+                    Text("Debug builds only. Release builds never show this panel. Only the check-in map loads from the network.")
                 }
 
                 Section("Mock data") {
@@ -95,10 +96,47 @@ struct DebugPanelView: View {
                 } footer: {
                     Text("Fixed, obviously fake values from the seed data. Nothing is sent anywhere.")
                 }
+
+                checkInSection(state: state, bridge: bridge)
             }
             .navigationTitle("Debug Panel")
             .navigationBarTitleDisplayMode(.inline)
         }
         .presentationDetents([.medium, .large])
+        .onAppear { if tableNumber.isEmpty { tableNumber = bridge.defaultTableNumber } }
+    }
+
+    /// CHECKIN-01: arrival and QR scans, in place of GPS and the camera. Each acts on the in-store draft.
+    @ViewBuilder
+    private func checkInSection(state: DebugState, bridge: DebugBridge) -> some View {
+        Section {
+            if let status = state.checkInStatus {
+                Text(status)
+                Button("Simulate arrival") { bridge.simulateArrival() }
+                Button("Simulate leaving") { bridge.simulateLeaving() }
+                Button("Simulate store QR") { bridge.scanStoreQr() }
+                HStack {
+                    TextField("Table", text: $tableNumber)
+                        .textInputAutocapitalization(.characters)
+                        .autocorrectionDisabled()
+                        .onChange(of: tableNumber) { _, value in
+                            if value.count > 4 { tableNumber = String(value.prefix(4)) }
+                        }
+                    Button("Simulate table QR") { bridge.scanTableQr(tableNumber: tableNumber) }
+                        .buttonStyle(.borderless)
+                        .disabled(!bridge.isValidTableNumber(tableNumber: tableNumber))
+                }
+                Button("Simulate other-store QR") { bridge.scanOtherStoreQr() }
+                Button("Simulate invalid QR") { bridge.scanInvalidQr() }
+            } else {
+                Text("No in-store draft to check in. Reset mock data to get the seed draft back.")
+            }
+        } header: {
+            Text("Check-in")
+        } footer: {
+            Text(bridge.isValidTableNumber(tableNumber: tableNumber) || state.checkInStatus == nil
+                ? "QR scans reach the scanner only while it's open. A result pauses scanning until Scan again."
+                : "Table numbers are 1–4 letters or digits.")
+        }
     }
 }
