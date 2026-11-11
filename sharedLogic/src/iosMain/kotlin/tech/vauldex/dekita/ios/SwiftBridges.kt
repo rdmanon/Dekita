@@ -6,11 +6,14 @@ import androidx.lifecycle.ViewModelStore
 import androidx.lifecycle.viewmodel.viewModelFactory
 import kotlin.reflect.KClass
 import kotlin.time.Duration.Companion.milliseconds
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import tech.vauldex.dekita.data.LoadState
@@ -19,6 +22,7 @@ import tech.vauldex.dekita.data.dataOrNull
 import tech.vauldex.dekita.di.AppContainer
 import tech.vauldex.dekita.domain.DialCode
 import tech.vauldex.dekita.domain.Menu
+import tech.vauldex.dekita.domain.MenuItem
 import tech.vauldex.dekita.domain.Order
 import tech.vauldex.dekita.domain.SignInMethod
 import tech.vauldex.dekita.domain.Store
@@ -236,7 +240,13 @@ class ForgotPasswordBridge : ScreenBridge() {
 
 class CartReviewBridge : ScreenBridge() {
     val viewModel: CartReviewViewModel = makeViewModel(CartReviewViewModel::class) {
-        CartReviewViewModel(container.cartRepository, container.storeRepository, container.authRepository)
+        CartReviewViewModel(
+            container.cartRepository,
+            container.storeRepository,
+            container.menuRepository,
+            container.orderRepository,
+            container.authRepository,
+        )
     }
 
     val currentState: CartReviewUiState get() = viewModel.state.value
@@ -255,6 +265,8 @@ data class DebugState(
     val session: String,
     /** Null until the store feed has loaded. */
     val stores: List<Store>?,
+    /** CART-01: the cart store's menu items, for "Stop Selling". Empty without a cart or before its menu loads. */
+    val cartItems: List<MenuItem>,
 )
 
 /** The SwiftUI debug panel's controls over the mock data layer. Swift only shows the panel in debug builds. */
@@ -273,7 +285,10 @@ class DebugBridge {
         forceSsoFailure = config.forceSsoFailure.value,
         session = sessionLabel(container.authRepository.session.value?.method),
         stores = container.storeRepository.stores.value.dataOrNull(),
+        cartItems = cartStoreId()?.let { container.menuRepository.menu(it).value.dataOrNull()?.items }.orEmpty(),
     )
+
+    private fun cartStoreId(): String? = container.cartRepository.cart.value?.storeId
 
     fun watch(onState: (DebugState) -> Unit): FlowWatch =
         combine(
@@ -282,7 +297,16 @@ class DebugBridge {
             config.forceSsoFailure,
             container.authRepository.session,
             container.storeRepository.stores,
-        ) { _, _, _, _, _ -> currentState }.watch(onState)
+        ) { _, _, _, _, _ -> }
+            .combine(cartMenu()) { _, _ -> currentState }
+            .watch(onState)
+
+    /** Changes when the cart moves to another store or that store's menu changes (sold out and back). */
+    @OptIn(ExperimentalCoroutinesApi::class)
+    private fun cartMenu(): Flow<Any?> = container.cartRepository.cart
+        .map { it?.storeId }
+        .distinctUntilChanged()
+        .flatMapLatest { storeId -> if (storeId == null) flowOf(null) else container.menuRepository.menu(storeId) }
 
     fun setLoadingDelayMillis(millis: Long) {
         config.loadingDelay.value = millis.milliseconds
@@ -309,6 +333,16 @@ class DebugBridge {
     fun simulateNewUser() = container.simulateNewUser()
 
     fun fillSampleCart() = container.fillSampleCart()
+
+    fun toggleSoldOut(item: MenuItem) {
+        container.menuSimulator.setItemSoldOut(item.storeId, item.id, !item.isSoldOut)
+    }
+
+    /** CART-01: moves the queue at the cart's store, to watch Cart Review's live counter. */
+    fun adjustCartQueue(delta: Int) {
+        val storeId = cartStoreId() ?: return
+        container.storeFeedSimulator.adjustQueue(storeId, delta)
+    }
 
     fun resetMockData() = container.resetMockData()
 

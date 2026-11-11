@@ -60,6 +60,29 @@ struct DebugPanelView: View {
                 }
 
                 Section {
+                    Button("Fill sample cart") { bridge.fillSampleCart() }
+                    HStack {
+                        Text("Queue at the cart's store")
+                        Spacer()
+                        Button("−1") { bridge.adjustCartQueue(delta: -1) }.buttonStyle(.borderless)
+                        Button("+1") { bridge.adjustCartQueue(delta: 1) }.buttonStyle(.borderless)
+                    }
+                    ForEach(state.cartItems, id: \.id) { item in
+                        HStack {
+                            Text(item.name).lineLimit(1)
+                            Spacer()
+                            Button(item.isSoldOut ? "Resume" : "Stop Selling") { bridge.toggleSoldOut(item: item) }
+                                .buttonStyle(.borderless)
+                                .font(.footnote)
+                        }
+                    }
+                } header: {
+                    Text("Cart")
+                } footer: {
+                    Text("Changes reach Cart Review at once: the live queue, and sold-out lines that block checkout.")
+                }
+
+                Section {
                     LabeledContent("Session", value: state.session)
                     Toggle("Force SSO failure", isOn: Binding(
                         get: { state.forceSsoFailure },
@@ -67,7 +90,6 @@ struct DebugPanelView: View {
                     ))
                     LabeledContent("Test code", value: bridge.testCode)
                     LabeledContent("Test account", value: "\(bridge.testEmail) / \(bridge.testPassword)")
-                    Button("Fill sample cart") { bridge.fillSampleCart() }
                 } header: {
                     Text("Auth")
                 } footer: {

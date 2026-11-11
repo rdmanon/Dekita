@@ -36,6 +36,7 @@ import tech.vauldex.dekita.ui.theme.Dimens
 /**
  * Customize one item: modifier groups, quantity and the live total. Add stays off until the choices are
  * complete; [onStopSelling] is the debug-build-only control that sells the item out while the sheet is open.
+ * Cart Review reuses it to edit a line, with [actionLabel] "Update · ¥…".
  */
 @Composable
 internal fun ItemSheet(
@@ -45,6 +46,7 @@ internal fun ItemSheet(
     onAdd: () -> Unit,
     onDismiss: () -> Unit,
     onStopSelling: (() -> Unit)?,
+    actionLabel: String = addButtonLabel(sheet.draft.totalPrice),
 ) {
     val draft = sheet.draft
     val item = draft.item
@@ -84,7 +86,7 @@ internal fun ItemSheet(
                 Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.error)
             }
             Button(onClick = onAdd, enabled = sheet.canAdd, modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp)) {
-                Text(addButtonLabel(draft.totalPrice))
+                Text(actionLabel)
             }
             if (onStopSelling != null && !item.isSoldOut) {
                 TextButton(onClick = onStopSelling, modifier = Modifier.align(Alignment.CenterHorizontally)) {

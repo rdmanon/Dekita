@@ -41,6 +41,26 @@ final class AuthFlow: ObservableObject {
         showFreshDiscover()
     }
 
+    /// Replaces the top screen of the current tab's stack, so Back skips it. CART-01: cart → check-in.
+    func replaceTop(with route: DiscoverRoute) {
+        if selection == .search {
+            if !searchPath.isEmpty { searchPath.removeLast() }
+            searchPath.append(route)
+        } else {
+            if !discoverPath.isEmpty { discoverPath.removeLast() }
+            discoverPath.append(route)
+        }
+    }
+
+    /// Back to the current tab's first screen.
+    func popToRoot() {
+        if selection == .search {
+            searchPath = NavigationPath()
+        } else {
+            discoverPath = NavigationPath()
+        }
+    }
+
     private func showFreshDiscover() {
         discoverPath = NavigationPath()
         searchPath = NavigationPath()

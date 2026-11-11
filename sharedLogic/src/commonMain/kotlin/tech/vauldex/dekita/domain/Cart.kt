@@ -54,4 +54,24 @@ data class Cart(
         }
         return copy(lines = updated)
     }
+
+    fun line(lineId: String): CartLine? = lines.firstOrNull { it.lineId == lineId }
+
+    /**
+     * Puts an edited line in place of [lineId], in the same position, so editing never adds a line.
+     * If the new choices match another line, the two merge into that line.
+     */
+    fun replaceLine(lineId: String, line: CartLine): Cart {
+        require(line.item.storeId == storeId) { "Cart belongs to $storeId, item is from ${line.item.storeId}" }
+        require(lines.any { it.lineId == lineId }) { "No line $lineId in cart" }
+        val twin = lines.firstOrNull { it.lineId != lineId && it.item.id == line.item.id && it.optionIds == line.optionIds }
+        if (twin != null) {
+            return copy(
+                lines = lines
+                    .filterNot { it.lineId == lineId }
+                    .map { if (it === twin) it.copy(quantity = it.quantity + line.quantity) else it },
+            )
+        }
+        return copy(lines = lines.map { if (it.lineId == lineId) line else it })
+    }
 }

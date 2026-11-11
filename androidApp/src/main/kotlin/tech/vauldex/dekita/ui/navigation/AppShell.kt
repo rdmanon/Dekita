@@ -51,6 +51,7 @@ import tech.vauldex.dekita.ui.auth.OtpScreen
 import tech.vauldex.dekita.ui.auth.PhoneEntryScreen
 import tech.vauldex.dekita.ui.auth.SignInScreen
 import tech.vauldex.dekita.ui.cart.CartReviewScreen
+import tech.vauldex.dekita.ui.cart.CheckInPlaceholderScreen
 import tech.vauldex.dekita.ui.discover.DiscoverScreen
 import tech.vauldex.dekita.ui.discover.FavoritesScreen
 import tech.vauldex.dekita.ui.discover.HistoryScreen
@@ -69,6 +70,7 @@ import tech.vauldex.dekita.ui.store.StoreDetailScreen
 @Serializable data object FavoritesRoute
 @Serializable data object HistoryRoute
 @Serializable data object CartRoute
+@Serializable data class CheckInRoute(val orderNumber: Int, val storeName: String)
 
 // Auth screens sit outside the tab graphs so any tab, or the cart, can push them.
 /** [isRoot] after sign-out: the only screen left, offering "Browse as guest" instead of Close. */
@@ -175,10 +177,33 @@ fun AppShell(container: AppContainer, modifier: Modifier = Modifier) {
                 composable<CartRoute> { entry ->
                     CartReviewScreen(
                         viewModel = viewModel {
-                            CartReviewViewModel(container.cartRepository, container.storeRepository, container.authRepository)
+                            CartReviewViewModel(
+                                container.cartRepository,
+                                container.storeRepository,
+                                container.menuRepository,
+                                container.orderRepository,
+                                container.authRepository,
+                            )
                         },
                         onBack = { if (entry.isResumed()) navController.popBackStack() },
+                        // The cart is opened from its store's screen, so the menu is one step back.
+                        onBrowseMenu = { if (entry.isResumed()) navController.popBackStack() },
                         onSignInRequired = { if (entry.isResumed()) navController.navigate(SignInRoute()) },
+                        onDraftSaved = { number, storeName ->
+                            navController.navigate(CheckInRoute(number, storeName)) {
+                                // The cart is now a draft order, so Back from check-in skips the empty cart.
+                                popUpTo<CartRoute> { inclusive = true }
+                            }
+                        },
+                    )
+                }
+                composable<CheckInRoute> { entry ->
+                    val route = entry.toRoute<CheckInRoute>()
+                    CheckInPlaceholderScreen(
+                        orderNumber = route.orderNumber,
+                        storeName = route.storeName,
+                        onBack = { if (entry.isResumed()) navController.popBackStack() },
+                        onDone = { if (entry.isResumed()) navController.popBackStack<DiscoverRoute>(inclusive = false) },
                     )
                 }
             }
