@@ -44,6 +44,8 @@ data class Store(
     val queue: QueueStatus?,
     /** Picks a local placeholder illustration. The mockup loads no remote images. */
     val artKey: String,
+    /** Where the store is, for the check-in map. */
+    val location: GeoPoint,
     /** Names of the store's menu items, sent with the feed so Discover search can match dishes. */
     val itemNames: List<String> = emptyList(),
 ) {

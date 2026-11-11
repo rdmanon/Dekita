@@ -42,6 +42,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import tech.vauldex.dekita.R
 import tech.vauldex.dekita.domain.FulfillmentMode
+import tech.vauldex.dekita.domain.Order
 
 /** The search bar at the top of Discover. Search covers store names and item names. */
 @Composable
@@ -242,6 +243,36 @@ private fun ShortcutTile(
                     overflow = TextOverflow.Ellipsis,
                 )
             }
+        }
+    }
+}
+
+/** An in-store draft waiting for check-in. Tapping it goes back to the "On your way" screen. */
+@Composable
+internal fun DraftBanner(draft: Order, onResume: () -> Unit, modifier: Modifier = Modifier) {
+    Surface(
+        onClick = onResume,
+        shape = MaterialTheme.shapes.large,
+        color = MaterialTheme.colorScheme.primaryContainer,
+        contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+        modifier = modifier.fillMaxWidth(),
+    ) {
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
+        ) {
+            Icon(painterResource(R.drawable.ic_restaurant), contentDescription = null, modifier = Modifier.size(24.dp))
+            Column(verticalArrangement = Arrangement.spacedBy(2.dp), modifier = Modifier.weight(1f)) {
+                Text("Your Eat-In order is waiting", style = MaterialTheme.typography.titleMedium, maxLines = 1)
+                Text(
+                    "${draft.storeName} · ${draft.itemCount} items · ${draft.total.formatted()}",
+                    style = MaterialTheme.typography.labelMedium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            Text("Resume", style = MaterialTheme.typography.labelLarge)
         }
     }
 }

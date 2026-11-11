@@ -25,6 +25,8 @@ dependencies {
     implementation(libs.androidx.lifecycle.viewmodelCompose)
     implementation(libs.androidx.lifecycle.runtimeCompose)
     implementation(libs.androidx.navigation.compose)
+    // The check-in map (CHECKIN-01). iOS uses Apple's MapKit instead.
+    implementation(libs.maplibre.android.sdk)
 
     implementation(libs.compose.uiToolingPreview)
     debugImplementation(libs.compose.uiTooling)
@@ -40,6 +42,15 @@ android {
         targetSdk = libs.versions.android.targetSdk.get().toInt()
         versionCode = 1
         versionName = "1.0"
+
+        // The MapLibre style for the check-in map. The default is OpenFreeMap's Positron style: free,
+        // no key, OpenStreetMap data. It is an outside service still pending supplier review.
+        // Override with dekita.mapStyleUrl in ~/.gradle/gradle.properties or with -P; never commit a
+        // URL that carries an API key. MapLibre's demo style, with no streets and no extra supplier,
+        // is https://demotiles.maplibre.org/style.json.
+        val mapStyleUrl = providers.gradleProperty("dekita.mapStyleUrl")
+            .getOrElse("https://tiles.openfreemap.org/styles/positron")
+        buildConfigField("String", "MAP_STYLE_URL", "\"$mapStyleUrl\"")
     }
     packaging {
         resources {

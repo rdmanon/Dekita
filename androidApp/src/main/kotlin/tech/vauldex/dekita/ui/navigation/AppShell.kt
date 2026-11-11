@@ -39,6 +39,8 @@ import tech.vauldex.dekita.presentation.auth.OtpViewModel
 import tech.vauldex.dekita.presentation.auth.PhoneEntryViewModel
 import tech.vauldex.dekita.presentation.auth.SignInViewModel
 import tech.vauldex.dekita.presentation.cart.CartReviewViewModel
+import tech.vauldex.dekita.presentation.checkin.CheckInViewModel
+import tech.vauldex.dekita.presentation.checkin.QrScannerViewModel
 import tech.vauldex.dekita.presentation.discover.DiscoverViewModel
 import tech.vauldex.dekita.presentation.discover.FavoritesViewModel
 import tech.vauldex.dekita.presentation.discover.HistoryViewModel
@@ -51,7 +53,9 @@ import tech.vauldex.dekita.ui.auth.OtpScreen
 import tech.vauldex.dekita.ui.auth.PhoneEntryScreen
 import tech.vauldex.dekita.ui.auth.SignInScreen
 import tech.vauldex.dekita.ui.cart.CartReviewScreen
-import tech.vauldex.dekita.ui.cart.CheckInPlaceholderScreen
+import tech.vauldex.dekita.ui.checkin.CheckInScreen
+import tech.vauldex.dekita.ui.checkin.QrScannerScreen
+import tech.vauldex.dekita.ui.checkin.SeatCheckScreen
 import tech.vauldex.dekita.ui.discover.DiscoverScreen
 import tech.vauldex.dekita.ui.discover.FavoritesScreen
 import tech.vauldex.dekita.ui.discover.HistoryScreen
@@ -70,7 +74,6 @@ import tech.vauldex.dekita.ui.store.StoreDetailScreen
 @Serializable data object FavoritesRoute
 @Serializable data object HistoryRoute
 @Serializable data object CartRoute
-@Serializable data class CheckInRoute(val orderNumber: Int, val storeName: String)
 
 // Auth screens sit outside the tab graphs so any tab, or the cart, can push them.
 /** [isRoot] after sign-out: the only screen left, offering "Browse as guest" instead of Close. */
@@ -79,6 +82,11 @@ import tech.vauldex.dekita.ui.store.StoreDetailScreen
 @Serializable data class OtpRoute(val phoneE164: String)
 @Serializable data class EmailAuthRoute(val signUp: Boolean)
 @Serializable data object ForgotPasswordRoute
+
+// Check-in sits outside the tabs: it opens over Discover or Orders, and leaving it returns there.
+@Serializable data class CheckInRoute(val orderId: String)
+@Serializable data class QrScannerRoute(val orderId: String)
+@Serializable data class SeatCheckRoute(val orderId: String)
 
 private enum class TopLevelTab(
     val graph: Any,
@@ -138,6 +146,7 @@ fun AppShell(container: AppContainer, modifier: Modifier = Modifier) {
                         },
                         onFavoritesClick = { if (entry.isResumed()) navController.navigate(FavoritesRoute) },
                         onHistoryClick = { if (entry.isResumed()) navController.navigate(HistoryRoute) },
+                        onResumeDraft = { orderId -> if (entry.isResumed()) navController.navigate(CheckInRoute(orderId)) },
                     )
                 }
                 composable<FavoritesRoute> { entry ->
@@ -189,21 +198,12 @@ fun AppShell(container: AppContainer, modifier: Modifier = Modifier) {
                         // The cart is opened from its store's screen, so the menu is one step back.
                         onBrowseMenu = { if (entry.isResumed()) navController.popBackStack() },
                         onSignInRequired = { if (entry.isResumed()) navController.navigate(SignInRoute()) },
-                        onDraftSaved = { number, storeName ->
-                            navController.navigate(CheckInRoute(number, storeName)) {
+                        onDraftSaved = { orderId ->
+                            navController.navigate(CheckInRoute(orderId)) {
                                 // The cart is now a draft order, so Back from check-in skips the empty cart.
                                 popUpTo<CartRoute> { inclusive = true }
                             }
                         },
-                    )
-                }
-                composable<CheckInRoute> { entry ->
-                    val route = entry.toRoute<CheckInRoute>()
-                    CheckInPlaceholderScreen(
-                        orderNumber = route.orderNumber,
-                        storeName = route.storeName,
-                        onBack = { if (entry.isResumed()) navController.popBackStack() },
-                        onDone = { if (entry.isResumed()) navController.popBackStack<DiscoverRoute>(inclusive = false) },
                     )
                 }
             }
@@ -212,6 +212,7 @@ fun AppShell(container: AppContainer, modifier: Modifier = Modifier) {
                     OrdersScreen(
                         viewModel = viewModel { OrdersViewModel(container.orderRepository, container.authRepository) },
                         onSignIn = { if (entry.isResumed()) navController.navigate(SignInRoute()) },
+                        onCheckIn = { orderId -> if (entry.isResumed()) navController.navigate(CheckInRoute(orderId)) },
                     )
                 }
             }
@@ -227,6 +228,7 @@ fun AppShell(container: AppContainer, modifier: Modifier = Modifier) {
                 }
             }
             authDestinations(container, navController)
+            checkInDestinations(container, navController)
         }
     }
 }
@@ -298,6 +300,45 @@ private fun NavController.showSignInAfterSignOut() {
     navigate(SignInRoute(isRoot = true)) { popUpTo(graph.id) { inclusive = true } }
     // Tabs saved by earlier tab switches would otherwise come back on the next visit.
     listOf(DiscoverGraph, OrdersGraph, AccountGraph).forEach { clearBackStack(it) }
+}
+
+private fun NavGraphBuilder.checkInDestinations(container: AppContainer, navController: NavController) {
+    composable<CheckInRoute> { entry ->
+        val orderId = entry.toRoute<CheckInRoute>().orderId
+        CheckInScreen(
+            viewModel = viewModel {
+                CheckInViewModel(orderId, container.orderRepository, container.storeRepository, container.locationRepository)
+            },
+            onBack = { if (entry.isResumed()) navController.popBackStack() },
+            onScanQr = { if (entry.isResumed()) navController.navigate(QrScannerRoute(orderId)) },
+            onCheckedIn = { if (entry.isResumed()) navController.navigate(SeatCheckRoute(orderId)) },
+        )
+    }
+    composable<QrScannerRoute> { entry ->
+        val orderId = entry.toRoute<QrScannerRoute>().orderId
+        QrScannerScreen(
+            viewModel = viewModel {
+                QrScannerViewModel(orderId, container.orderRepository, container.storeRepository, container.qrScanner)
+            },
+            onClose = { if (entry.isResumed()) navController.popBackStack() },
+            // The scanner is done once it checks in, so Back from the seat check returns to check-in.
+            onContinue = {
+                if (entry.isResumed()) {
+                    navController.navigate(SeatCheckRoute(orderId)) { popUpTo<QrScannerRoute> { inclusive = true } }
+                }
+            },
+        )
+    }
+    composable<SeatCheckRoute> { entry ->
+        val orderId = entry.toRoute<SeatCheckRoute>().orderId
+        SeatCheckScreen(
+            viewModel = viewModel {
+                CheckInViewModel(orderId, container.orderRepository, container.storeRepository, container.locationRepository)
+            },
+            onBack = { if (entry.isResumed()) navController.popBackStack() },
+            onDone = { if (entry.isResumed()) navController.popBackStack<CheckInRoute>(inclusive = true) },
+        )
+    }
 }
 
 private fun NavController.navigateToTab(tab: TopLevelTab) {

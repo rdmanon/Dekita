@@ -222,6 +222,7 @@ class CartReviewViewModelTest {
 
         val saved = assertIs<CartReviewEvent.DraftSaved>(events.single())
         val draft = f.orders.orders.value.dataOrNull().orEmpty().first { it.number == saved.orderNumber }
+        assertEquals(draft.id, saved.orderId, "Check-in opens for the saved draft")
         assertEquals(OrderStatus.DRAFT, draft.status)
         assertEquals(FulfillmentMode.IN_STORE, draft.mode)
         assertEquals(Money.yen(980 + 450), draft.total)

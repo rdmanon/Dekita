@@ -7,8 +7,6 @@ enum DiscoverRoute: Hashable {
     case history
     case store(id: String, name: String)
     case cart
-    /// CART-01: after Eat-In saves a DRAFT order. Replaces the cart in the stack.
-    case checkIn(orderNumber: Int, storeName: String)
 }
 
 /// Opens the screen for a route. Attach with `.navigationDestination(for: DiscoverRoute.self)`.
@@ -21,7 +19,6 @@ struct DiscoverDestination: View {
         case .history: HistoryView()
         case let .store(id, name): StoreScreen(storeId: id, name: name)
         case .cart: CartReviewView()
-        case let .checkIn(orderNumber, storeName): CheckInPlaceholderView(orderNumber: orderNumber, storeName: storeName)
         }
     }
 }
@@ -227,5 +224,40 @@ struct LoadingPlaceholder: View {
         .onAppear { dimmed = true }
         .accessibilityElement()
         .accessibilityLabel("Loading stores")
+    }
+}
+
+/// An in-store draft waiting for check-in. Tapping it goes back to the "On your way" screen.
+struct DraftBanner: View {
+    let draft: Order
+    let onResume: () -> Void
+
+    var body: some View {
+        Button(action: onResume) {
+            HStack(spacing: 10) {
+                Image(systemName: "fork.knife")
+                    .font(.system(size: 17, weight: .semibold))
+                    .foregroundStyle(.tint)
+                    .frame(width: 36, height: 36)
+                    .background(Palette.tileIcon, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("Your Eat-In order is waiting").font(.subheadline.weight(.semibold))
+                    Text("\(draft.storeName) · \(draft.itemCount) items · \(draft.total.formatted())")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                Text("Resume")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.tint)
+            }
+            .padding(12)
+            .background(Palette.card, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+            .contentShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .accessibilityElement(children: .combine)
+        .accessibilityAddTraits(.isButton)
     }
 }

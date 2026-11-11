@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.ViewModelStore
 import androidx.lifecycle.viewmodel.viewModelFactory
+import kotlin.math.roundToInt
 import kotlin.reflect.KClass
 import kotlin.time.Duration.Companion.milliseconds
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -20,7 +21,9 @@ import tech.vauldex.dekita.data.LoadState
 import tech.vauldex.dekita.data.mock.SeedAuth
 import tech.vauldex.dekita.data.dataOrNull
 import tech.vauldex.dekita.di.AppContainer
+import tech.vauldex.dekita.domain.CheckInQr
 import tech.vauldex.dekita.domain.DialCode
+import tech.vauldex.dekita.domain.Geofence
 import tech.vauldex.dekita.domain.Menu
 import tech.vauldex.dekita.domain.MenuItem
 import tech.vauldex.dekita.domain.Order
@@ -44,6 +47,10 @@ import tech.vauldex.dekita.presentation.auth.SignInViewModel
 import tech.vauldex.dekita.presentation.cart.CartReviewEvent
 import tech.vauldex.dekita.presentation.cart.CartReviewUiState
 import tech.vauldex.dekita.presentation.cart.CartReviewViewModel
+import tech.vauldex.dekita.presentation.checkin.CheckInUiState
+import tech.vauldex.dekita.presentation.checkin.CheckInViewModel
+import tech.vauldex.dekita.presentation.checkin.QrScannerUiState
+import tech.vauldex.dekita.presentation.checkin.QrScannerViewModel
 import tech.vauldex.dekita.presentation.discover.DiscoverUiState
 import tech.vauldex.dekita.presentation.discover.DiscoverViewModel
 import tech.vauldex.dekita.presentation.discover.FavoritesUiState
@@ -169,6 +176,28 @@ class OrdersBridge : ScreenBridge() {
     fun watch(onState: (OrdersUiState) -> Unit): FlowWatch = viewModel.state.watch(onState)
 }
 
+/** "On your way" and the seat check placeholder, for one in-store draft. */
+class CheckInBridge(orderId: String) : ScreenBridge() {
+    val viewModel: CheckInViewModel = makeViewModel(CheckInViewModel::class) {
+        CheckInViewModel(orderId, container.orderRepository, container.storeRepository, container.locationRepository)
+    }
+
+    val currentState: CheckInUiState get() = viewModel.state.value
+
+    fun watch(onState: (CheckInUiState) -> Unit): FlowWatch = viewModel.state.watch(onState)
+}
+
+/** The QR fallback. Its view model listens for scans for as long as the screen is open. */
+class QrScannerBridge(orderId: String) : ScreenBridge() {
+    val viewModel: QrScannerViewModel = makeViewModel(QrScannerViewModel::class) {
+        QrScannerViewModel(orderId, container.orderRepository, container.storeRepository, container.qrScanner)
+    }
+
+    val currentState: QrScannerUiState get() = viewModel.state.value
+
+    fun watch(onState: (QrScannerUiState) -> Unit): FlowWatch = viewModel.state.watch(onState)
+}
+
 class AccountBridge : ScreenBridge() {
     val viewModel: AccountViewModel = makeViewModel(AccountViewModel::class) {
         AccountViewModel(container.authRepository, container.paymentRepository, container.inboxRepository)
@@ -267,6 +296,8 @@ data class DebugState(
     val stores: List<Store>?,
     /** CART-01: the cart store's menu items, for "Stop Selling". Empty without a cart or before its menu loads. */
     val cartItems: List<MenuItem>,
+    /** The in-store draft's check-in status, such as "Draft #44 at Test Ramen Bar: 320 m, out of range". Null with no draft. */
+    val checkInStatus: String?,
 )
 
 /** The SwiftUI debug panel's controls over the mock data layer. Swift only shows the panel in debug builds. */
@@ -286,6 +317,7 @@ class DebugBridge {
         session = sessionLabel(container.authRepository.session.value?.method),
         stores = container.storeRepository.stores.value.dataOrNull(),
         cartItems = cartStoreId()?.let { container.menuRepository.menu(it).value.dataOrNull()?.items }.orEmpty(),
+        checkInStatus = checkInStatus(),
     )
 
     private fun cartStoreId(): String? = container.cartRepository.cart.value?.storeId
@@ -297,7 +329,9 @@ class DebugBridge {
             config.forceSsoFailure,
             container.authRepository.session,
             container.storeRepository.stores,
-        ) { _, _, _, _, _ -> }
+            container.orderRepository.orders,
+            container.locationRepository.customerLocation,
+        ) { _ -> }
             .combine(cartMenu()) { _, _ -> currentState }
             .watch(onState)
 
@@ -345,6 +379,39 @@ class DebugBridge {
     }
 
     fun resetMockData() = container.resetMockData()
+
+    // CHECKIN-01: arrival and QR scans, in place of GPS and the camera. Each acts on the in-store draft.
+
+    val defaultTableNumber: String = "12"
+
+    fun isValidTableNumber(tableNumber: String): Boolean = CheckInQr.isValidTableNumber(tableNumber)
+
+    fun simulateArrival() = container.checkInSimulator.simulateArrival()
+
+    fun simulateLeaving() = container.checkInSimulator.simulateLeaving()
+
+    fun scanStoreQr() = container.checkInSimulator.scanStoreQr()
+
+    fun scanTableQr(tableNumber: String) = container.checkInSimulator.scanTableQr(tableNumber)
+
+    fun scanOtherStoreQr() = container.checkInSimulator.scanOtherStoreQr()
+
+    fun scanInvalidQr() = container.checkInSimulator.scanInvalidQr()
+
+    private fun checkInStatus(): String? {
+        val draft = container.orderRepository.orders.value.dataOrNull()
+            ?.filter { it.awaitsCheckIn }
+            ?.maxByOrNull { it.createdAt }
+            ?: return null
+        val storeAt = container.storeRepository.stores.value.dataOrNull()?.firstOrNull { it.id == draft.storeId }?.location
+        val distance = container.locationRepository.customerLocation.value?.let { storeAt?.distanceTo(it)?.roundToInt() }
+        val where = when {
+            distance == null -> "location unknown"
+            Geofence.isInRange(distance) -> "$distance m, in range"
+            else -> "$distance m, out of range"
+        }
+        return "Draft #${draft.number} at ${draft.storeName}: $where"
+    }
 
     private fun sessionLabel(method: SignInMethod?): String =
         method?.let { "signed in with ${it.name.lowercase()}" } ?: "guest"

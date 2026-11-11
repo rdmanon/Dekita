@@ -3,6 +3,8 @@ package tech.vauldex.dekita.presentation
 import tech.vauldex.dekita.domain.BusinessType
 import tech.vauldex.dekita.domain.CartLine
 import tech.vauldex.dekita.domain.CheckoutAction
+import tech.vauldex.dekita.domain.CheckIn
+import tech.vauldex.dekita.domain.CheckInMethod
 import tech.vauldex.dekita.domain.CompletionReason
 import tech.vauldex.dekita.domain.FulfillmentMode
 import tech.vauldex.dekita.domain.MenuItem
@@ -99,6 +101,14 @@ val CompletionReason.label: String
     get() = when (this) {
         CompletionReason.CUSTOMER_CONFIRMED -> "Confirmed by you"
         CompletionReason.AUTO_COMPLETED -> "Auto-completed"
+    }
+
+/** How the customer checked in, for the seat check and the order ticket. */
+val CheckIn.label: String
+    get() = when (method) {
+        CheckInMethod.GEOFENCE -> "Checked in by location"
+        CheckInMethod.STORE_QR -> "Checked in with the store QR"
+        CheckInMethod.TABLE_QR -> "Checked in at table $tableNumber"
     }
 
 /** The status filter's chip text. */

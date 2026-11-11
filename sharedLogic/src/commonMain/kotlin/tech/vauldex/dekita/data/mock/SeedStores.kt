@@ -2,6 +2,7 @@ package tech.vauldex.dekita.data.mock
 
 import tech.vauldex.dekita.domain.BusinessType
 import tech.vauldex.dekita.domain.FavoriteItem
+import tech.vauldex.dekita.domain.GeoPoint
 import tech.vauldex.dekita.domain.QueueStatus
 import tech.vauldex.dekita.domain.Store
 import tech.vauldex.dekita.domain.StoreAvailability
@@ -19,6 +20,19 @@ internal object SeedStoreIds {
     const val HAIR_SALON = "store-test-hair-salon"
 }
 
+/**
+ * Where the mock customer starts: an arbitrary point in central Tokyo, not a real address.
+ * Each store sits its walking time away (about 80 m a minute) in its own direction, so the map agrees
+ * with the walking times, and check-in starts each walk from here.
+ */
+internal val seedCustomerLocation = GeoPoint(35.6655, 139.7580)
+
+private fun around(walkMinutes: Int, bearingDegrees: Double) =
+    seedCustomerLocation.offset(walkMinutes * METERS_PER_WALK_MINUTE.toDouble(), bearingDegrees)
+
+/** Roughly how far a customer walks in a minute, to turn walking times into distances. */
+internal const val METERS_PER_WALK_MINUTE = 80
+
 // The list order sets the order of the category chips on Discover (first appearance wins),
 // so restaurants come first, as in the design. Discover sorts the stores themselves by walking time.
 private val baseStores: List<Store> = listOf(
@@ -32,6 +46,7 @@ private val baseStores: List<Store> = listOf(
         openLabel = "Open for Lunch",
         queue = QueueStatus(ordersAhead = 3, estimatedWaitMinutes = 8),
         artKey = "ramen",
+        location = around(walkMinutes = 4, bearingDegrees = 45.0),
     ),
     Store(
         id = SeedStoreIds.CURRY_STAND,
@@ -43,6 +58,7 @@ private val baseStores: List<Store> = listOf(
         openLabel = "Open for Lunch",
         queue = QueueStatus(ordersAhead = 0, estimatedWaitMinutes = 0),
         artKey = "curry",
+        location = around(walkMinutes = 6, bearingDegrees = 120.0),
     ),
     Store(
         id = SeedStoreIds.SOBA_HOUSE,
@@ -54,6 +70,7 @@ private val baseStores: List<Store> = listOf(
         openLabel = null,
         queue = null,
         artKey = "soba",
+        location = around(walkMinutes = 7, bearingDegrees = 200.0),
     ),
     Store(
         id = SeedStoreIds.BENTO_KITCHEN,
@@ -65,6 +82,7 @@ private val baseStores: List<Store> = listOf(
         openLabel = "Open for Lunch",
         queue = QueueStatus(ordersAhead = 18, estimatedWaitMinutes = 35),
         artKey = "bento",
+        location = around(walkMinutes = 5, bearingDegrees = 300.0),
     ),
     Store(
         id = SeedStoreIds.MASSAGE_STUDIO,
@@ -76,6 +94,7 @@ private val baseStores: List<Store> = listOf(
         openLabel = "Open until 21:00",
         queue = QueueStatus(ordersAhead = 1, estimatedWaitMinutes = 25),
         artKey = "massage",
+        location = around(walkMinutes = 8, bearingDegrees = 10.0),
     ),
     Store(
         id = SeedStoreIds.MART,
@@ -87,6 +106,7 @@ private val baseStores: List<Store> = listOf(
         openLabel = "Open 24 hours",
         queue = QueueStatus(ordersAhead = 0, estimatedWaitMinutes = 0),
         artKey = "convenience",
+        location = around(walkMinutes = 3, bearingDegrees = 160.0),
     ),
     Store(
         id = SeedStoreIds.UDON_HALL,
@@ -98,6 +118,7 @@ private val baseStores: List<Store> = listOf(
         openLabel = "Open for Lunch",
         queue = QueueStatus(ordersAhead = 15, estimatedWaitMinutes = 25),
         artKey = "udon",
+        location = around(walkMinutes = 9, bearingDegrees = 250.0),
     ),
     // A long Japanese name, so QA can check that store cards truncate it with an ellipsis.
     Store(
@@ -110,6 +131,7 @@ private val baseStores: List<Store> = listOf(
         openLabel = "Open for Lunch",
         queue = QueueStatus(ordersAhead = 5, estimatedWaitMinutes = 12),
         artKey = "teishoku",
+        location = around(walkMinutes = 12, bearingDegrees = 80.0),
     ),
     // Farther than every walking-distance filter, so the 15 min filter still hides something.
     Store(
@@ -122,6 +144,7 @@ private val baseStores: List<Store> = listOf(
         openLabel = "Open until 20:00",
         queue = QueueStatus(ordersAhead = 0, estimatedWaitMinutes = 0),
         artKey = "hair",
+        location = around(walkMinutes = 18, bearingDegrees = 330.0),
     ),
 )
 

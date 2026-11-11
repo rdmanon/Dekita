@@ -14,12 +14,16 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -28,11 +32,14 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import kotlin.math.roundToInt
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
 import tech.vauldex.dekita.data.dataOrNull
 import tech.vauldex.dekita.data.mock.SeedAuth
 import tech.vauldex.dekita.di.AppContainer
+import tech.vauldex.dekita.domain.CheckInQr
+import tech.vauldex.dekita.domain.Geofence
 import tech.vauldex.dekita.domain.StoreAvailability
 import tech.vauldex.dekita.getPlatform
 
@@ -49,6 +56,7 @@ internal val debugSections: List<DebugSection> = listOf(
     DebugSection("Discover") { container -> DiscoverControls(container) },
     DebugSection("Auth") { container -> AuthControls(container) },
     DebugSection("Cart") { container -> CartControls(container) },
+    DebugSection("Check-in") { container -> CheckInControls(container) },
 )
 
 @Composable
@@ -93,7 +101,7 @@ private fun BuildInfo() {
     val platform = remember { getPlatform().name }
     Text("Platform: $platform", style = MaterialTheme.typography.bodyMedium)
     Text("Build: debug", style = MaterialTheme.typography.bodyMedium)
-    Text("Data: in-memory mock data, no network", style = MaterialTheme.typography.bodyMedium)
+    Text("Data: in-memory mock data. Only the check-in map loads from the network.", style = MaterialTheme.typography.bodyMedium)
 }
 
 private val loadingDelayOptions = listOf(0.milliseconds, 800.milliseconds, 2.seconds)
@@ -216,6 +224,60 @@ private fun CartControls(container: AppContainer) {
             }
         }
     }
+}
+
+/** CHECKIN-01: arrival and QR scans, in place of GPS and the camera. Each acts on the in-store draft. */
+@Composable
+private fun CheckInControls(container: AppContainer) {
+    val orders by container.orderRepository.orders.collectAsStateWithLifecycle()
+    val stores by container.storeRepository.stores.collectAsStateWithLifecycle()
+    val customer by container.locationRepository.customerLocation.collectAsStateWithLifecycle()
+    val simulator = container.checkInSimulator
+    var tableNumber by rememberSaveable { mutableStateOf("12") }
+
+    val draft = orders.dataOrNull()?.filter { it.awaitsCheckIn }?.maxByOrNull { it.createdAt }
+    if (draft == null) {
+        Text("No in-store draft to check in. Reset mock data to get the seed draft back.", style = MaterialTheme.typography.bodyMedium)
+        return
+    }
+    val storeAt = stores.dataOrNull()?.firstOrNull { it.id == draft.storeId }?.location
+    val distance = customer?.let { storeAt?.distanceTo(it)?.roundToInt() }
+    val where = when {
+        distance == null -> "location unknown"
+        Geofence.isInRange(distance) -> "$distance m, in range"
+        else -> "$distance m, out of range"
+    }
+    Text("Draft #${draft.number} at ${draft.storeName}: $where", style = MaterialTheme.typography.bodyMedium)
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+        Button(onClick = simulator::simulateArrival, modifier = Modifier.weight(1f)) { Text("Simulate arrival") }
+        OutlinedButton(onClick = simulator::simulateLeaving, modifier = Modifier.weight(1f)) { Text("Simulate leaving") }
+    }
+
+    Text(
+        "QR scans reach the scanner only while it's open. A result pauses scanning until Scan again.",
+        style = MaterialTheme.typography.bodyMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+    OutlinedButton(onClick = simulator::scanStoreQr) { Text("Simulate store QR") }
+    val validTable = CheckInQr.isValidTableNumber(tableNumber)
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        OutlinedTextField(
+            value = tableNumber,
+            onValueChange = { tableNumber = it.take(4) },
+            label = { Text("Table") },
+            isError = !validTable,
+            supportingText = if (validTable) null else ({ Text("1–4 letters or digits") }),
+            singleLine = true,
+            modifier = Modifier.weight(1f),
+        )
+        OutlinedButton(onClick = { simulator.scanTableQr(tableNumber) }, enabled = validTable) { Text("Simulate table QR") }
+    }
+    OutlinedButton(onClick = simulator::scanOtherStoreQr) { Text("Simulate other-store QR") }
+    OutlinedButton(onClick = simulator::scanInvalidQr) { Text("Simulate invalid QR") }
 }
 
 private const val HOLD_MILLIS = 1_000L
