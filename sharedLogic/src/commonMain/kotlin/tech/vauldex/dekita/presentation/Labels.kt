@@ -4,6 +4,7 @@ import tech.vauldex.dekita.domain.BusinessType
 import tech.vauldex.dekita.domain.CompletionReason
 import tech.vauldex.dekita.domain.FulfillmentMode
 import tech.vauldex.dekita.domain.OrderStatus
+import tech.vauldex.dekita.domain.QueueStatus
 import tech.vauldex.dekita.domain.Store
 import tech.vauldex.dekita.domain.StoreAvailability
 import tech.vauldex.dekita.domain.StoreBadge
@@ -20,6 +21,13 @@ val StoreBadge.label: String
         StoreBadge.PAUSED -> "Paused"
         StoreBadge.FULL -> "Full"
     }
+
+/** The live queue card's headline. */
+fun QueueStatus.headline(): String = when (ordersAhead) {
+    0 -> "No wait"
+    1 -> "1 order ahead"
+    else -> "$ordersAhead orders ahead"
+}
 
 /** The queue line on a store card: "3 ahead · ~8 min", "No wait", "Not accepting orders", or empty. */
 fun Store.queueLabel(): String {

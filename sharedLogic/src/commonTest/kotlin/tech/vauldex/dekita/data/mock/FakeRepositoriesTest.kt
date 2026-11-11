@@ -19,6 +19,7 @@ import tech.vauldex.dekita.data.dataOrNull
 import tech.vauldex.dekita.domain.CartLine
 import tech.vauldex.dekita.domain.FulfillmentMode
 import tech.vauldex.dekita.domain.OrderStatus
+import tech.vauldex.dekita.domain.QueueStatus
 import tech.vauldex.dekita.domain.StoreAvailability
 import tech.vauldex.dekita.domain.TransitionResult
 
@@ -74,6 +75,41 @@ class FakeRepositoriesTest {
 
         finishLoading()
         assertIs<LoadState.Success<*>>(repository.stores.value)
+    }
+
+    private fun FakeStoreRepository.queueOf(storeId: String) =
+        stores.value.dataOrNull()!!.first { it.id == storeId }.queue
+
+    @Test
+    fun openQueuesMoveEachTickAndFreezeWhenLiveQueueIsOff() = runTest {
+        val config = MockConfig()
+        val repository = FakeStoreRepository(backgroundScope, config)
+        finishLoading()
+
+        advanceTimeBy(MockConfig.QUEUE_TICK_INTERVAL)
+        runCurrent()
+        assertEquals(QueueStatus(4, 11), repository.queueOf(SeedStoreIds.RAMEN_BAR))
+        assertEquals(QueueStatus(0, 0), repository.queueOf(SeedStoreIds.MART))
+        assertNull(repository.queueOf(SeedStoreIds.SOBA_HOUSE))
+        assertEquals(QueueStatus(18, 35), repository.queueOf(SeedStoreIds.BENTO_KITCHEN))
+
+        config.liveQueue.value = false
+        advanceTimeBy(MockConfig.QUEUE_TICK_INTERVAL * 3)
+        runCurrent()
+        assertEquals(QueueStatus(4, 11), repository.queueOf(SeedStoreIds.RAMEN_BAR))
+    }
+
+    @Test
+    fun udonHallCrossesTheHighQueueThreshold() = runTest {
+        val repository = FakeStoreRepository(backgroundScope, MockConfig())
+        finishLoading()
+
+        val ahead = List(6) {
+            advanceTimeBy(MockConfig.QUEUE_TICK_INTERVAL)
+            runCurrent()
+            repository.queueOf(SeedStoreIds.UDON_HALL)!!.ordersAhead
+        }
+        assertEquals(listOf(16, 17, 16, 15, 14, 15), ahead)
     }
 
     @Test

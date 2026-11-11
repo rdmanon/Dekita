@@ -2,12 +2,17 @@ package tech.vauldex.dekita.ui.components
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -15,8 +20,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.unit.dp
 import tech.vauldex.dekita.domain.BusinessType
+import tech.vauldex.dekita.domain.Store
 import tech.vauldex.dekita.domain.StoreAvailability
 import tech.vauldex.dekita.domain.StoreBadge
+import tech.vauldex.dekita.presentation.headline
 import tech.vauldex.dekita.presentation.label
 import tech.vauldex.dekita.ui.theme.BadgeColors
 import tech.vauldex.dekita.ui.theme.DekitaTheme
@@ -102,4 +109,39 @@ fun groupedShape(index: Int, count: Int): Shape {
         bottomStart = if (index == count - 1) outer else inner,
         bottomEnd = if (index == count - 1) outer else inner,
     )
+}
+
+/** The store's live queue as a card. Shows nothing when the store has no queue (paused). Reused by the cart. */
+@Composable
+fun LiveQueueCounter(store: Store, modifier: Modifier = Modifier) {
+    val queue = store.queue ?: return
+    Surface(color = MaterialTheme.colorScheme.surfaceContainer, shape = MaterialTheme.shapes.large, modifier = modifier) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
+            modifier = Modifier.fillMaxWidth().padding(16.dp),
+        ) {
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(queue.headline(), style = MaterialTheme.typography.titleMedium)
+                    if (queue.isHigh) StatusPill("Busy", DekitaTheme.colors.full)
+                }
+                Text(
+                    when {
+                        store.availability == StoreAvailability.FULL -> "Not taking new orders"
+                        queue.estimatedWaitMinutes == 0 -> "Updates live"
+                        else -> "About ${queue.estimatedWaitMinutes} min wait · updates live"
+                    },
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            if (store.isAcceptingOrders) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Box(Modifier.size(8.dp).background(DekitaTheme.colors.liveDot, CircleShape))
+                    Text("Live", style = MaterialTheme.typography.labelMedium, color = DekitaTheme.colors.open.content)
+                }
+            }
+        }
+    }
 }

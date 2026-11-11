@@ -1,8 +1,6 @@
 package tech.vauldex.dekita.ui.store
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -12,7 +10,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconToggleButton
@@ -43,14 +40,16 @@ import tech.vauldex.dekita.domain.StoreAvailability
 import tech.vauldex.dekita.presentation.store.StoreDetailViewModel
 import tech.vauldex.dekita.ui.components.AvailabilityBadge
 import tech.vauldex.dekita.ui.components.BusinessTypeBadge
+import tech.vauldex.dekita.ui.components.LiveQueueCounter
 import tech.vauldex.dekita.ui.components.LoadingIndicator
 import tech.vauldex.dekita.ui.components.SectionTitle
 import tech.vauldex.dekita.ui.components.StatusPill
+import tech.vauldex.dekita.ui.components.StoreArt
 import tech.vauldex.dekita.ui.theme.DekitaTheme
 import tech.vauldex.dekita.ui.theme.Dimens
 
 /**
- * Placeholder store screen that shows the seeded menu states. The real screen is a later ticket.
+ * Store header with the live queue. The menu list below is still a placeholder until MENU-01.
  * The iOS app passes [showTopBar] false: its SwiftUI navigation bar shows the title, back and favorite buttons.
  */
 @Composable
@@ -109,6 +108,22 @@ fun StoreDetailScreen(viewModel: StoreDetailViewModel, onBack: () -> Unit, showT
 @Composable
 private fun StoreHeader(store: Store) {
     Column(verticalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.padding(top = 8.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+            StoreArt(store, Modifier.size(72.dp))
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(
+                    store.name,
+                    style = MaterialTheme.typography.headlineSmall,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    "${store.category} · ${store.walkMinutes} min walk",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             BusinessTypeBadge(store.businessType)
             AvailabilityBadge(store.availability)
@@ -116,44 +131,18 @@ private fun StoreHeader(store: Store) {
                 StatusPill(it, DekitaTheme.colors.open)
             }
         }
-        Text(
-            "${store.category} · ${store.walkMinutes} min walk",
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        Surface(color = MaterialTheme.colorScheme.surfaceContainer, shape = MaterialTheme.shapes.large) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(16.dp),
-                modifier = Modifier.fillMaxWidth().padding(16.dp),
+        LiveQueueCounter(store)
+        if (!store.isAcceptingOrders) {
+            Surface(
+                color = DekitaTheme.colors.paused.container,
+                contentColor = DekitaTheme.colors.paused.content,
+                shape = MaterialTheme.shapes.large,
             ) {
-                val queue = store.queue
-                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    when {
-                        store.availability == StoreAvailability.PAUSED -> {
-                            Text("Not accepting orders", style = MaterialTheme.typography.titleMedium)
-                            Text("This store has paused ordering for now.", style = MaterialTheme.typography.bodyMedium)
-                        }
-                        queue != null -> {
-                            Text("${queue.ordersAhead} orders ahead", style = MaterialTheme.typography.titleMedium)
-                            Text(
-                                if (store.availability == StoreAvailability.FULL) {
-                                    "Full right now · not taking new orders"
-                                } else {
-                                    "About ${queue.estimatedWaitMinutes} min wait · updates live"
-                                },
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
-                    }
-                }
-                if (store.isAcceptingOrders) {
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Box(Modifier.size(8.dp).background(DekitaTheme.colors.liveDot, CircleShape))
-                        Text("Live", style = MaterialTheme.typography.labelMedium, color = DekitaTheme.colors.open.content)
-                    }
-                }
+                Text(
+                    "Currently at full capacity - Not accepting new orders",
+                    style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.fillMaxWidth().padding(16.dp),
+                )
             }
         }
     }

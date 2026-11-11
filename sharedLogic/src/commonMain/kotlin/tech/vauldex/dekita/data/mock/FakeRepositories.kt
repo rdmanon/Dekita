@@ -3,12 +3,14 @@ package tech.vauldex.dekita.data.mock
 import kotlin.time.Clock
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.getAndUpdate
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.updateAndGet
+import kotlinx.coroutines.launch
 import tech.vauldex.dekita.data.CartRepository
 import tech.vauldex.dekita.data.InboxRepository
 import tech.vauldex.dekita.data.LoadState
@@ -68,9 +70,16 @@ class FakeStoreRepository(
     private val failNext = MutableStateFlow(false)
 
     private var loadJob: Job? = null
+    private var queueTicks = 0
 
     init {
         refresh()
+        scope.launch {
+            while (true) {
+                delay(MockConfig.QUEUE_TICK_INTERVAL)
+                if (config.liveQueue.value) tickQueues()
+            }
+        }
     }
 
     override fun refresh() {
@@ -104,6 +113,7 @@ class FakeStoreRepository(
     }
 
     override fun reset() {
+        queueTicks = 0
         _favoriteStoreIds.value = seedFavoriteStoreIds
         _favoriteItems.value = seedFavoriteItems
         feed.value = seedStores
@@ -120,6 +130,30 @@ class FakeStoreRepository(
             openLabel = openLabel ?: seed?.openLabel ?: "Open for Lunch",
         )
     }
+
+    private fun tickQueues() {
+        queueTicks++
+        val offset = QUEUE_OFFSETS[queueTicks % QUEUE_OFFSETS.size]
+        _stores.update { state ->
+            val stores = (state as? LoadState.Success)?.data ?: return@update state
+            LoadState.Success(stores.map { it.withQueueOffset(offset) })
+        }
+    }
+}
+
+// A fixed pattern instead of random steps, so tests and demos are repeatable.
+private val QUEUE_OFFSETS = listOf(0, 1, 2, 1, 0, -1)
+
+private val seedQueues: Map<String, QueueStatus?> = seedStores.associate { it.id to it.queue }
+
+/** Moves an open store's queue around its seed value. Paused, full and empty queues stay as seeded. */
+private fun Store.withQueueOffset(offset: Int): Store {
+    val seed = seedQueues[id] ?: return this
+    if (availability != StoreAvailability.OPEN || seed.ordersAhead == 0) return this
+    val ahead = (seed.ordersAhead + offset).coerceAtLeast(0)
+    // Keeps the seed's minutes per order, rounded half up.
+    val wait = (seed.estimatedWaitMinutes * ahead + seed.ordersAhead / 2) / seed.ordersAhead
+    return copy(queue = QueueStatus(ahead, wait))
 }
 
 class FakeMenuRepository(

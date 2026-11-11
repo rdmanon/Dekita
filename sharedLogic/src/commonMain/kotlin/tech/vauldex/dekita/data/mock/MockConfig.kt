@@ -2,6 +2,7 @@ package tech.vauldex.dekita.data.mock
 
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.milliseconds
+import kotlin.time.Duration.Companion.seconds
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -13,8 +14,12 @@ import tech.vauldex.dekita.data.LoadState
 class MockConfig(loadingDelay: Duration = DEFAULT_LOADING_DELAY) {
     val loadingDelay = MutableStateFlow(loadingDelay)
 
+    /** When false, the mock queue counts stop changing, so QA can check exact values. */
+    val liveQueue = MutableStateFlow(true)
+
     companion object {
         val DEFAULT_LOADING_DELAY = 800.milliseconds
+        val QUEUE_TICK_INTERVAL = 5.seconds
     }
 }
 
