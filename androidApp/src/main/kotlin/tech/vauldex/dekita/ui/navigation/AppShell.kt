@@ -165,6 +165,7 @@ fun AppShell(container: AppContainer, modifier: Modifier = Modifier) {
                                 container.storeRepository,
                                 container.menuRepository,
                                 container.cartRepository,
+                                container.menuSimulator,
                             )
                         },
                         onBack = { if (entry.isResumed()) navController.popBackStack() },

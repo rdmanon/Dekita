@@ -4,6 +4,9 @@ import tech.vauldex.dekita.domain.BusinessType
 import tech.vauldex.dekita.domain.CompletionReason
 import tech.vauldex.dekita.domain.FulfillmentMode
 import tech.vauldex.dekita.domain.MenuItem
+import tech.vauldex.dekita.domain.ModifierGroup
+import tech.vauldex.dekita.domain.ModifierOption
+import tech.vauldex.dekita.domain.Money
 import tech.vauldex.dekita.domain.OrderStatus
 import tech.vauldex.dekita.domain.QueueStatus
 import tech.vauldex.dekita.domain.Store
@@ -105,3 +108,25 @@ val StoreAvailability.filterLabel: String
 
 val WalkLimit.label: String
     get() = "≤ $maxMinutes min"
+
+/** The item sheet's message when the item sold out while it was open. */
+const val ITEM_SOLD_OUT_MESSAGE = "This item just sold out, so it can't be added."
+
+/** The item sheet's message when the store is paused or full. */
+const val STORE_NOT_TAKING_ORDERS_MESSAGE = "This store isn't taking orders right now."
+
+/** "Required" or "Choose up to 3", shown next to a modifier group's name. */
+val ModifierGroup.ruleLabel: String
+    get() = when {
+        isRequired && maxSelections == 1 -> "Required"
+        isRequired -> "Choose $minSelections to $maxSelections"
+        maxSelections == 1 -> "Optional"
+        else -> "Choose up to $maxSelections"
+    }
+
+/** "+¥120", or empty for a free option. */
+val ModifierOption.priceLabel: String
+    get() = if (priceDelta == Money.ZERO) "" else "+${priceDelta.formatted()}"
+
+/** The item sheet's button text, for example "Add · ¥1,100". */
+fun addButtonLabel(total: Money): String = "Add · ${total.formatted()}"
