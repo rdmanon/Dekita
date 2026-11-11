@@ -7,8 +7,6 @@ enum DiscoverRoute: Hashable {
     case history
     case store(id: String, name: String)
     case cart
-    /// Check-in for an Eat-In draft (SEAT-01). Replaces the cart in the stack after "Head to store".
-    case checkIn(orderId: String)
 }
 
 /// Opens the screen for a route. Attach with `.navigationDestination(for: DiscoverRoute.self)`.
@@ -21,7 +19,6 @@ struct DiscoverDestination: View {
         case .history: HistoryView()
         case let .store(id, name): StoreScreen(storeId: id, name: name)
         case .cart: CartReviewView()
-        case let .checkIn(orderId): CheckInView(orderId: orderId)
         }
     }
 }
@@ -230,30 +227,37 @@ struct LoadingPlaceholder: View {
     }
 }
 
-/// SEAT-01: a draft kept from check-in, so the customer can pick it up again. Tapping it resumes check-in.
+/// An in-store draft waiting for check-in. Tapping it goes back to the "On your way" screen.
 struct DraftBanner: View {
-    let order: Order
+    let draft: Order
+    let onResume: () -> Void
 
     var body: some View {
-        NavigationLink(value: DiscoverRoute.checkIn(orderId: order.id)) {
-            HStack(spacing: 14) {
+        Button(action: onResume) {
+            HStack(spacing: 10) {
                 Image(systemName: "fork.knife")
-                    .font(.title3)
-                    .foregroundStyle(Palette.action)
-                    .frame(width: 40, height: 40)
+                    .font(.system(size: 17, weight: .semibold))
+                    .foregroundStyle(.tint)
+                    .frame(width: 36, height: 36)
                     .background(Palette.tileIcon, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(LabelsKt.draftBannerTitle(storeName: order.storeName)).font(.headline).foregroundStyle(.primary)
-                    Text(order.itemsLabel).font(.subheadline).foregroundStyle(.secondary)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("Your Eat-In order is waiting").font(.subheadline.weight(.semibold))
+                    Text("\(draft.storeName) · \(draft.itemCount) items · \(draft.total.formatted())")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
                 }
-                Spacer()
-                Text(LabelsKt.RESUME_CHECK_IN).font(.subheadline.weight(.semibold)).foregroundStyle(Palette.action)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                Text("Resume")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.tint)
             }
-            .padding(14)
+            .padding(12)
             .background(Palette.card, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+            .contentShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
         }
         .buttonStyle(.plain)
         .accessibilityElement(children: .combine)
-        .accessibilityHint(LabelsKt.RESUME_CHECK_IN)
+        .accessibilityAddTraits(.isButton)
     }
 }

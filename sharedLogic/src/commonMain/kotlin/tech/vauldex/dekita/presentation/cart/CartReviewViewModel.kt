@@ -94,8 +94,8 @@ sealed interface CartReviewEvent {
     /** "Pay now" when signed in. Payment is a later ticket (PAY-01), so this only says so; the cart is kept. */
     data object PaymentComingLater : CartReviewEvent
 
-    /** "Head to store" saved the cart as a DRAFT order. Show check-in for [orderId] (SEAT-01). */
-    data class DraftSaved(val orderId: String) : CartReviewEvent
+    /** "Head to store" saved the cart as a DRAFT order. Show check-in (CHECKIN-01) for [orderId]. */
+    data class DraftSaved(val orderId: String, val orderNumber: Int, val storeName: String) : CartReviewEvent
 }
 
 /**
@@ -204,7 +204,7 @@ class CartReviewViewModel(
                 val store = current.store ?: return
                 val draft = orderRepository.createDraft(cart.copy(mode = current.mode ?: cart.mode), store.name)
                 cartRepository.clear()
-                _events.trySend(CartReviewEvent.DraftSaved(draft.id))
+                _events.trySend(CartReviewEvent.DraftSaved(draft.id, draft.number, store.name))
             }
         }
     }

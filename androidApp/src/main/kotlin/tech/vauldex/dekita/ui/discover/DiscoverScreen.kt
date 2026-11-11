@@ -39,7 +39,7 @@ import tech.vauldex.dekita.ui.theme.Dimens
 
 /**
  * Discover, the start of every order. From the top: search, the In-store / Pickup selector,
- * the decided customer's Favorites and History, then the undecided customer's categories,
+ * a banner for an in-store draft waiting for check-in, the decided customer's Favorites and History, then the undecided customer's categories,
  * Recommended and Nearby. Any search or filter swaps the home sections for one result list.
  */
 @Composable
@@ -82,21 +82,21 @@ fun DiscoverScreen(
                     modifier = Modifier.screenPadding(),
                 )
             }
-            state.draft?.let { draft ->
-                item(key = "draft") {
-                    DraftBanner(
-                        order = draft,
-                        onResume = { onResumeDraft(draft.id) },
-                        modifier = Modifier.screenPadding().padding(top = 12.dp),
-                    )
-                }
-            }
             item(key = "mode") {
                 ModeSelector(
                     selected = state.filters.mode,
                     onSelect = viewModel::selectMode,
                     modifier = Modifier.screenPadding().padding(top = 12.dp),
                 )
+            }
+            state.draftToResume?.let { draft ->
+                item(key = "draft") {
+                    DraftBanner(
+                        draft = draft,
+                        onResume = { onResumeDraft(draft.id) },
+                        modifier = Modifier.screenPadding().padding(top = 12.dp),
+                    )
+                }
             }
             item(key = "shortcuts") {
                 DecidedShortcuts(

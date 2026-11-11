@@ -1,5 +1,7 @@
 package tech.vauldex.dekita.presentation.cart
 
+import kotlin.time.Clock
+import kotlin.time.Instant
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
@@ -9,8 +11,6 @@ import kotlin.test.assertIs
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
-import kotlin.time.Clock
-import kotlin.time.Instant
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -221,11 +221,12 @@ class CartReviewViewModelTest {
         runCurrent()
 
         val saved = assertIs<CartReviewEvent.DraftSaved>(events.single())
-        val draft = f.orders.orders.value.dataOrNull().orEmpty().first { it.id == saved.orderId }
+        val draft = f.orders.orders.value.dataOrNull().orEmpty().first { it.number == saved.orderNumber }
+        assertEquals(draft.id, saved.orderId, "Check-in opens for the saved draft")
         assertEquals(OrderStatus.DRAFT, draft.status)
         assertEquals(FulfillmentMode.IN_STORE, draft.mode)
         assertEquals(Money.yen(980 + 450), draft.total)
-        assertEquals("Test Ramen Bar", draft.storeName)
+        assertEquals("Test Ramen Bar", saved.storeName)
         assertNull(f.cart.cart.value, "The cart became the draft")
     }
 

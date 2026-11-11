@@ -44,13 +44,10 @@ data class Store(
     val queue: QueueStatus?,
     /** Picks a local placeholder illustration. The mockup loads no remote images. */
     val artKey: String,
+    /** Where the store is, for the check-in map. */
+    val location: GeoPoint,
     /** Names of the store's menu items, sent with the feed so Discover search can match dishes. */
     val itemNames: List<String> = emptyList(),
-    /**
-     * SEAT-01: every seat is taken. Only Eat-In cares: check-in offers Takeout, waiting or leaving instead
-     * of cooking. The kitchen can still take orders, so this is separate from [StoreAvailability.FULL].
-     */
-    val seatsFull: Boolean = false,
 ) {
     val isAcceptingOrders: Boolean get() = availability == StoreAvailability.OPEN
 

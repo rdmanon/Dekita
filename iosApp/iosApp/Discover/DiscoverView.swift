@@ -1,7 +1,8 @@
 import SwiftUI
 import SharedLogic
 
-/// Discover, the start of every order. From the top: the In-store / Pickup selector, the decided
+/// Discover, the start of every order. From the top: the In-store / Pickup selector, a banner for an
+/// in-store draft waiting for check-in, the decided
 /// customer's Favorites and History (Search is the floating Search tab), then the undecided
 /// customer's categories, Recommended and Nearby. A category or filter swaps the home sections
 /// for one result list.
@@ -9,15 +10,16 @@ struct DiscoverView: View {
     @StateObject private var model = DiscoverModel()
     @State private var showFilters = false
     @State private var showDebugPanel = false
+    @Environment(\.openCheckIn) private var openCheckIn
 
     var body: some View {
         let state = model.state
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
-                if let draft = state.draft {
-                    DraftBanner(order: draft)
-                }
                 ModePicker(mode: state.filters.mode) { model.viewModel.selectMode(mode: $0) }
+                if let draft = state.draftToResume {
+                    DraftBanner(draft: draft) { openCheckIn(draft.id) }
+                }
                 DecidedShortcuts(
                     favoriteItemCount: state.favoriteItemCount,
                     lastOrderStoreName: state.lastOrderStoreName

@@ -5,8 +5,10 @@ import SharedLogic
 /// as its own round button beside it, as in the design; on iOS 18–25 the same code gives the standard tab bar.
 /// Every screen is SwiftUI; the shared Kotlin code supplies view models and data only.
 /// Sign-in opens as a sheet over the current screen, or full screen after sign-out.
+/// Check-in opens full screen over every tab.
 struct ContentView: View {
     @StateObject private var flow = AuthFlow()
+    @State private var checkIn: CheckInTarget?
 
     var body: some View {
         TabView(selection: $flow.selection) {
@@ -31,6 +33,8 @@ struct ContentView: View {
             SignInFlowView(isRoot: true).environmentObject(flow)
         }
         .environmentObject(flow)
+        .environment(\.openCheckIn) { checkIn = CheckInTarget(orderId: $0) }
+        .fullScreenCover(item: $checkIn) { CheckInFlow(orderId: $0.orderId) }
     }
 }
 

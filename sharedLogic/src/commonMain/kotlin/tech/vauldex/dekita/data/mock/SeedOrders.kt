@@ -82,6 +82,17 @@ internal fun seedOrders(now: Instant): List<Order> {
                 Step(OrderStatus.READY_FOR_PICKUP, 20.minutes),
             ),
         ),
+        // In-store draft built on the way, waiting for check-in (CHECKIN-01): the design's 2 items, ¥1,550.
+        seedOrder(
+            id = "order-44", number = 44, storeId = SeedStoreIds.RAMEN_BAR, mode = FulfillmentMode.IN_STORE,
+            lines = listOf(
+                CartLine("line-44-1", shoyu, listOf(shoyu.seedOption("ramen-spice-medium"), shoyu.seedOption("topping-egg"))),
+                CartLine("line-44-2", seedItem(SeedStoreIds.RAMEN_BAR, "item-gyoza")),
+            ),
+            paymentMethodId = SeedPaymentIds.TEST_CARD,
+            createdAt = now - 3.minutes,
+            steps = emptyList(),
+        ),
         // History: completed orders, with both completion reasons.
         seedOrder(
             id = "order-37", number = 37, storeId = SeedStoreIds.CURRY_STAND, mode = FulfillmentMode.PICKUP,

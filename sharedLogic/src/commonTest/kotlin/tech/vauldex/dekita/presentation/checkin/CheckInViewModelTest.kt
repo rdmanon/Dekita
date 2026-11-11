@@ -1,5 +1,7 @@
 package tech.vauldex.dekita.presentation.checkin
 
+import kotlin.time.Clock
+import kotlin.time.Instant
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
@@ -8,8 +10,6 @@ import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
-import kotlin.time.Clock
-import kotlin.time.Instant
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -22,35 +22,30 @@ import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 import tech.vauldex.dekita.data.dataOrNull
-import tech.vauldex.dekita.data.mock.FakeAuthRepository
 import tech.vauldex.dekita.data.mock.FakeCartRepository
-import tech.vauldex.dekita.data.mock.FakeMenuRepository
+import tech.vauldex.dekita.data.mock.FakeCheckInSimulator
+import tech.vauldex.dekita.data.mock.FakeLocationRepository
 import tech.vauldex.dekita.data.mock.FakeOrderRepository
-import tech.vauldex.dekita.data.mock.FakePaymentRepository
+import tech.vauldex.dekita.data.mock.FakeQrScanner
 import tech.vauldex.dekita.data.mock.FakeStoreRepository
 import tech.vauldex.dekita.data.mock.MockConfig
-import tech.vauldex.dekita.data.mock.SeedStoreIds
-import tech.vauldex.dekita.data.mock.seedItem
-import tech.vauldex.dekita.data.mock.seedSampleCart
-import tech.vauldex.dekita.domain.Cart
-import tech.vauldex.dekita.domain.CartLine
-import tech.vauldex.dekita.domain.CheckoutAction
-import tech.vauldex.dekita.domain.FulfillmentMode
-import tech.vauldex.dekita.domain.Order
-import tech.vauldex.dekita.domain.OrderStatus
-import tech.vauldex.dekita.domain.PaymentType
-import tech.vauldex.dekita.domain.SsoProvider
+import tech.vauldex.dekita.domain.CheckIn
+import tech.vauldex.dekita.domain.CheckInMethod
+import tech.vauldex.dekita.domain.QrScanResult
 import tech.vauldex.dekita.domain.StoreAvailability
-import tech.vauldex.dekita.presentation.cart.CartReviewViewModel
-import tech.vauldex.dekita.presentation.collectEvents
 import tech.vauldex.dekita.presentation.discover.DiscoverViewModel
-import tech.vauldex.dekita.presentation.orders.OrdersViewModel
 
-/** SEAT-01: the seat question before cooking, the store-full fallbacks, and resuming a kept draft. */
+/** CHECKIN-01: the geofence, the QR fallback and keeping the draft. */
 @OptIn(ExperimentalCoroutinesApi::class)
 class CheckInViewModelTest {
 
     private val mainDispatcher = StandardTestDispatcher()
+
+    private val fixedClock = object : Clock {
+        override fun now() = Instant.fromEpochSeconds(1_800_000_000)
+    }
+
+    private val draftId = "order-44"
 
     @BeforeTest
     fun setUp() {
@@ -62,257 +57,207 @@ class CheckInViewModelTest {
         Dispatchers.resetMain()
     }
 
-    private class Fixture(scope: CoroutineScope) {
-        val config = MockConfig().apply { liveQueue.value = false }
-        val stores = FakeStoreRepository(scope, config)
-        val menus = FakeMenuRepository(scope, config)
-        val cart = FakeCartRepository()
-        val auth = FakeAuthRepository(config)
-        val payments = FakePaymentRepository(scope, config)
-        val orders = FakeOrderRepository(scope, config, object : Clock {
-            override fun now() = Instant.fromEpochSeconds(1_800_000_000)
-        })
-
-        fun checkIn(orderId: String, wallet: PaymentType = PaymentType.APPLE_PAY) =
-            CheckInViewModel(orderId, orders, stores, cart, payments, wallet)
-
-        fun order(id: String): Order? = orders.orders.value.dataOrNull()?.firstOrNull { it.id == id }
+    private class Fixture(scope: CoroutineScope, clock: Clock) {
+        val stores = FakeStoreRepository(scope, MockConfig())
+        val orders = FakeOrderRepository(scope, MockConfig(), clock)
+        val location = FakeLocationRepository()
+        val scanner = FakeQrScanner()
+        val simulator = FakeCheckInSimulator(orders, location, scanner)
     }
 
-    /** The fakes run in backgroundScope, which advanceUntilIdle() does not wait for. */
+    private fun TestScope.fixture(): Fixture = Fixture(backgroundScope, fixedClock)
+
     private fun TestScope.finishLoading() {
         runCurrent()
         advanceTimeBy(MockConfig.DEFAULT_LOADING_DELAY)
         runCurrent()
     }
 
-    /** Signed in, with the sample cart (Test Ramen Bar, 2 items) saved as an Eat-In draft, as "Head to store" does. */
-    private fun TestScope.checkedIn(wallet: PaymentType = PaymentType.APPLE_PAY): Triple<Fixture, Order, CheckInViewModel> {
-        val f = Fixture(backgroundScope)
-        finishLoading()
-        backgroundScope.launch { f.auth.signInWith(SsoProvider.APPLE) }
-        finishLoading()
-        val draft = f.orders.createDraft(seedSampleCart(), "Test Ramen Bar")
-        val viewModel = f.checkIn(draft.id, wallet)
-        backgroundScope.launch { viewModel.state.collect {} }
-        runCurrent()
-        return Triple(f, draft, viewModel)
-    }
+    private fun TestScope.checkInViewModel(fixture: Fixture) =
+        CheckInViewModel(draftId, fixture.orders, fixture.stores, fixture.location).also { viewModel ->
+            backgroundScope.launch { viewModel.state.collect {} }
+        }
 
-    // Gherkin scenarios
+    private fun TestScope.scannerViewModel(fixture: Fixture) =
+        QrScannerViewModel(draftId, fixture.orders, fixture.stores, fixture.scanner).also { viewModel ->
+            backgroundScope.launch { viewModel.state.collect {} }
+        }
 
     @Test
-    fun scenario1_seatConfirmedOpensOneTapPayment() = runTest(mainDispatcher) {
-        val (f, draft, checkIn) = checkedIn()
-        assertEquals("Test Ramen Bar", checkIn.state.value.store?.name)
+    fun startCookingIsOffUntilArrivalThenOpensSeatVerification() = runTest(mainDispatcher) {
+        // Scenario 1: check-in via simulated geofence.
+        val fixture = fixture()
+        val viewModel = checkInViewModel(fixture)
+        finishLoading()
+
+        val before = viewModel.state.value
+        assertEquals("Test Ramen Bar · Eat-In", before.storeLine)
+        assertEquals("2 items · ¥1,550", before.orderSummary)
+        assertEquals("3 ahead · ~8 min", before.queueLabel)
+        assertEquals("On your way", before.headline)
+        assertFalse(before.canStartCooking)
+        assertEquals("Start Cooking turns on when you're within 50 m of the store.", before.startCookingHint)
+        assertFalse(viewModel.startCooking(), "Tapping a disabled button must do nothing")
+        assertNull(fixture.orders.draft().checkIn)
+
+        fixture.simulator.simulateArrival()
+        runCurrent()
+        val arrived = viewModel.state.value
+        assertTrue(arrived.canStartCooking)
+        assertEquals("You've arrived", arrived.headline)
+        assertEquals("At the store", arrived.distanceLabel)
+
+        assertTrue(viewModel.startCooking())
+        assertEquals(CheckIn(CheckInMethod.GEOFENCE), fixture.orders.draft().checkIn)
+    }
+
+    @Test
+    fun leavingTheGeofenceTurnsStartCookingOffAgain() = runTest(mainDispatcher) {
+        val fixture = fixture()
+        val viewModel = checkInViewModel(fixture)
+        finishLoading()
+
+        fixture.simulator.simulateArrival()
+        runCurrent()
+        fixture.simulator.simulateLeaving()
+        runCurrent()
+
+        assertFalse(viewModel.state.value.canStartCooking)
+        assertEquals("320 m away", viewModel.state.value.distanceLabel)
+    }
+
+    @Test
+    fun aPausedStoreKeepsStartCookingOff() = runTest(mainDispatcher) {
+        val fixture = fixture()
+        val viewModel = checkInViewModel(fixture)
+        finishLoading()
+
+        fixture.simulator.simulateArrival()
+        fixture.stores.setAvailability("store-test-ramen-bar", StoreAvailability.PAUSED)
+        runCurrent()
+
+        assertFalse(viewModel.state.value.canStartCooking)
+        assertEquals("Test Ramen Bar isn't taking orders right now.", viewModel.state.value.startCookingHint)
+    }
+
+    @Test
+    fun tableQrChecksInAndRecordsTheTable() = runTest(mainDispatcher) {
+        // Scenario 2: check-in via table QR when GPS fails.
+        val fixture = fixture()
+        val checkIn = checkInViewModel(fixture)
+        val scanner = scannerViewModel(fixture)
+        finishLoading()
+        assertFalse(checkIn.state.value.isInRange)
+
+        fixture.simulator.scanTableQr("12")
+        runCurrent()
+
+        assertTrue(scanner.state.value.isCheckedIn)
+        assertEquals("Checked in at table 12", scanner.state.value.title)
+        assertEquals("12", fixture.orders.draft().checkIn?.tableNumber)
+
+        // Start Cooking keeps the QR check-in, so the ticket still gets the table.
         assertTrue(checkIn.state.value.canStartCooking)
-
-        checkIn.startCooking()
-        assertEquals(CheckInPrompt.SEAT_QUESTION, checkIn.state.value.prompt)
-        checkIn.answerSeat(hasSeat = true)
-        runCurrent()
-
-        val state = checkIn.state.value
-        assertEquals(CheckInPrompt.PAYMENT, state.prompt)
-        // 1-tap: this platform's wallet is listed first and already picked.
-        assertEquals(PaymentType.APPLE_PAY, state.paymentMethods.first().type)
-        assertEquals(PaymentType.APPLE_PAY, state.selectedMethod?.type)
-        assertTrue(state.paymentMethods.none { it.type == PaymentType.GOOGLE_PAY })
-        assertTrue(state.canPay)
-
-        checkIn.pay()
-        runCurrent()
-        assertEquals(draft.number, checkIn.state.value.sentOrderNumber)
-        assertNull(checkIn.state.value.prompt)
-        val sent = assertNotNull(f.order(draft.id))
-        assertEquals(OrderStatus.QUEUED, sent.status)
-        assertEquals(state.selectedMethodId, sent.paymentMethodId)
-        assertFalse(checkIn.state.value.isUnavailable)
+        assertTrue(checkIn.startCooking())
+        assertEquals(CheckIn(CheckInMethod.TABLE_QR, "12"), fixture.orders.draft().checkIn)
     }
 
     @Test
-    fun scenario2_storeFullSwitchToTakeoutOpensCartReviewWithTheSameItems() = runTest(mainDispatcher) {
-        val (f, draft, checkIn) = checkedIn()
-        val events = collectEvents(checkIn.events)
-        f.stores.setSeatsFull(SeedStoreIds.RAMEN_BAR, true)
-        runCurrent()
-
-        checkIn.startCooking()
-        assertEquals(CheckInPrompt.NO_SEAT, checkIn.state.value.prompt)
-        assertTrue(checkIn.state.value.isStoreFull)
-        assertTrue(checkIn.state.value.canSwitchToTakeout)
-
-        checkIn.switchToTakeout()
-        runCurrent()
-        assertEquals(listOf<CheckInEvent>(CheckInEvent.SwitchedToTakeout(SeedStoreIds.RAMEN_BAR)), events)
-        assertEquals(Cart(SeedStoreIds.RAMEN_BAR, FulfillmentMode.PICKUP, draft.lines), f.cart.cart.value)
-        // The draft became the cart, so it isn't left behind as a second copy.
-        assertNull(f.order(draft.id))
-
-        val review = CartReviewViewModel(f.cart, f.stores, f.menus, f.orders, f.auth)
-        backgroundScope.launch { review.state.collect {} }
-        finishLoading()
-        val cartState = review.state.value
-        assertEquals(FulfillmentMode.PICKUP, cartState.mode)
-        assertEquals(CheckoutAction.PAY_NOW, cartState.action)
-        assertEquals(draft.lines, cartState.cart?.lines)
-        // Seats being full doesn't stop takeout.
-        assertTrue(cartState.canCheckout)
-    }
-
-    @Test
-    fun scenario3_cancelReturnsToDiscoverAndTheDraftCanBeResumed() = runTest(mainDispatcher) {
-        val (f, draft, checkIn) = checkedIn()
-        val events = collectEvents(checkIn.events)
-        f.stores.setSeatsFull(SeedStoreIds.RAMEN_BAR, true)
-        runCurrent()
-
-        checkIn.startCooking()
-        checkIn.exit()
-        runCurrent()
-        assertEquals(listOf<CheckInEvent>(CheckInEvent.Exited), events)
-        assertEquals(OrderStatus.DRAFT, f.order(draft.id)?.status)
-
-        val ordersList = OrdersViewModel(f.orders, f.auth)
-        val discover = DiscoverViewModel(f.stores, f.orders, f.cart, f.auth)
-        backgroundScope.launch { ordersList.state.collect {} }
-        backgroundScope.launch { discover.state.collect {} }
-        runCurrent()
-        assertTrue(ordersList.state.value.active.any { it.id == draft.id && it.status == OrderStatus.DRAFT })
-        assertEquals(draft.id, discover.state.value.draft?.id)
-
-        // Resuming opens check-in on the same draft, ready to start cooking once seats free up.
-        f.stores.setSeatsFull(SeedStoreIds.RAMEN_BAR, false)
-        val resumed = f.checkIn(draft.id)
-        backgroundScope.launch { resumed.state.collect {} }
-        runCurrent()
-        assertEquals(draft.lines, resumed.state.value.order?.lines)
-        assertTrue(resumed.state.value.canStartCooking)
-        resumed.startCooking()
-        assertEquals(CheckInPrompt.SEAT_QUESTION, resumed.state.value.prompt)
-    }
-
-    // Fallbacks
-
-    @Test
-    fun noSeatYetThenWaitInLineKeepsTheDraftAndConfirmsTheSeatLater() = runTest(mainDispatcher) {
-        val (f, draft, checkIn) = checkedIn()
-
-        checkIn.startCooking()
-        checkIn.answerSeat(hasSeat = false)
-        assertEquals(CheckInPrompt.NO_SEAT, checkIn.state.value.prompt)
-        assertFalse(checkIn.state.value.isStoreFull)
-
-        checkIn.waitInLine()
-        runCurrent()
-        assertNull(checkIn.state.value.prompt)
-        assertTrue(checkIn.state.value.isWaitingForSeat)
-        assertEquals(OrderStatus.DRAFT, f.order(draft.id)?.status)
-
-        // "I've found a seat" is the answer, so it goes straight to payment.
-        checkIn.startCooking()
-        assertEquals(CheckInPrompt.PAYMENT, checkIn.state.value.prompt)
-    }
-
-    @Test
-    fun waitingWhileTheStoreIsStillFullOffersTheFallbacksAgain() = runTest(mainDispatcher) {
-        val (f, draft, checkIn) = checkedIn()
-        f.stores.setSeatsFull(SeedStoreIds.RAMEN_BAR, true)
-        runCurrent()
-
-        checkIn.startCooking()
-        checkIn.waitInLine()
-        checkIn.startCooking()
-        assertEquals(CheckInPrompt.NO_SEAT, checkIn.state.value.prompt)
-        assertEquals(OrderStatus.DRAFT, f.order(draft.id)?.status)
-    }
-
-    @Test
-    fun switchToTakeoutAsksBeforeReplacingAnotherCart() = runTest(mainDispatcher) {
-        val (f, draft, checkIn) = checkedIn()
-        val other = CartLine("curry", seedItem(SeedStoreIds.CURRY_STAND, "item-beef-curry"))
-        f.cart.addLine(FulfillmentMode.PICKUP, other)
-        val events = collectEvents(checkIn.events)
-
-        checkIn.startCooking()
-        checkIn.answerSeat(hasSeat = false)
-        checkIn.switchToTakeout()
-        runCurrent()
-        assertEquals("Sample Curry Stand", checkIn.state.value.pendingReplaceCartStoreName)
-        assertTrue(events.isEmpty())
-
-        checkIn.dismissReplaceCart()
-        runCurrent()
-        assertNull(checkIn.state.value.pendingReplaceCartStoreName)
-        assertEquals(listOf(other), f.cart.cart.value?.lines)
-        assertEquals(OrderStatus.DRAFT, f.order(draft.id)?.status)
-
-        checkIn.switchToTakeout()
-        checkIn.confirmReplaceCart()
-        runCurrent()
-        assertEquals(draft.lines, f.cart.cart.value?.lines)
-        assertEquals(listOf<CheckInEvent>(CheckInEvent.SwitchedToTakeout(SeedStoreIds.RAMEN_BAR)), events)
-    }
-
-    @Test
-    fun takeoutIsOffWhenTheKitchenIsFullAndTheDraftIsKept() = runTest(mainDispatcher) {
-        val (f, draft, checkIn) = checkedIn()
-        f.stores.setAvailability(SeedStoreIds.RAMEN_BAR, StoreAvailability.FULL)
-        runCurrent()
-
-        checkIn.startCooking()
-        assertEquals(CheckInPrompt.NO_SEAT, checkIn.state.value.prompt)
-        assertFalse(checkIn.state.value.canSwitchToTakeout)
-        assertNotNull(checkIn.state.value.takeoutUnavailableReason)
-
-        checkIn.switchToTakeout()
-        runCurrent()
-        assertNull(f.cart.cart.value)
-        assertEquals(OrderStatus.DRAFT, f.order(draft.id)?.status)
-    }
-
-    @Test
-    fun pausedStoreCantStartCooking() = runTest(mainDispatcher) {
-        val (f, _, checkIn) = checkedIn()
-        f.stores.setAvailability(SeedStoreIds.RAMEN_BAR, StoreAvailability.PAUSED)
-        runCurrent()
-
-        assertTrue(checkIn.state.value.isPaused)
-        assertFalse(checkIn.state.value.canStartCooking)
-        checkIn.startCooking()
-        assertNull(checkIn.state.value.prompt)
-    }
-
-    @Test
-    fun androidListsGooglePayFirstAndNotApplePay() = runTest(mainDispatcher) {
-        val (_, _, checkIn) = checkedIn(wallet = PaymentType.GOOGLE_PAY)
+    fun storeQrChecksIn() = runTest(mainDispatcher) {
+        val fixture = fixture()
+        val scanner = scannerViewModel(fixture)
         finishLoading()
 
-        val methods = checkIn.state.value.paymentMethods
-        assertEquals(PaymentType.GOOGLE_PAY, methods.first().type)
-        assertTrue(methods.none { it.type == PaymentType.APPLE_PAY })
-        assertEquals(PaymentType.GOOGLE_PAY, checkIn.state.value.selectedMethod?.type)
-    }
-
-    @Test
-    fun anOrderAlreadySentIsNotCheckedInAgain() = runTest(mainDispatcher) {
-        val (f, draft, _) = checkedIn()
-        f.orders.startCooking(draft.id, "pm-test-card-4242")
-
-        val again = f.checkIn(draft.id)
-        backgroundScope.launch { again.state.collect {} }
+        fixture.simulator.scanStoreQr()
         runCurrent()
-        assertTrue(again.state.value.isUnavailable)
-        assertFalse(again.state.value.canStartCooking)
+
+        assertEquals("You're checked in", scanner.state.value.title)
+        assertEquals(CheckIn(CheckInMethod.STORE_QR), fixture.orders.draft().checkIn)
     }
 
     @Test
-    fun guestsDontSeeTheDraftBanner() = runTest(mainDispatcher) {
-        val (f, _, _) = checkedIn()
-        f.auth.signOut()
-        val discover = DiscoverViewModel(f.stores, f.orders, f.cart, f.auth)
+    fun anotherStoresQrShowsAnErrorAndAllowsARescan() = runTest(mainDispatcher) {
+        // Scenario 3: wrong store QR.
+        val fixture = fixture()
+        val scanner = scannerViewModel(fixture)
+        finishLoading()
+
+        fixture.simulator.scanOtherStoreQr()
+        runCurrent()
+
+        val state = scanner.state.value
+        assertTrue(state.isError)
+        assertEquals("This QR is for a different store", state.title)
+        assertEquals("It's for Sample Curry Stand. Scan the QR at Test Ramen Bar.", state.message)
+        assertNull(fixture.orders.draft().checkIn)
+
+        // A result pauses the camera until Scan again.
+        fixture.simulator.scanStoreQr()
+        runCurrent()
+        assertTrue(scanner.state.value.result is QrScanResult.WrongStore)
+
+        scanner.scanAgain()
+        runCurrent()
+        assertTrue(scanner.state.value.isScanning)
+        fixture.simulator.scanStoreQr()
+        runCurrent()
+        assertTrue(scanner.state.value.isCheckedIn)
+    }
+
+    @Test
+    fun anInvalidQrShowsAnErrorAndAllowsARescan() = runTest(mainDispatcher) {
+        val fixture = fixture()
+        val scanner = scannerViewModel(fixture)
+        finishLoading()
+
+        fixture.simulator.scanInvalidQr()
+        runCurrent()
+        assertEquals(QrScanResult.Invalid, scanner.state.value.result)
+        assertTrue(scanner.state.value.isError)
+        assertNull(fixture.orders.draft().checkIn)
+
+        scanner.scanAgain()
+        runCurrent()
+        assertTrue(scanner.state.value.isScanning)
+    }
+
+    @Test
+    fun anInvalidTableNumberFromTheDebugPanelIsIgnored() = runTest(mainDispatcher) {
+        val fixture = fixture()
+        val scanner = scannerViewModel(fixture)
+        finishLoading()
+
+        fixture.simulator.scanTableQr("12345")
+        runCurrent()
+
+        assertTrue(scanner.state.value.isScanning)
+    }
+
+    @Test
+    fun theDraftStaysAndDiscoverOffersToResumeIt() = runTest(mainDispatcher) {
+        // Draft retention: leaving check-in clears its view model, but the draft is in the repository.
+        val fixture = fixture()
+        val checkIn = checkInViewModel(fixture)
+        val discover = DiscoverViewModel(fixture.stores, fixture.orders, FakeCartRepository())
         backgroundScope.launch { discover.state.collect {} }
-        runCurrent()
-        assertNull(discover.state.value.draft)
+        finishLoading()
+        assertNotNull(checkIn.state.value.draft)
+
+        assertEquals(draftId, discover.state.value.draftToResume?.id)
+        assertEquals("Test Ramen Bar", discover.state.value.lastOrderStoreName)
+        assertEquals("store-test-ramen-bar", fixture.simulator.draftStoreId)
     }
+
+    @Test
+    fun onlyAnInStoreDraftCanBeCheckedIn() = runTest(mainDispatcher) {
+        val fixture = fixture()
+        finishLoading()
+
+        assertFalse(fixture.orders.checkIn("order-42", CheckIn(CheckInMethod.GEOFENCE)), "Already cooking")
+        assertFalse(fixture.orders.checkIn("order-43", CheckIn(CheckInMethod.GEOFENCE)), "Pickup order")
+        assertFalse(fixture.orders.checkIn("no-such-order", CheckIn(CheckInMethod.GEOFENCE)))
+        assertTrue(fixture.orders.checkIn(draftId, CheckIn(CheckInMethod.GEOFENCE)))
+    }
+
+    private fun FakeOrderRepository.draft() = orders.value.dataOrNull().orEmpty().first { it.id == draftId }
 }

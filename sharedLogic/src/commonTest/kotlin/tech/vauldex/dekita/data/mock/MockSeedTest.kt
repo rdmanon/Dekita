@@ -1,5 +1,6 @@
 package tech.vauldex.dekita.data.mock
 
+import kotlin.math.roundToInt
 import kotlin.time.Instant
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -36,6 +37,14 @@ class MockSeedTest {
         val availability = seedStores.map { it.availability }
         assertTrue(StoreAvailability.PAUSED in availability)
         assertTrue(StoreAvailability.FULL in availability)
+    }
+
+    @Test
+    fun eachStoreIsItsWalkingTimeFromTheMockCustomer() {
+        for (store in seedStores) {
+            val meters = seedCustomerLocation.distanceTo(store.location).roundToInt()
+            assertEquals(store.walkMinutes * METERS_PER_WALK_MINUTE, meters, store.name)
+        }
     }
 
     @Test

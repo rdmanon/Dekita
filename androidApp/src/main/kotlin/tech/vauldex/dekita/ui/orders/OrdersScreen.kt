@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
@@ -25,25 +26,22 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import tech.vauldex.dekita.domain.Order
-import tech.vauldex.dekita.domain.OrderStatus
-import tech.vauldex.dekita.presentation.RESUME_CHECK_IN
-import tech.vauldex.dekita.presentation.label
 import tech.vauldex.dekita.presentation.orders.OrdersViewModel
 import tech.vauldex.dekita.ui.components.LoadingIndicator
-import tech.vauldex.dekita.ui.components.PrimaryButton
 import tech.vauldex.dekita.ui.components.SectionTitle
 import tech.vauldex.dekita.ui.components.SignInPrompt
 import tech.vauldex.dekita.ui.components.StatusPill
 import tech.vauldex.dekita.ui.components.groupedShape
+import tech.vauldex.dekita.presentation.label
 import tech.vauldex.dekita.ui.theme.DekitaTheme
 import tech.vauldex.dekita.ui.theme.Dimens
 
 /**
  * Placeholder Orders tab: active tickets and history from the seed. The real screen is a later ticket.
- * SEAT-01: a draft kept from check-in offers "Resume check-in".
+ * An in-store draft waiting for check-in shows here with [onCheckIn], so leaving check-in never loses it.
  */
 @Composable
-fun OrdersScreen(viewModel: OrdersViewModel, onSignIn: () -> Unit, onResumeDraft: (orderId: String) -> Unit) {
+fun OrdersScreen(viewModel: OrdersViewModel, onSignIn: () -> Unit, onCheckIn: (orderId: String) -> Unit) {
     val state by viewModel.state.collectAsStateWithLifecycle()
 
     Scaffold(topBar = { TopAppBar(title = { Text("Orders") }) }) { padding ->
@@ -75,7 +73,11 @@ fun OrdersScreen(viewModel: OrdersViewModel, onSignIn: () -> Unit, onResumeDraft
                 item(key = "active-empty") { Text("No active orders.", style = MaterialTheme.typography.bodyMedium) }
             }
             items(state.active, key = { it.id }) { order ->
-                ActiveOrderCard(order, onResumeDraft = { onResumeDraft(order.id) }, modifier = Modifier.padding(bottom = 12.dp))
+                if (order.awaitsCheckIn) {
+                    DraftCard(order, onCheckIn = { onCheckIn(order.id) }, Modifier.padding(bottom = 12.dp))
+                } else {
+                    ActiveOrderCard(order, Modifier.padding(bottom = 12.dp))
+                }
             }
             item(key = "history-title") { SectionTitle("History") }
             itemsIndexed(state.history, key = { _, order -> order.id }) { index, order ->
@@ -86,7 +88,7 @@ fun OrdersScreen(viewModel: OrdersViewModel, onSignIn: () -> Unit, onResumeDraft
 }
 
 @Composable
-private fun ActiveOrderCard(order: Order, onResumeDraft: () -> Unit, modifier: Modifier = Modifier) {
+private fun ActiveOrderCard(order: Order, modifier: Modifier = Modifier) {
     val numberColors = DekitaTheme.colors.orderNumber
     Surface(color = MaterialTheme.colorScheme.surfaceContainer, shape = MaterialTheme.shapes.extraLarge, modifier = modifier) {
         Column(verticalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth().padding(16.dp)) {
@@ -107,15 +109,28 @@ private fun ActiveOrderCard(order: Order, onResumeDraft: () -> Unit, modifier: M
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+            order.checkIn?.tableNumber?.let { Text("Table $it", style = MaterialTheme.typography.titleMedium) }
             StatusPill(order.status.label, DekitaTheme.colors.bothModes)
-            if (order.status == OrderStatus.DRAFT) {
-                Text(
-                    "Not cooked or charged yet. Check in at the store to start cooking.",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                PrimaryButton(RESUME_CHECK_IN, onClick = onResumeDraft)
+        }
+    }
+}
+
+/** An in-store order built on the way. It has no ticket yet: the kitchen starts after check-in. */
+@Composable
+private fun DraftCard(order: Order, onCheckIn: () -> Unit, modifier: Modifier = Modifier) {
+    Surface(color = MaterialTheme.colorScheme.surfaceContainer, shape = MaterialTheme.shapes.extraLarge, modifier = modifier) {
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth().padding(16.dp)) {
+            StatusPill("Waiting for check-in", DekitaTheme.colors.bothModes)
+            Text("${order.storeName} · Eat-In", style = MaterialTheme.typography.titleMedium)
+            Text(
+                "${order.itemCount} items · ${order.total.formatted()}",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            order.checkIn?.let {
+                Text(it.label, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
+            Button(onClick = onCheckIn, modifier = Modifier.fillMaxWidth().padding(top = 4.dp)) { Text("Resume check-in") }
         }
     }
 }

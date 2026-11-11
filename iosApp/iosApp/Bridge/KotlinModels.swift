@@ -64,6 +64,46 @@ final class HistoryModel: ObservableObject {
     }
 }
 
+final class CheckInModel: ObservableObject {
+    private let bridge: CheckInBridge
+    private var watch: FlowWatch?
+
+    @Published private(set) var state: CheckInUiState
+
+    var viewModel: CheckInViewModel { bridge.viewModel }
+
+    init(orderId: String) {
+        bridge = CheckInBridge(orderId: orderId)
+        state = bridge.currentState
+        watch = bridge.watch { [weak self] state in self?.state = state }
+    }
+
+    deinit {
+        watch?.cancel()
+        bridge.close()
+    }
+}
+
+final class QrScannerModel: ObservableObject {
+    private let bridge: QrScannerBridge
+    private var watch: FlowWatch?
+
+    @Published private(set) var state: QrScannerUiState
+
+    var viewModel: QrScannerViewModel { bridge.viewModel }
+
+    init(orderId: String) {
+        bridge = QrScannerBridge(orderId: orderId)
+        state = bridge.currentState
+        watch = bridge.watch { [weak self] state in self?.state = state }
+    }
+
+    deinit {
+        watch?.cancel()
+        bridge.close()
+    }
+}
+
 /// The heart in the store screen's navigation bar.
 final class FavoriteStoreModel: ObservableObject {
     private let bridge: FavoriteStoreBridge
@@ -269,31 +309,6 @@ final class CartReviewModel: ObservableObject {
     var viewModel: CartReviewViewModel { bridge.viewModel }
 
     init() {
-        state = bridge.currentState
-        watches = [
-            bridge.watch { [weak self] state in self?.state = state },
-            bridge.watchEvents { [weak self] event in self?.events.send(event) },
-        ]
-    }
-
-    deinit {
-        watches.forEach { $0.cancel() }
-        bridge.close()
-    }
-}
-
-/// SEAT-01 check-in for one draft order.
-final class CheckInModel: ObservableObject {
-    private let bridge: CheckInBridge
-    private var watches: [FlowWatch] = []
-
-    @Published private(set) var state: CheckInUiState
-    let events = PassthroughSubject<any CheckInEvent, Never>()
-
-    var viewModel: CheckInViewModel { bridge.viewModel }
-
-    init(orderId: String) {
-        bridge = CheckInBridge(orderId: orderId)
         state = bridge.currentState
         watches = [
             bridge.watch { [weak self] state in self?.state = state },

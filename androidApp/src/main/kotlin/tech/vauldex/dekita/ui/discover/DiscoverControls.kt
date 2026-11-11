@@ -43,9 +43,6 @@ import androidx.compose.ui.unit.dp
 import tech.vauldex.dekita.R
 import tech.vauldex.dekita.domain.FulfillmentMode
 import tech.vauldex.dekita.domain.Order
-import tech.vauldex.dekita.presentation.RESUME_CHECK_IN
-import tech.vauldex.dekita.presentation.draftBannerTitle
-import tech.vauldex.dekita.presentation.itemsLabel
 
 /** The search bar at the top of Discover. Search covers store names and item names. */
 @Composable
@@ -250,9 +247,9 @@ private fun ShortcutTile(
     }
 }
 
-/** SEAT-01: a draft kept from check-in, so the customer can pick it up again. Tapping it resumes check-in. */
+/** An in-store draft waiting for check-in. Tapping it goes back to the "On your way" screen. */
 @Composable
-internal fun DraftBanner(order: Order, onResume: () -> Unit, modifier: Modifier = Modifier) {
+internal fun DraftBanner(draft: Order, onResume: () -> Unit, modifier: Modifier = Modifier) {
     Surface(
         onClick = onResume,
         shape = MaterialTheme.shapes.large,
@@ -261,16 +258,21 @@ internal fun DraftBanner(order: Order, onResume: () -> Unit, modifier: Modifier 
         modifier = modifier.fillMaxWidth(),
     ) {
         Row(
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(16.dp),
-            modifier = Modifier.padding(16.dp),
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
         ) {
-            Icon(painterResource(R.drawable.ic_restaurant), contentDescription = null)
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text(draftBannerTitle(order.storeName), style = MaterialTheme.typography.titleMedium)
-                Text(order.itemsLabel, style = MaterialTheme.typography.bodyMedium)
+            Icon(painterResource(R.drawable.ic_restaurant), contentDescription = null, modifier = Modifier.size(24.dp))
+            Column(verticalArrangement = Arrangement.spacedBy(2.dp), modifier = Modifier.weight(1f)) {
+                Text("Your Eat-In order is waiting", style = MaterialTheme.typography.titleMedium, maxLines = 1)
+                Text(
+                    "${draft.storeName} · ${draft.itemCount} items · ${draft.total.formatted()}",
+                    style = MaterialTheme.typography.labelMedium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
             }
-            Text(RESUME_CHECK_IN, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
+            Text("Resume", style = MaterialTheme.typography.labelLarge)
         }
     }
 }

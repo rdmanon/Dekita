@@ -1,11 +1,14 @@
 package tech.vauldex.dekita.data
 
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.StateFlow
 import tech.vauldex.dekita.domain.Cart
 import tech.vauldex.dekita.domain.CartLine
+import tech.vauldex.dekita.domain.CheckIn
 import tech.vauldex.dekita.domain.CompletionReason
 import tech.vauldex.dekita.domain.FavoriteItem
 import tech.vauldex.dekita.domain.FulfillmentMode
+import tech.vauldex.dekita.domain.GeoPoint
 import tech.vauldex.dekita.domain.InboxMessage
 import tech.vauldex.dekita.domain.Menu
 import tech.vauldex.dekita.domain.Order
@@ -67,9 +70,6 @@ interface CartRepository {
     /** A quantity of 0 removes the line; removing the last line clears the cart. */
     fun updateQuantity(lineId: String, quantity: Int)
 
-    /** Replaces any cart with [cart]. SEAT-01: a draft order switched to Takeout becomes the cart again. */
-    fun restore(cart: Cart)
-
     fun clear()
 }
 
@@ -86,16 +86,21 @@ interface OrderRepository {
     fun createDraft(cart: Cart, storeName: String): Order
 
     /**
-     * Removes a DRAFT order and returns it, so its lines can go back into the cart (SEAT-01's Switch to
-     * Takeout). Returns null, and changes nothing, when there is no such order or it is no longer a draft.
+     * Records arrival on an in-store draft, replacing an earlier check-in. Returns false, and changes
+     * nothing, when the orders are not loaded or [orderId] is not an in-store draft.
      */
-    fun discardDraft(orderId: String): Order?
+    fun checkIn(orderId: String, checkIn: CheckIn): Boolean
+}
 
-    /**
-     * [Start Cooking]: pays a DRAFT Eat-In order with [paymentMethodId] and sends it to the kitchen (QUEUED).
-     * Returns null when the orders are not loaded or there is no order with [orderId].
-     */
-    fun startCooking(orderId: String, paymentMethodId: String): TransitionResult?
+/** Where the customer is. GPS in production; the mockup never reads the real location. */
+interface LocationRepository {
+    /** The customer's position, or null when it is unknown. */
+    val customerLocation: StateFlow<GeoPoint?>
+}
+
+/** The camera's QR reader. Emits each code's raw text once, while someone collects. */
+interface QrScanner {
+    val scans: Flow<String>
 }
 
 interface PaymentRepository {
