@@ -11,7 +11,10 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
+import tech.vauldex.dekita.data.LoadState
+import tech.vauldex.dekita.data.dataOrNull
 import tech.vauldex.dekita.di.AppContainer
+import tech.vauldex.dekita.domain.Menu
 import tech.vauldex.dekita.domain.Order
 import tech.vauldex.dekita.domain.StoreAvailability
 import tech.vauldex.dekita.presentation.discover.DiscoverUiState
@@ -21,6 +24,8 @@ import tech.vauldex.dekita.presentation.discover.FavoritesViewModel
 import tech.vauldex.dekita.presentation.discover.HistoryUiState
 import tech.vauldex.dekita.presentation.discover.HistoryViewModel
 import tech.vauldex.dekita.presentation.discover.WalkLimit
+import tech.vauldex.dekita.presentation.store.StoreDetailUiState
+import tech.vauldex.dekita.presentation.store.StoreDetailViewModel
 
 // Swift-facing wrappers around the shared view models. Swift can't collect a Kotlin Flow, so each
 // bridge exposes its state as a typed callback, and owns its view models so they are cleared when
@@ -89,6 +94,22 @@ class HistoryBridge : ScreenBridge() {
 
     fun watch(onState: (HistoryUiState) -> Unit): FlowWatch = viewModel.state.watch(onState)
 }
+
+class StoreDetailBridge(storeId: String) : ScreenBridge() {
+    val viewModel: StoreDetailViewModel = makeViewModel(StoreDetailViewModel::class) {
+        StoreDetailViewModel(storeId, container.storeRepository, container.menuRepository)
+    }
+
+    val currentState: StoreDetailUiState get() = viewModel.state.value
+
+    fun watch(onState: (StoreDetailUiState) -> Unit): FlowWatch = viewModel.state.watch(onState)
+}
+
+/** The loaded menu, or null while loading or after an error. Saves Swift from casting the generic LoadState. */
+val StoreDetailUiState.loadedMenu: Menu? get() = menu.dataOrNull()
+
+/** The menu's error message, or null. */
+val StoreDetailUiState.menuError: String? get() = (menu as? LoadState.Error)?.message
 
 /** The heart button in the iOS store screen's navigation bar. */
 class FavoriteStoreBridge(private val storeId: String) {

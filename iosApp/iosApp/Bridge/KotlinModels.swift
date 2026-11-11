@@ -84,3 +84,21 @@ final class FavoriteStoreModel: ObservableObject {
         watch?.cancel()
     }
 }
+
+final class StoreDetailModel: ObservableObject {
+    private let bridge: StoreDetailBridge
+    private var watch: FlowWatch?
+
+    @Published private(set) var state: StoreDetailUiState
+
+    init(storeId: String) {
+        bridge = StoreDetailBridge(storeId: storeId)
+        state = bridge.currentState
+        watch = bridge.watch { [weak self] state in self?.state = state }
+    }
+
+    deinit {
+        watch?.cancel()
+        bridge.close()
+    }
+}

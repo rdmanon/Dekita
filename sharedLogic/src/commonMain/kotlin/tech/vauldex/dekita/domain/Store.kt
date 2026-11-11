@@ -24,7 +24,13 @@ data class QueueStatus(val ordersAhead: Int, val estimatedWaitMinutes: Int) {
         require(ordersAhead >= 0) { "ordersAhead must not be negative" }
         require(estimatedWaitMinutes >= 0) { "estimatedWaitMinutes must not be negative" }
     }
+
+    /** True when the store is busy enough to warn the customer before they order. */
+    val isHigh: Boolean get() = ordersAhead >= HIGH_QUEUE_THRESHOLD
 }
+
+// shortcut: the PO has not confirmed the threshold (QUEUE-01 open question); 15 matches the seed's busy stores, change it when they answer.
+const val HIGH_QUEUE_THRESHOLD = 15
 
 data class Store(
     val id: String,

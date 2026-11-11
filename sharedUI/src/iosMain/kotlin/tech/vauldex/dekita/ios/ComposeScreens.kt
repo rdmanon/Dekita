@@ -19,14 +19,12 @@ import platform.UIKit.UIViewController
 import tech.vauldex.dekita.di.AppContainer
 import tech.vauldex.dekita.presentation.account.AccountViewModel
 import tech.vauldex.dekita.presentation.orders.OrdersViewModel
-import tech.vauldex.dekita.presentation.store.StoreDetailViewModel
 import tech.vauldex.dekita.ui.account.AccountScreen
 import tech.vauldex.dekita.ui.debug.DebugPanel
 import tech.vauldex.dekita.ui.debug.DebugPanelContent
 import tech.vauldex.dekita.ui.debug.LocalOpenDebugPanel
 import tech.vauldex.dekita.ui.debug.twoFingerLongPress
 import tech.vauldex.dekita.ui.orders.OrdersScreen
-import tech.vauldex.dekita.ui.store.StoreDetailScreen
 import tech.vauldex.dekita.ui.theme.DekitaTheme
 
 // Compose screens the SwiftUI app embeds until they get their own iOS design (later tickets).
@@ -45,18 +43,6 @@ fun AccountViewController(isDebug: Boolean): UIViewController = ComposeUIViewCon
             viewModel = viewModel {
                 AccountViewModel(container.userProfile, container.paymentRepository, container.inboxRepository)
             },
-        )
-    }
-}
-
-/** The store screen's content. SwiftUI draws the navigation bar, so the Compose top bar is off. */
-fun StoreDetailViewController(storeId: String, isDebug: Boolean): UIViewController = ComposeUIViewController {
-    HostedScreen(isDebug) {
-        val container = AppContainer.instance
-        StoreDetailScreen(
-            viewModel = viewModel { StoreDetailViewModel(storeId, container.storeRepository, container.menuRepository) },
-            onBack = {},
-            showTopBar = false,
         )
     }
 }

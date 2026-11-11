@@ -3,7 +3,9 @@ package tech.vauldex.dekita.presentation
 import tech.vauldex.dekita.domain.BusinessType
 import tech.vauldex.dekita.domain.CompletionReason
 import tech.vauldex.dekita.domain.FulfillmentMode
+import tech.vauldex.dekita.domain.MenuItem
 import tech.vauldex.dekita.domain.OrderStatus
+import tech.vauldex.dekita.domain.QueueStatus
 import tech.vauldex.dekita.domain.Store
 import tech.vauldex.dekita.domain.StoreAvailability
 import tech.vauldex.dekita.domain.StoreBadge
@@ -20,6 +22,36 @@ val StoreBadge.label: String
         StoreBadge.PAUSED -> "Paused"
         StoreBadge.FULL -> "Full"
     }
+
+/** The store screen's banner when the store is paused or full. */
+const val NOT_ACCEPTING_ORDERS_MESSAGE = "Currently at full capacity - Not accepting new orders"
+
+/** The live queue card's second line. Empty when the store has no queue. */
+fun Store.queueDetail(): String {
+    val queue = queue ?: return ""
+    return when {
+        availability == StoreAvailability.FULL -> "Not taking new orders"
+        queue.estimatedWaitMinutes == 0 -> "Updates live"
+        else -> "About ${queue.estimatedWaitMinutes} min wait · updates live"
+    }
+}
+
+/** A menu row's options line, for example "Spice level (required) · Toppings (up to 3), Corn sold out". */
+fun MenuItem.optionsSummary(): String? {
+    if (modifierGroups.isEmpty()) return null
+    return modifierGroups.joinToString(" · ") { group ->
+        val rule = if (group.isRequired) "required" else "up to ${group.maxSelections}"
+        val soldOut = group.options.filter { it.isSoldOut }.joinToString { it.name }
+        if (soldOut.isEmpty()) "${group.name} ($rule)" else "${group.name} ($rule), $soldOut sold out"
+    }
+}
+
+/** The live queue card's headline. */
+fun QueueStatus.headline(): String = when (ordersAhead) {
+    0 -> "No wait"
+    1 -> "1 order ahead"
+    else -> "$ordersAhead orders ahead"
+}
 
 /** The queue line on a store card: "3 ahead · ~8 min", "No wait", "Not accepting orders", or empty. */
 fun Store.queueLabel(): String {
