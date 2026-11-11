@@ -48,8 +48,8 @@ class ItemSheetViewModel(
     private val storeId: String,
     private val itemId: String,
     private val editingLineId: String?,
-    menuRepository: MenuRepository,
-    storeRepository: StoreRepository,
+    private val menuRepository: MenuRepository,
+    private val storeRepository: StoreRepository,
     private val cartRepository: CartRepository,
 ) : ViewModel() {
 
@@ -66,17 +66,17 @@ class ItemSheetViewModel(
         )
 
     fun toggle(groupId: String, optionId: String) {
-        val current = state.value.selection ?: return
+        val current = currentState().selection ?: return
         edits.value = current.toggle(groupId, optionId)
     }
 
     fun setQuantity(quantity: Int) {
-        val current = state.value.selection ?: return
+        val current = currentState().selection ?: return
         edits.value = current.withQuantity(quantity)
     }
 
     fun save(): SaveResult {
-        val current = state.value
+        val current = currentState()
         val selection = current.selection?.takeIf { it.canSave } ?: return SaveResult.NOT_SAVED
         val store = current.store ?: return SaveResult.NOT_SAVED
 
@@ -94,6 +94,17 @@ class ItemSheetViewModel(
         cartRepository.clear()
         return save()
     }
+
+    /**
+     * The state right now, read straight from the sources. [state] reaches the same value a moment
+     * later, so actions use this to never act on a choice the customer just changed.
+     */
+    private fun currentState(): ItemSheetUiState = toUiState(
+        menuRepository.menu(storeId).value,
+        storeRepository.stores.value.dataOrNull(),
+        cartRepository.cart.value,
+        edits.value,
+    )
 
     private fun toUiState(menu: LoadState<Menu>, stores: List<Store>?, cart: Cart?, edits: ItemSelection?): ItemSheetUiState {
         val store = stores?.firstOrNull { it.id == storeId }

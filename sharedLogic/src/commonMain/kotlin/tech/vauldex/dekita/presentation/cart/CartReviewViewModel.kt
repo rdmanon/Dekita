@@ -77,8 +77,8 @@ data class CartReviewUiState(
 @OptIn(ExperimentalCoroutinesApi::class)
 class CartReviewViewModel(
     private val cartRepository: CartRepository,
-    storeRepository: StoreRepository,
-    menuRepository: MenuRepository,
+    private val storeRepository: StoreRepository,
+    private val menuRepository: MenuRepository,
     private val orderRepository: OrderRepository,
 ) : ViewModel() {
 
@@ -99,7 +99,7 @@ class CartReviewViewModel(
 
     /** Eat-In or Takeout. Ignored for single-mode stores, whose mode is fixed. */
     fun selectMode(mode: FulfillmentMode) {
-        if (state.value.canChooseMode) cartRepository.setMode(mode)
+        if (currentState().canChooseMode) cartRepository.setMode(mode)
     }
 
     fun increase(lineId: String) {
@@ -122,7 +122,7 @@ class CartReviewViewModel(
      * checkout is blocked or the button isn't "Head to store".
      */
     fun headToStore(): Order? {
-        val current = state.value
+        val current = currentState()
         val cart = cartRepository.cart.value ?: return null
         val store = current.store ?: return null
         if (!current.canCheckout || current.action != CheckoutAction.HEAD_TO_STORE) return null
@@ -135,7 +135,17 @@ class CartReviewViewModel(
      * "Pay now". Payment is a later ticket (PAY-01), so this only says whether payment may start.
      * The cart is kept, because a failed or cancelled payment returns here.
      */
-    fun canStartPayment(): Boolean = state.value.let { it.canCheckout && it.action == CheckoutAction.PAY_NOW }
+    fun canStartPayment(): Boolean = currentState().let { it.canCheckout && it.action == CheckoutAction.PAY_NOW }
+
+    /**
+     * The state right now, read straight from the sources. [state] reaches the same value a moment
+     * later, so actions use this to never act on a mode or line the customer just changed.
+     */
+    private fun currentState(): CartReviewUiState {
+        val cart = cartRepository.cart.value
+        val menu = cart?.let { menuRepository.menu(it.storeId).value.dataOrNull() }
+        return toUiState(cart, storeRepository.stores.value.dataOrNull(), menu)
+    }
 
     private fun toUiState(cart: Cart?, stores: List<Store>?, menu: Menu?): CartReviewUiState {
         if (cart == null) return CartReviewUiState()
