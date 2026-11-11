@@ -6,6 +6,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
+import tech.vauldex.dekita.data.AuthRepository
 import tech.vauldex.dekita.data.InboxRepository
 import tech.vauldex.dekita.data.LoadState
 import tech.vauldex.dekita.data.PaymentRepository
@@ -16,27 +17,37 @@ import tech.vauldex.dekita.domain.UserProfile
 import tech.vauldex.dekita.presentation.STOP_TIMEOUT_MILLIS
 
 data class AccountUiState(
-    val profile: UserProfile,
+    /** Null while browsing as a guest. */
+    val profile: UserProfile? = null,
     val isLoading: Boolean = true,
     val paymentMethods: List<PaymentMethod> = emptyList(),
     val inbox: List<InboxMessage> = emptyList(),
-)
+) {
+    val isSignedIn: Boolean get() = profile != null
+}
 
 class AccountViewModel(
-    profile: UserProfile,
+    private val authRepository: AuthRepository,
     paymentRepository: PaymentRepository,
     private val inboxRepository: InboxRepository,
 ) : ViewModel() {
 
     val state: StateFlow<AccountUiState> =
-        combine(paymentRepository.methods, inboxRepository.messages) { methods, messages ->
+        combine(authRepository.session, paymentRepository.methods, inboxRepository.messages) { session, methods, messages ->
             AccountUiState(
-                profile = profile,
+                profile = session?.profile,
                 isLoading = methods is LoadState.Loading || messages is LoadState.Loading,
                 paymentMethods = methods.dataOrNull().orEmpty(),
                 inbox = messages.dataOrNull().orEmpty(),
             )
-        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_TIMEOUT_MILLIS), AccountUiState(profile))
+        }.stateIn(
+            viewModelScope,
+            SharingStarted.WhileSubscribed(STOP_TIMEOUT_MILLIS),
+            // Start from the current session, so a signed-in user never sees the guest card flash.
+            AccountUiState(profile = authRepository.session.value?.profile),
+        )
 
     fun markRead(messageId: String) = inboxRepository.markRead(messageId)
+
+    fun signOut() = authRepository.signOut()
 }

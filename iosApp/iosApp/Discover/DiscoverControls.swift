@@ -1,11 +1,12 @@
 import SwiftUI
-import SharedUI
+import SharedLogic
 
 /// Where a Discover tap leads. Both the Discover and the Search tab register these destinations.
 enum DiscoverRoute: Hashable {
     case favorites
     case history
     case store(id: String, name: String)
+    case cart
 }
 
 /// Opens the screen for a route. Attach with `.navigationDestination(for: DiscoverRoute.self)`.
@@ -17,6 +18,7 @@ struct DiscoverDestination: View {
         case .favorites: FavoritesView()
         case .history: HistoryView()
         case let .store(id, name): StoreScreen(storeId: id, name: name)
+        case .cart: CartReviewView()
         }
     }
 }

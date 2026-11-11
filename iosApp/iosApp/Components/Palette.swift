@@ -1,6 +1,6 @@
 import SwiftUI
 import UIKit
-import SharedUI
+import SharedLogic
 
 /// Colors from the iOS artboards. Light values are the design's; dark values keep the same hue
 /// at a contrast of at least 4.5:1 and need designer review, as the design has no dark mode.
@@ -8,6 +8,10 @@ enum Palette {
     static let card = Color(.secondarySystemGroupedBackground)
     static let screen = Color(.systemGroupedBackground)
     static let tileIcon = Color(light: 0xFDE8DD, dark: 0x4A2A1C)
+    /// The filled call-to-action color (#C2410C). White text on it is 5.2:1.
+    static let action = Color(light: 0xC2410C, dark: 0xC2410C)
+    /// Inline errors and the error card's text.
+    static let error = Color(light: 0xB3261E, dark: 0xFFB4AB)
 
     struct BadgeColors {
         let background: Color
