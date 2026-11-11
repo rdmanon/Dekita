@@ -49,15 +49,18 @@ import tech.vauldex.dekita.ui.components.StatusPill
 import tech.vauldex.dekita.ui.theme.DekitaTheme
 import tech.vauldex.dekita.ui.theme.Dimens
 
-/** Placeholder store screen that shows the seeded menu states. The real screen is a later ticket. */
+/**
+ * Placeholder store screen that shows the seeded menu states. The real screen is a later ticket.
+ * The iOS app passes [showTopBar] false: its SwiftUI navigation bar shows the title, back and favorite buttons.
+ */
 @Composable
-fun StoreDetailScreen(viewModel: StoreDetailViewModel, onBack: () -> Unit) {
+fun StoreDetailScreen(viewModel: StoreDetailViewModel, onBack: () -> Unit, showTopBar: Boolean = true) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val store = state.store
 
     Scaffold(
         topBar = {
-            TopAppBar(
+            if (showTopBar) TopAppBar(
                 title = { Text(store?.name.orEmpty(), maxLines = 1, overflow = TextOverflow.Ellipsis) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {

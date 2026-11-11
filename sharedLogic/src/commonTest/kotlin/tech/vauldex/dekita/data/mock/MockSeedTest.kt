@@ -69,6 +69,42 @@ class MockSeedTest {
     }
 
     @Test
+    fun favoriteItemsPointAtSeededItems() {
+        assertTrue(seedFavoriteItems.isNotEmpty())
+        for (favorite in seedFavoriteItems) {
+            val item = seedMenus.getValue(favorite.storeId).items.first { it.id == favorite.itemId }
+            assertEquals(item.name, favorite.itemName)
+        }
+        assertTrue(seedFavoriteItems.any { it.itemName == "Shoyu Ramen" && it.storeId == SeedStoreIds.RAMEN_BAR })
+    }
+
+    @Test
+    fun recommendationsPointAtSeededStores() {
+        assertTrue(seedRecommendedStoreIds.isNotEmpty())
+        assertTrue(seedRecommendedStoreIds.all { id -> seedStores.any { it.id == id } })
+    }
+
+    @Test
+    fun feedCarriesItemNamesForSearch() {
+        for (store in seedStores) {
+            assertEquals(seedMenus.getValue(store.id).items.map { it.name }, store.itemNames, store.name)
+        }
+    }
+
+    @Test
+    fun categoriesIncludeNonRestaurantBusinesses() {
+        val categories = seedStores.map { it.category }.toSet()
+        assertTrue("Salon" in categories)
+        assertTrue("Convenience store" in categories)
+    }
+
+    @Test
+    fun aLongJapaneseStoreNameIsSeededForTruncationChecks() {
+        val japanese = Regex("[\u3040-\u30FF\u4E00-\u9FFF]")
+        assertTrue(seedStores.any { japanese.containsMatchIn(it.name) && it.name.length > 25 })
+    }
+
+    @Test
     fun orderHistoryHasBothCompletionReasons() {
         val completed = seedOrders(now).filter { it.status == OrderStatus.COMPLETED }
         assertEquals(CompletionReason.entries.toSet(), completed.mapNotNull { it.completionReason }.toSet())

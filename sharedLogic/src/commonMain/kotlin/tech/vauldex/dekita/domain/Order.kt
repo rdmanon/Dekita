@@ -40,6 +40,8 @@ data class Order internal constructor(
 ) {
     val itemCount: Int get() = lines.sumOf { it.quantity }
 
+    val createdAt: Instant get() = history.first().at
+
     val lastUpdatedAt: Instant get() = history.last().at
 
     companion object {

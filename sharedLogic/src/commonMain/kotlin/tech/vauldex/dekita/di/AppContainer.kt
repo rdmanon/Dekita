@@ -17,6 +17,7 @@ import tech.vauldex.dekita.data.mock.FakeOrderRepository
 import tech.vauldex.dekita.data.mock.FakePaymentRepository
 import tech.vauldex.dekita.data.mock.FakeStoreRepository
 import tech.vauldex.dekita.data.mock.MockConfig
+import tech.vauldex.dekita.data.mock.StoreFeedSimulator
 import tech.vauldex.dekita.data.mock.seedUser
 import tech.vauldex.dekita.domain.UserProfile
 
@@ -42,6 +43,15 @@ class AppContainer(
     val inboxRepository: InboxRepository get() = inbox
 
     val userProfile: UserProfile = seedUser
+
+    /** Debug panel only: live changes to the store feed. */
+    val storeFeedSimulator: StoreFeedSimulator get() = stores
+
+    /** Debug panel only: no favorites and no orders, to check the empty Favorites and History states. */
+    fun simulateNewUser() {
+        stores.clearFavorites()
+        orders.clearAll()
+    }
 
     /** Puts every repository back to the seed data, with the loading delay. */
     fun resetMockData() {

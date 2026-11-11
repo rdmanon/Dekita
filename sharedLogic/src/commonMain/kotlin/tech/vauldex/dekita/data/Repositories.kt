@@ -4,6 +4,7 @@ import kotlinx.coroutines.flow.StateFlow
 import tech.vauldex.dekita.domain.Cart
 import tech.vauldex.dekita.domain.CartLine
 import tech.vauldex.dekita.domain.CompletionReason
+import tech.vauldex.dekita.domain.FavoriteItem
 import tech.vauldex.dekita.domain.FulfillmentMode
 import tech.vauldex.dekita.domain.InboxMessage
 import tech.vauldex.dekita.domain.Menu
@@ -14,8 +15,15 @@ import tech.vauldex.dekita.domain.Store
 import tech.vauldex.dekita.domain.TransitionResult
 
 interface StoreRepository {
+    /** The store feed. Availability and queue changes are pushed here as they happen, with no refresh. */
     val stores: StateFlow<LoadState<List<Store>>>
     val favoriteStoreIds: StateFlow<Set<String>>
+
+    /** Favorited menu items, newest first. */
+    val favoriteItems: StateFlow<List<FavoriteItem>>
+
+    /** Stores picked for this customer, best first. Ids may name stores that are not in the feed. */
+    val recommendedStoreIds: StateFlow<List<String>>
 
     fun refresh()
 
@@ -29,6 +37,14 @@ interface MenuRepository {
 interface CartRepository {
     /** Null when there is no cart yet. */
     val cart: StateFlow<Cart?>
+
+    /**
+     * The mode picked on Discover before choosing a store, or null for no preference.
+     * Cart Review starts in this mode when the store supports it.
+     */
+    val preferredMode: StateFlow<FulfillmentMode?>
+
+    fun setPreferredMode(mode: FulfillmentMode?)
 
     /**
      * Adds a line, starting a cart for the item's store if there is none.

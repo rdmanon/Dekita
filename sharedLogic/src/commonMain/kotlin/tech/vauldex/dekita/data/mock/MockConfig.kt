@@ -33,3 +33,14 @@ internal fun <T> CoroutineScope.simulateLoad(
     delay(config.loadingDelay.value)
     target.value = LoadState.Success(produce())
 }
+
+/** Emits Loading, waits the configured delay, then emits an error, as a failed request would. */
+internal fun <T> CoroutineScope.simulateFailure(
+    target: MutableStateFlow<LoadState<T>>,
+    config: MockConfig,
+    message: String,
+): Job = launch {
+    target.value = LoadState.Loading
+    delay(config.loadingDelay.value)
+    target.value = LoadState.Error(message)
+}
