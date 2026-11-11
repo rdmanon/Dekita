@@ -88,6 +88,11 @@ struct CartReviewView: View {
         .background(Palette.screen)
         .navigationTitle("Cart")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            if AppBuild.isDebug {
+                ToolbarItem(placement: .topBarTrailing) { DebugPanelButton() }
+            }
+        }
         .sheet(isPresented: editPresented) {
             if let sheet = model.state.editSheet {
                 ItemSheetContent(
