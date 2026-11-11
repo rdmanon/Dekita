@@ -45,6 +45,9 @@ interface StoreFeedSimulator {
 
     /** Empties favorite stores and items, as for a customer who has none yet. */
     fun clearFavorites()
+
+    /** Moves a store's queue by [delta] orders, as orders come in or are served. Never below zero. */
+    fun adjustQueue(storeId: String, delta: Int)
 }
 
 class FakeStoreRepository(
@@ -94,6 +97,23 @@ class FakeStoreRepository(
         _stores.update { state -> if (state is LoadState.Success) LoadState.Success(updated) else state }
     }
 
+    override fun adjustQueue(storeId: String, delta: Int) {
+        val updated = feed.updateAndGet { stores ->
+            stores.map { store ->
+                val queue = store.queue
+                if (store.id != storeId || queue == null) {
+                    store
+                } else {
+                    val ahead = (queue.ordersAhead + delta).coerceAtLeast(0)
+                    // About three minutes per order, as in the seed data; no queue means no wait.
+                    val wait = if (ahead == 0) 0 else (queue.estimatedWaitMinutes + delta * 3).coerceAtLeast(3)
+                    store.copy(queue = QueueStatus(ahead, wait))
+                }
+            }
+        }
+        _stores.update { state -> if (state is LoadState.Success) LoadState.Success(updated) else state }
+    }
+
     override fun failNextLoad() {
         failNext.value = true
     }
@@ -122,28 +142,49 @@ class FakeStoreRepository(
     }
 }
 
+/** Debug-panel hooks for menus: what a store's own app does when an item runs out. */
+interface MenuSimulator {
+    /** "Stop Selling" (true) or resume selling (false) one item. Open menus update at once. */
+    fun setItemSoldOut(storeId: String, itemId: String, soldOut: Boolean)
+}
+
 class FakeMenuRepository(
     private val scope: CoroutineScope,
     private val config: MockConfig,
-) : MenuRepository, Resettable {
+) : MenuRepository, MenuSimulator, Resettable {
 
     private val menus = mutableMapOf<String, MutableStateFlow<LoadState<Menu>>>()
+
+    /** Sold-out changes made from the debug panel, by store and item id. */
+    private val soldOutOverrides = MutableStateFlow<Map<String, Map<String, Boolean>>>(emptyMap())
 
     override fun menu(storeId: String): StateFlow<LoadState<Menu>> =
         menus.getOrPut(storeId) {
             MutableStateFlow<LoadState<Menu>>(LoadState.Loading).also { load(storeId, it) }
         }.asStateFlow()
 
+    override fun setItemSoldOut(storeId: String, itemId: String, soldOut: Boolean) {
+        soldOutOverrides.update { all -> all + (storeId to (all[storeId].orEmpty() + (itemId to soldOut))) }
+        val menu = currentMenu(storeId) ?: return
+        menus[storeId]?.update { state -> if (state is LoadState.Success) LoadState.Success(menu) else state }
+    }
+
     override fun reset() {
+        soldOutOverrides.value = emptyMap()
         menus.forEach { (storeId, flow) -> load(storeId, flow) }
     }
 
+    private fun currentMenu(storeId: String): Menu? {
+        val menu = seedMenus[storeId] ?: return null
+        val overrides = soldOutOverrides.value[storeId].orEmpty()
+        return menu.copy(items = menu.items.map { item -> overrides[item.id]?.let { item.copy(isSoldOut = it) } ?: item })
+    }
+
     private fun load(storeId: String, target: MutableStateFlow<LoadState<Menu>>) {
-        val menu = seedMenus[storeId]
-        if (menu == null) {
+        if (seedMenus[storeId] == null) {
             target.value = LoadState.Error("No menu for store $storeId")
         } else {
-            scope.simulateLoad(target, config) { menu }
+            scope.simulateLoad(target, config) { checkNotNull(currentMenu(storeId)) }
         }
     }
 }
@@ -160,6 +201,8 @@ class FakeCartRepository : CartRepository, Resettable {
         _preferredMode.value = mode
     }
 
+    private val lineCounter = MutableStateFlow(0)
+
     override fun addLine(mode: FulfillmentMode, line: CartLine): Boolean {
         var added = false
         _cart.update { current ->
@@ -167,10 +210,23 @@ class FakeCartRepository : CartRepository, Resettable {
             when {
                 current == null -> Cart(line.item.storeId, mode).addLine(line).also { added = true }
                 current.storeId != line.item.storeId -> current
-                else -> current.copy(mode = mode).addLine(line).also { added = true }
+                // The cart keeps the mode it started with; Cart Review is where it changes.
+                else -> current.addLine(line).also { added = true }
             }
         }
         return added
+    }
+
+    override fun newLineId(): String = "cart-line-${lineCounter.updateAndGet { it + 1 }}"
+
+    override fun replaceLine(lineId: String, line: CartLine) {
+        _cart.update { current ->
+            if (current?.line(lineId) == null) current else current.replaceLine(lineId, line)
+        }
+    }
+
+    override fun setMode(mode: FulfillmentMode) {
+        _cart.update { it?.copy(mode = mode) }
     }
 
     override fun updateQuantity(lineId: String, quantity: Int) {
@@ -198,6 +254,10 @@ class FakeOrderRepository(
     private val _orders = MutableStateFlow<LoadState<List<Order>>>(LoadState.Loading)
     override val orders: StateFlow<LoadState<List<Order>>> = _orders.asStateFlow()
 
+    // Declared before init: reset() uses it, and Kotlin runs initializers in declaration order.
+    /** Orders made in this session. A reload keeps them, as a server would. */
+    private val created = MutableStateFlow<List<Order>>(emptyList())
+
     private var loadJob: Job? = null
 
     init {
@@ -220,14 +280,35 @@ class FakeOrderRepository(
         return result
     }
 
+    override fun createDraft(cart: Cart, storeName: String): Order {
+        val known = (_orders.value as? LoadState.Success)?.data ?: (created.value + seedOrders(clock.now()))
+        val number = (known.maxOfOrNull { it.number } ?: 0) + 1
+        val order = Order.draft(
+            id = "order-$number",
+            number = number,
+            storeId = cart.storeId,
+            storeName = storeName,
+            mode = cart.mode,
+            lines = cart.lines,
+            // Eat-In is paid at check-in, so there is no payment method yet.
+            paymentMethodId = null,
+            at = clock.now(),
+        )
+        created.update { listOf(order) + it }
+        _orders.update { state -> if (state is LoadState.Success) LoadState.Success(listOf(order) + state.data) else state }
+        return order
+    }
+
     override fun reset() {
         loadJob?.cancel()
-        loadJob = scope.simulateLoad(_orders, config) { seedOrders(clock.now()) }
+        created.value = emptyList()
+        loadJob = scope.simulateLoad(_orders, config) { created.value + seedOrders(clock.now()) }
     }
 
     /** Debug only: removes every order, as for a customer who has never ordered. */
     fun clearAll() {
         loadJob?.cancel()
+        created.value = emptyList()
         _orders.value = LoadState.Success(emptyList())
     }
 }

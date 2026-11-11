@@ -47,4 +47,13 @@ data class Cart(
         }
         return copy(lines = updated)
     }
+
+    /** Replaces a line in place, keeping its position. Editing a line never adds a second one. */
+    fun replaceLine(lineId: String, line: CartLine): Cart {
+        require(line.item.storeId == storeId) { "Cart belongs to $storeId, item is from ${line.item.storeId}" }
+        require(lines.any { it.lineId == lineId }) { "No line $lineId in cart" }
+        return copy(lines = lines.map { if (it.lineId == lineId) line.copy(lineId = lineId) else it })
+    }
+
+    fun line(lineId: String): CartLine? = lines.firstOrNull { it.lineId == lineId }
 }

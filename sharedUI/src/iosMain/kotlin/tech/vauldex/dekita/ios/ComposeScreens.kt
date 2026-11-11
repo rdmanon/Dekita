@@ -54,7 +54,9 @@ fun StoreDetailViewController(storeId: String, isDebug: Boolean): UIViewControll
     HostedScreen(isDebug) {
         val container = AppContainer.instance
         StoreDetailScreen(
-            viewModel = viewModel { StoreDetailViewModel(storeId, container.storeRepository, container.menuRepository) },
+            viewModel = viewModel {
+                StoreDetailViewModel(storeId, container.storeRepository, container.menuRepository, container.cartRepository)
+            },
             onBack = {},
             showTopBar = false,
         )

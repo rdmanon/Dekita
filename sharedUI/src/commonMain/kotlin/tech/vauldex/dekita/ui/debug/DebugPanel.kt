@@ -46,6 +46,7 @@ internal val debugSections: List<DebugSection> = listOf(
     DebugSection("Build") { BuildInfo() },
     DebugSection("Mock data") { container -> MockDataControls(container) },
     DebugSection("Discover") { container -> DiscoverControls(container) },
+    DebugSection("Cart") { container -> CartControls(container) },
 )
 
 @Composable
@@ -151,6 +152,43 @@ private fun DiscoverControls(container: AppContainer) {
         },
     ) { Text("Simulate store feed error") }
     OutlinedButton(onClick = { container.simulateNewUser() }) { Text("Simulate new user (no favorites or history)") }
+}
+
+/** CART-01: a ready-made cart, the live queue, and "Stop Selling" for the cart store's items. */
+@Composable
+private fun CartControls(container: AppContainer) {
+    val cart by container.cartRepository.cart.collectAsStateWithLifecycle()
+    val storeId = cart?.storeId
+
+    OutlinedButton(onClick = { container.seedSampleCart() }) { Text("Fill cart: Shoyu Ramen (Mild) + Gyoza") }
+    if (storeId == null) {
+        Text("The cart is empty. Fill it, or add items from a store.", style = MaterialTheme.typography.bodyMedium)
+        return
+    }
+
+    Text("Queue at the cart's store", style = MaterialTheme.typography.bodyMedium)
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        OutlinedButton(onClick = { container.storeFeedSimulator.adjustQueue(storeId, -1) }) { Text("One fewer ahead") }
+        OutlinedButton(onClick = { container.storeFeedSimulator.adjustQueue(storeId, 1) }) { Text("One more ahead") }
+    }
+
+    val menuFlow = remember(storeId) { container.menuRepository.menu(storeId) }
+    val menu by menuFlow.collectAsStateWithLifecycle()
+    Text("Menu items", style = MaterialTheme.typography.bodyMedium)
+    menu.dataOrNull()?.items.orEmpty().forEach { item ->
+        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+            Text(
+                item.name,
+                style = MaterialTheme.typography.bodyMedium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f),
+            )
+            TextButton(onClick = { container.menuSimulator.setItemSoldOut(storeId, item.id, !item.isSoldOut) }) {
+                Text(if (item.isSoldOut) "Resume selling" else "Stop Selling")
+            }
+        }
+    }
 }
 
 private const val HOLD_MILLIS = 1_000L

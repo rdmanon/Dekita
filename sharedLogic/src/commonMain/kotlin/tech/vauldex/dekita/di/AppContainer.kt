@@ -16,8 +16,11 @@ import tech.vauldex.dekita.data.mock.FakeMenuRepository
 import tech.vauldex.dekita.data.mock.FakeOrderRepository
 import tech.vauldex.dekita.data.mock.FakePaymentRepository
 import tech.vauldex.dekita.data.mock.FakeStoreRepository
+import tech.vauldex.dekita.data.mock.MenuSimulator
 import tech.vauldex.dekita.data.mock.MockConfig
 import tech.vauldex.dekita.data.mock.StoreFeedSimulator
+import tech.vauldex.dekita.data.mock.sampleCartLines
+import tech.vauldex.dekita.data.mock.sampleCartMode
 import tech.vauldex.dekita.data.mock.seedUser
 import tech.vauldex.dekita.domain.UserProfile
 
@@ -46,6 +49,15 @@ class AppContainer(
 
     /** Debug panel only: live changes to the store feed. */
     val storeFeedSimulator: StoreFeedSimulator get() = stores
+
+    /** Debug panel only: "Stop Selling" an item, as the store's app would. */
+    val menuSimulator: MenuSimulator get() = menus
+
+    /** Debug panel only: fills the cart with the design's example, Shoyu Ramen (Mild) and Gyoza from Test Ramen Bar. */
+    fun seedSampleCart() {
+        cart.clear()
+        sampleCartLines(cart::newLineId).forEach { cart.addLine(sampleCartMode(cart.preferredMode.value), it) }
+    }
 
     /** Debug panel only: no favorites and no orders, to check the empty Favorites and History states. */
     fun simulateNewUser() {
