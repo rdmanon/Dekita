@@ -97,7 +97,7 @@ class HistoryBridge : ScreenBridge() {
 
 class StoreDetailBridge(storeId: String) : ScreenBridge() {
     val viewModel: StoreDetailViewModel = makeViewModel(StoreDetailViewModel::class) {
-        StoreDetailViewModel(storeId, container.storeRepository, container.menuRepository)
+        StoreDetailViewModel(storeId, container.storeRepository, container.menuRepository, container.cartRepository)
     }
 
     val currentState: StoreDetailUiState get() = viewModel.state.value

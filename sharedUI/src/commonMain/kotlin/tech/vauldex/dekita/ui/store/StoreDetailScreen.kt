@@ -1,5 +1,6 @@
 package tech.vauldex.dekita.ui.store
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -10,6 +11,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconToggleButton
@@ -29,6 +31,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dekita.sharedui.generated.resources.Res
 import dekita.sharedui.generated.resources.ic_arrow_back
+import dekita.sharedui.generated.resources.ic_bag
 import dekita.sharedui.generated.resources.ic_favorite
 import dekita.sharedui.generated.resources.ic_favorite_filled
 import org.jetbrains.compose.resources.painterResource
@@ -50,9 +53,18 @@ import tech.vauldex.dekita.ui.components.StoreArt
 import tech.vauldex.dekita.ui.theme.DekitaTheme
 import tech.vauldex.dekita.ui.theme.Dimens
 
-/** Store header with the live queue. The menu list below is still a placeholder until MENU-01. */
+/**
+ * Store header with the live queue. The menu list below is still a placeholder until MENU-01.
+ * With [onItemClick] items open the customize sheet, and [onViewCart] shows a View cart button
+ * when the cart belongs to this store. Without them the menu is read-only.
+ */
 @Composable
-fun StoreDetailScreen(viewModel: StoreDetailViewModel, onBack: () -> Unit) {
+fun StoreDetailScreen(
+    viewModel: StoreDetailViewModel,
+    onBack: () -> Unit,
+    onItemClick: ((itemId: String) -> Unit)? = null,
+    onViewCart: (() -> Unit)? = null,
+) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val store = state.store
 
@@ -77,6 +89,17 @@ fun StoreDetailScreen(viewModel: StoreDetailViewModel, onBack: () -> Unit) {
                 },
             )
         },
+        floatingActionButton = {
+            if (onViewCart != null && state.cartItemCount > 0) {
+                ExtendedFloatingActionButton(
+                    onClick = onViewCart,
+                    icon = { Icon(painterResource(Res.drawable.ic_bag), contentDescription = null) },
+                    text = { Text("View cart (${state.cartItemCount}) · ${state.cartTotal.formatted()}") },
+                    containerColor = MaterialTheme.colorScheme.primaryContainer,
+                    contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                )
+            }
+        },
     ) { padding ->
         if (store == null) {
             LoadingIndicator("Loading store…", Modifier.padding(padding))
@@ -87,7 +110,8 @@ fun StoreDetailScreen(viewModel: StoreDetailViewModel, onBack: () -> Unit) {
                 start = Dimens.ScreenPadding,
                 end = Dimens.ScreenPadding,
                 top = padding.calculateTopPadding(),
-                bottom = padding.calculateBottomPadding() + Dimens.ScreenPadding,
+                // Room for the View cart button, so it never covers the last item.
+                bottom = padding.calculateBottomPadding() + Dimens.ScreenPadding + 72.dp,
             ),
             modifier = Modifier.fillMaxSize(),
         ) {
@@ -97,7 +121,9 @@ fun StoreDetailScreen(viewModel: StoreDetailViewModel, onBack: () -> Unit) {
                 is LoadState.Error -> item(key = "menu-error") { Text(menu.message) }
                 is LoadState.Success -> menu.data.categories.forEach { category ->
                     item(key = "category-${category.id}") { SectionTitle(category.name) }
-                    items(menu.data.itemsIn(category.id), key = { it.id }) { item -> MenuItemRow(item) }
+                    items(menu.data.itemsIn(category.id), key = { it.id }) { item ->
+                        MenuItemRow(item, onClick = onItemClick?.takeUnless { item.isSoldOut }?.let { openItem -> { openItem(item.id) } })
+                    }
                 }
             }
         }
@@ -148,11 +174,14 @@ private fun StoreHeader(store: Store) {
 }
 
 @Composable
-private fun MenuItemRow(item: MenuItem) {
+private fun MenuItemRow(item: MenuItem, onClick: (() -> Unit)?) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(16.dp),
-        modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .then(if (onClick != null) Modifier.clickable(onClickLabel = "Customize ${item.name}", onClick = onClick) else Modifier)
+            .padding(vertical = 8.dp),
     ) {
         Column(
             verticalArrangement = Arrangement.spacedBy(2.dp),

@@ -12,6 +12,7 @@ import tech.vauldex.dekita.domain.Order
 import tech.vauldex.dekita.domain.OrderStatus
 import tech.vauldex.dekita.domain.OrderStatusMachine
 import tech.vauldex.dekita.domain.TransitionResult
+import tech.vauldex.dekita.domain.defaultMode
 
 /** A status change in a seed order, timed relative to the order's creation. */
 private class Step(val status: OrderStatus, val after: Duration, val reason: CompletionReason? = null)
@@ -107,3 +108,15 @@ internal fun seedOrders(now: Instant): List<Order> {
         ),
     )
 }
+
+/** The design's cart: Shoyu Ramen (Mild) and Gyoza from Test Ramen Bar, which offers both modes. */
+internal fun sampleCartLines(newLineId: () -> String): List<CartLine> {
+    val shoyu = seedItem(SeedStoreIds.RAMEN_BAR, "item-shoyu-ramen")
+    return listOf(
+        CartLine(newLineId(), shoyu, listOf(shoyu.seedOption("ramen-spice-mild"))),
+        CartLine(newLineId(), seedItem(SeedStoreIds.RAMEN_BAR, "item-gyoza")),
+    )
+}
+
+internal fun sampleCartMode(preferred: FulfillmentMode?): FulfillmentMode =
+    seedStores.first { it.id == SeedStoreIds.RAMEN_BAR }.businessType.defaultMode(preferred)
