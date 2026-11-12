@@ -20,7 +20,9 @@ import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 import tech.vauldex.dekita.data.mock.FakeAuthRepository
+import tech.vauldex.dekita.data.mock.FakeInboxRepository
 import tech.vauldex.dekita.data.mock.FakeOrderRepository
+import tech.vauldex.dekita.data.mock.FakePaymentRepository
 import tech.vauldex.dekita.data.mock.MockConfig
 import tech.vauldex.dekita.data.mock.SeedStoreIds
 import tech.vauldex.dekita.data.mock.seedItem
@@ -30,9 +32,11 @@ import tech.vauldex.dekita.domain.CheckIn
 import tech.vauldex.dekita.domain.CheckInMethod
 import tech.vauldex.dekita.domain.CompletionReason
 import tech.vauldex.dekita.domain.FulfillmentMode
+import tech.vauldex.dekita.domain.InboxKind
 import tech.vauldex.dekita.domain.OrderStatus
 import tech.vauldex.dekita.domain.SsoProvider
 import tech.vauldex.dekita.presentation.ORDER_PLACED_MESSAGE
+import tech.vauldex.dekita.presentation.collectEvents
 
 /** ORDER-01: the ticket's live stepper, [Confirm] and auto-complete. */
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -54,11 +58,21 @@ class OrderTicketViewModelTest {
         Dispatchers.resetMain()
     }
 
-    private class Fixture(val orders: FakeOrderRepository, val auth: FakeAuthRepository)
+    private class Fixture(
+        val orders: FakeOrderRepository,
+        val auth: FakeAuthRepository,
+        val payments: FakePaymentRepository,
+        val inbox: FakeInboxRepository,
+    )
 
     /** Loaded orders and a signed-in customer, unless [signIn] is false. */
     private suspend fun TestScope.fixture(signIn: Boolean = true): Fixture {
-        val fixture = Fixture(FakeOrderRepository(backgroundScope, MockConfig(), fixedClock), FakeAuthRepository(MockConfig()))
+        val fixture = Fixture(
+            FakeOrderRepository(backgroundScope, MockConfig(), fixedClock),
+            FakeAuthRepository(MockConfig()),
+            FakePaymentRepository(backgroundScope, MockConfig()),
+            FakeInboxRepository(backgroundScope, MockConfig(), fixedClock),
+        )
         advanceTimeBy(MockConfig.DEFAULT_LOADING_DELAY)
         runCurrent()
         if (signIn) fixture.auth.signInWith(SsoProvider.APPLE)
@@ -67,7 +81,7 @@ class OrderTicketViewModelTest {
     }
 
     private fun TestScope.ticket(f: Fixture, orderId: String) =
-        OrderTicketViewModel(orderId, f.orders, f.auth, f.orders).also { viewModel ->
+        OrderTicketViewModel(orderId, f.orders, f.auth, f.payments, f.inbox, f.orders).also { viewModel ->
             backgroundScope.launch { viewModel.state.collect {} }
             runCurrent()
         }
@@ -163,5 +177,48 @@ class OrderTicketViewModelTest {
         assertNull(guestTicket.state.value.order)
         assertFalse(guestTicket.state.value.isSignedIn)
         assertFalse(guestTicket.confirm())
+    }
+
+    // RCPT-01: the completed ticket as a receipt, and Rate after an auto-complete
+
+    @Test
+    fun aCompletedOrderShowsTheReceiptFields() = runTest(mainDispatcher) {
+        val f = fixture()
+        advanceTimeBy(MockConfig.DEFAULT_LOADING_DELAY)
+        runCurrent()
+        val rated = ticket(f, "order-18").state.value
+        assertEquals("Rakuten Pay (test account)", rated.paymentLabel)
+        assertEquals(fixedClock.now().epochSeconds - 6 * 24 * 3600 + 60, rated.paidAtEpochSeconds, "Queued a minute after it was placed")
+        assertEquals("Rated 5 of 5 · Friendly staff", rated.ratingLabel)
+        assertFalse(rated.canRate)
+
+        val unrated = ticket(f, "order-37").state.value
+        assertEquals("Test Visa •••• 4242", unrated.paymentLabel)
+        assertNull(unrated.ratingLabel)
+        assertTrue(unrated.canRate)
+    }
+
+    @Test
+    fun rateOpensOnceForAnAutoCompletedOrderThatWasNeverRatedOrSkipped() = runTest(mainDispatcher) {
+        val f = fixture()
+        advanceTimeBy(MockConfig.DEFAULT_LOADING_DELAY)
+        runCurrent()
+
+        val autoCompleted = ticket(f, "order-29")
+        val events = collectEvents(autoCompleted.events)
+        runCurrent()
+        assertEquals(listOf<OrderTicketEvent>(OrderTicketEvent.OpenRating), events)
+
+        val confirmed = ticket(f, "order-37")
+        val confirmedEvents = collectEvents(confirmed.events)
+        runCurrent()
+        assertTrue(confirmedEvents.isEmpty(), "Confirm opens Rate itself, so a confirmed order doesn't reopen it")
+
+        // After a skip, the inbox message is the way back in.
+        f.inbox.add(ratePromptId("order-29"), "Rate order #29", "How was it?", InboxKind.RATE_ORDER, "order-29")
+        val skipped = ticket(f, "order-29")
+        val skippedEvents = collectEvents(skipped.events)
+        runCurrent()
+        assertTrue(skippedEvents.isEmpty())
     }
 }

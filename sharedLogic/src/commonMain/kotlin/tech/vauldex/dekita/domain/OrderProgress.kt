@@ -1,5 +1,7 @@
 package tech.vauldex.dekita.domain
 
+import kotlin.time.Instant
+
 /** The ticket's stepper: what the customer sees, a simpler view of [OrderStatus]. */
 enum class OrderStep { RECEIVED, COOKING, READY, SERVED }
 
@@ -24,6 +26,14 @@ val Order.currentStep: OrderStep?
 /** Paid and not closed yet: the order has a ticket the customer follows. */
 val Order.isActive: Boolean
     get() = status != OrderStatus.DRAFT && status != OrderStatus.COMPLETED
+
+/** When the customer paid: the move to PAID (pickup) or QUEUED (in-store). Null for a draft. */
+val Order.paidAt: Instant?
+    get() = history.firstOrNull { it.status == OrderStatus.PAID || it.status == OrderStatus.QUEUED }?.at
+
+/** A completed order the customer hasn't rated yet. */
+val Order.canBeRated: Boolean
+    get() = status == OrderStatus.COMPLETED && rating == null
 
 /** [Confirm] closes the order once it is ready or served. */
 val Order.canConfirm: Boolean

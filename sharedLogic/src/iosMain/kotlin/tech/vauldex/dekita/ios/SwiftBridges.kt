@@ -64,9 +64,12 @@ import tech.vauldex.dekita.presentation.discover.HistoryUiState
 import tech.vauldex.dekita.presentation.discover.HistoryViewModel
 import tech.vauldex.dekita.presentation.discover.WalkLimit
 import tech.vauldex.dekita.presentation.orders.OrderNotice
+import tech.vauldex.dekita.presentation.orders.OrderTicketEvent
 import tech.vauldex.dekita.presentation.orders.OrderTicketUiState
 import tech.vauldex.dekita.presentation.orders.OrderTicketViewModel
 import tech.vauldex.dekita.presentation.orders.OrdersUiState
+import tech.vauldex.dekita.presentation.orders.RateOrderUiState
+import tech.vauldex.dekita.presentation.orders.RateOrderViewModel
 import tech.vauldex.dekita.presentation.orders.OrdersViewModel
 import tech.vauldex.dekita.presentation.store.StoreDetailUiState
 import tech.vauldex.dekita.presentation.store.StoreDetailViewModel
@@ -176,7 +179,7 @@ val Order.createdEpochSeconds: Long get() = createdAt.epochSeconds
 
 class OrdersBridge : ScreenBridge() {
     val viewModel: OrdersViewModel = makeViewModel(OrdersViewModel::class) {
-        OrdersViewModel(container.orderRepository, container.authRepository)
+        OrdersViewModel(container.orderRepository, container.inboxRepository, container.authRepository)
     }
 
     val currentState: OrdersUiState get() = viewModel.state.value
@@ -187,12 +190,38 @@ class OrdersBridge : ScreenBridge() {
 /** ORDER-01: one order's ticket, with live status and [Confirm]. */
 class OrderTicketBridge(orderId: String) : ScreenBridge() {
     val viewModel: OrderTicketViewModel = makeViewModel(OrderTicketViewModel::class) {
-        OrderTicketViewModel(orderId, container.orderRepository, container.authRepository, container.orderSimulator)
+        OrderTicketViewModel(
+            orderId,
+            container.orderRepository,
+            container.authRepository,
+            container.paymentRepository,
+            container.inboxRepository,
+            container.orderSimulator,
+        )
     }
 
     val currentState: OrderTicketUiState get() = viewModel.state.value
 
     fun watch(onState: (OrderTicketUiState) -> Unit): FlowWatch = viewModel.state.watch(onState)
+
+    fun watchEvents(onEvent: (OrderTicketEvent) -> Unit): FlowWatch = viewModel.events.watch(onEvent)
+}
+
+/** RCPT-01: Rate & Add to Favorites for one completed order. */
+class RateOrderBridge(orderId: String) : ScreenBridge() {
+    val viewModel: RateOrderViewModel = makeViewModel(RateOrderViewModel::class) {
+        RateOrderViewModel(
+            orderId,
+            container.orderRepository,
+            container.storeRepository,
+            container.inboxRepository,
+            container.authRepository,
+        )
+    }
+
+    val currentState: RateOrderUiState get() = viewModel.state.value
+
+    fun watch(onState: (RateOrderUiState) -> Unit): FlowWatch = viewModel.state.watch(onState)
 }
 
 /**
@@ -234,7 +263,7 @@ class QrScannerBridge(orderId: String) : ScreenBridge() {
 
 class AccountBridge : ScreenBridge() {
     val viewModel: AccountViewModel = makeViewModel(AccountViewModel::class) {
-        AccountViewModel(container.authRepository, container.paymentRepository, container.inboxRepository)
+        AccountViewModel(container.authRepository, container.paymentRepository)
     }
 
     val currentState: AccountUiState get() = viewModel.state.value

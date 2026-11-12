@@ -50,6 +50,7 @@ import tech.vauldex.dekita.presentation.discover.FavoritesViewModel
 import tech.vauldex.dekita.presentation.discover.HistoryViewModel
 import tech.vauldex.dekita.presentation.orders.OrderTicketViewModel
 import tech.vauldex.dekita.presentation.orders.OrdersViewModel
+import tech.vauldex.dekita.presentation.orders.RateOrderViewModel
 import tech.vauldex.dekita.presentation.store.StoreDetailViewModel
 import tech.vauldex.dekita.ui.account.AccountScreen
 import tech.vauldex.dekita.ui.auth.EmailAuthScreen
@@ -66,7 +67,7 @@ import tech.vauldex.dekita.ui.discover.FavoritesScreen
 import tech.vauldex.dekita.ui.discover.HistoryScreen
 import tech.vauldex.dekita.ui.orders.OrderTicketScreen
 import tech.vauldex.dekita.ui.orders.OrdersScreen
-import tech.vauldex.dekita.ui.orders.RateOrderPlaceholderScreen
+import tech.vauldex.dekita.ui.orders.RateOrderScreen
 import tech.vauldex.dekita.ui.store.StoreDetailScreen
 
 // One nested graph per tab, so each tab keeps its own back stack when you switch away and back.
@@ -249,10 +250,13 @@ fun AppShell(
             navigation<OrdersGraph>(startDestination = OrdersRoute) {
                 composable<OrdersRoute> { entry ->
                     OrdersScreen(
-                        viewModel = viewModel { OrdersViewModel(container.orderRepository, container.authRepository) },
+                        viewModel = viewModel {
+                            OrdersViewModel(container.orderRepository, container.inboxRepository, container.authRepository)
+                        },
                         onSignIn = { if (entry.isResumed()) navController.navigate(SignInRoute()) },
                         onCheckIn = { orderId -> if (entry.isResumed()) navController.navigate(CheckInRoute(orderId)) },
                         onOpenTicket = { orderId -> if (entry.isResumed()) navController.navigate(OrderTicketRoute(orderId)) },
+                        onOpenRating = { orderId -> if (entry.isResumed()) navController.navigate(RateOrderRoute(orderId)) },
                     )
                 }
             }
@@ -260,7 +264,7 @@ fun AppShell(
                 composable<AccountRoute> { entry ->
                     AccountScreen(
                         viewModel = viewModel {
-                            AccountViewModel(container.authRepository, container.paymentRepository, container.inboxRepository)
+                            AccountViewModel(container.authRepository, container.paymentRepository)
                         },
                         onSignIn = { if (entry.isResumed()) navController.navigate(SignInRoute()) },
                         onSignedOut = { navController.showSignInAfterSignOut() },
@@ -390,17 +394,39 @@ private fun NavGraphBuilder.orderDestinations(container: AppContainer, navContro
         val orderId = entry.toRoute<OrderTicketRoute>().orderId
         OrderTicketScreen(
             viewModel = viewModel {
-                OrderTicketViewModel(orderId, container.orderRepository, container.authRepository, container.orderSimulator)
+                OrderTicketViewModel(
+                    orderId,
+                    container.orderRepository,
+                    container.authRepository,
+                    container.paymentRepository,
+                    container.inboxRepository,
+                    container.orderSimulator,
+                )
             },
             onBack = { if (entry.isResumed()) navController.popBackStack() },
             onConfirmed = {
                 // The order is closed, so Back from the rating skips its ticket.
                 navController.navigate(RateOrderRoute(orderId)) { popUpTo<OrderTicketRoute> { inclusive = true } }
             },
+            // Opened again later: the receipt stays underneath, so leaving Rate returns to it. Also fired as the
+            // ticket opens, before its entry is resumed, so this guards double taps with single-top instead.
+            onOpenRating = { navController.navigate(RateOrderRoute(orderId)) { launchSingleTop = true } },
         )
     }
     composable<RateOrderRoute> { entry ->
-        RateOrderPlaceholderScreen(onDone = { if (entry.isResumed()) navController.popBackStack() })
+        val orderId = entry.toRoute<RateOrderRoute>().orderId
+        RateOrderScreen(
+            viewModel = viewModel {
+                RateOrderViewModel(
+                    orderId,
+                    container.orderRepository,
+                    container.storeRepository,
+                    container.inboxRepository,
+                    container.authRepository,
+                )
+            },
+            onDone = { if (entry.isResumed()) navController.popBackStack() },
+        )
     }
 }
 

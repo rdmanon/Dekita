@@ -33,6 +33,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -49,9 +50,12 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import java.text.DateFormat
+import java.util.Date
 import tech.vauldex.dekita.R
 import tech.vauldex.dekita.domain.Order
 import tech.vauldex.dekita.presentation.optionsLabel
+import tech.vauldex.dekita.presentation.orders.OrderTicketEvent
 import tech.vauldex.dekita.presentation.orders.OrderTicketUiState
 import tech.vauldex.dekita.presentation.orders.OrderTicketViewModel
 import tech.vauldex.dekita.presentation.orders.StepState
@@ -67,11 +71,25 @@ import tech.vauldex.dekita.ui.theme.Dimens
 /**
  * The order ticket (ORDER-01): the number to show at the counter, the live stepper, and [Confirm].
  * Status changes arrive without a refresh. Confirm closes the order and calls [onConfirmed].
+ * A completed order shows as a receipt (RCPT-01) and opens Rate with [onOpenRating].
  */
 @Composable
-fun OrderTicketScreen(viewModel: OrderTicketViewModel, onBack: () -> Unit, onConfirmed: () -> Unit) {
+fun OrderTicketScreen(
+    viewModel: OrderTicketViewModel,
+    onBack: () -> Unit,
+    onConfirmed: () -> Unit,
+    onOpenRating: () -> Unit,
+) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val isDebug = LocalOpenDebugPanel.current != null
+    val currentOnOpenRating by rememberUpdatedState(onOpenRating)
+    LaunchedEffect(viewModel) {
+        viewModel.events.collect { event ->
+            when (event) {
+                OrderTicketEvent.OpenRating -> currentOnOpenRating()
+            }
+        }
+    }
     RequestNotificationPermission()
 
     Scaffold(
@@ -130,6 +148,7 @@ fun OrderTicketScreen(viewModel: OrderTicketViewModel, onBack: () -> Unit, onCon
                 Stepper(state.steps)
                 StatusMessage(state)
                 ItemsCard(order)
+                if (state.isCompleted) Receipt(state, onRate = onOpenRating)
                 if (isDebug && !state.isCompleted) {
                     DebugControls(onAdvance = viewModel::debugAdvance, onAutoComplete = viewModel::debugAutoComplete)
                 }
@@ -272,6 +291,36 @@ private fun ItemsCard(order: Order) {
                 }
             }
         }
+    }
+}
+
+/** RCPT-01: how the order was paid, when, and the rating, or a way to rate it. */
+@Composable
+private fun Receipt(state: OrderTicketUiState, onRate: () -> Unit) {
+    // The device's own time zone and locale format. DateFormat works on every supported API level.
+    val paidAt = state.paidAtEpochSeconds?.let {
+        DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT).format(Date(it * 1000))
+    }
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        SectionTitle("Receipt")
+        Surface(color = MaterialTheme.colorScheme.surfaceContainer, shape = MaterialTheme.shapes.large) {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth().padding(16.dp)) {
+                ReceiptRow("Paid with", state.paymentLabel ?: "—")
+                ReceiptRow("Paid on", paidAt ?: "—")
+                state.ratingLabel?.let { ReceiptRow("Your rating", it) }
+            }
+        }
+        if (state.canRate) {
+            OutlinedButton(onClick = onRate, modifier = Modifier.fillMaxWidth().height(48.dp)) { Text("Rate this order") }
+        }
+    }
+}
+
+@Composable
+private fun ReceiptRow(label: String, value: String) {
+    Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.semantics(mergeDescendants = true) {}) {
+        Text(label, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
+        Text(value, style = MaterialTheme.typography.bodyMedium, textAlign = TextAlign.End)
     }
 }
 

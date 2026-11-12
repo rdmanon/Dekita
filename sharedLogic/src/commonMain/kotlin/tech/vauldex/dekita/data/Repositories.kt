@@ -9,6 +9,7 @@ import tech.vauldex.dekita.domain.CompletionReason
 import tech.vauldex.dekita.domain.FavoriteItem
 import tech.vauldex.dekita.domain.FulfillmentMode
 import tech.vauldex.dekita.domain.GeoPoint
+import tech.vauldex.dekita.domain.InboxKind
 import tech.vauldex.dekita.domain.InboxMessage
 import tech.vauldex.dekita.domain.Menu
 import tech.vauldex.dekita.domain.Order
@@ -34,6 +35,9 @@ interface StoreRepository {
     fun refresh()
 
     fun toggleFavorite(storeId: String)
+
+    /** Adds [item] to the favorite items, newest first, or removes it when it is already there. */
+    fun toggleFavoriteItem(item: FavoriteItem)
 }
 
 interface MenuRepository {
@@ -102,6 +106,12 @@ interface OrderRepository {
     fun payAtCheckIn(orderId: String): Order?
 
     /**
+     * Rates a completed order once. Returns false, and changes nothing, when the order isn't completed,
+     * is already rated, or the stars or tags are invalid, so a second tap records nothing.
+     */
+    fun rate(orderId: String, stars: Int, tags: Set<String>): Boolean
+
+    /**
      * Saves [cart] as a DRAFT order: an Eat-In order that is paid on arrival with [Start Cooking].
      * Returns the new order, which also appears in [orders].
      */
@@ -133,6 +143,9 @@ interface InboxRepository {
     val messages: StateFlow<LoadState<List<InboxMessage>>>
 
     fun markRead(messageId: String)
+
+    /** Adds a message stamped with the current time. Does nothing when a message with [id] already exists. */
+    fun add(id: String, title: String, body: String, kind: InboxKind, orderId: String?)
 }
 
 interface AuthRepository {

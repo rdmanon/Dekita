@@ -73,10 +73,11 @@ class AppContainer(
     /** Debug panel only: arrival and QR scans for check-in, in place of GPS and the camera. */
     val checkInSimulator: CheckInSimulator = FakeCheckInSimulator(orders, location, scanner)
 
-    /** Debug panel only: no favorites and no orders, to check the empty Favorites and History states. */
+    /** Debug panel only: no favorites, orders or messages, to check the empty Favorites, History and Orders states. */
     fun simulateNewUser() {
         stores.clearFavorites()
         orders.clearAll()
+        inbox.clearAll()
     }
 
     /** Debug panel only: replaces the cart with the design's two-item cart, to try the checkout sign-in. */

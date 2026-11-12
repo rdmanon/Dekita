@@ -4,32 +4,66 @@ import SharedLogic
 extension EnvironmentValues {
     /// Opens an order's ticket. ContentView presents it over every tab.
     @Entry var openOrderTicket: (String) -> Void = { _ in }
+
+    /// Opens Rate & Add to Favorites for a completed order, from an Orders inbox message (RCPT-01).
+    @Entry var openRating: (String) -> Void = { _ in }
 }
 
-/// The order ticket (ORDER-01) over the tabs: the ticket, then Rate & Add to Favorites after Confirm.
+/// The order ticket (ORDER-01) over the tabs, then Rate & Add to Favorites (RCPT-01). After Confirm, leaving
+/// Rate closes the whole flow. Opened later from a receipt, leaving Rate returns to the receipt.
 struct OrderTicketFlow: View {
+    let orderId: String
     @StateObject private var model: OrderTicketModel
     @State private var showRating = false
+    @State private var ratingAfterConfirm = false
     @Environment(\.dismiss) private var dismiss
 
     init(orderId: String) {
+        self.orderId = orderId
         _model = StateObject(wrappedValue: OrderTicketModel(orderId: orderId))
     }
 
     var body: some View {
         NavigationStack {
-            OrderTicketView(model: model) { showRating = true }
-                .toolbar {
-                    ToolbarItem(placement: .topBarLeading) {
-                        Button { dismiss() } label: { Image(systemName: "xmark") }
-                            .accessibilityLabel("Close")
-                    }
+            OrderTicketView(
+                model: model,
+                onConfirmed: { openRating(afterConfirm: true) },
+                onRate: { openRating(afterConfirm: false) }
+            )
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button { dismiss() } label: { Image(systemName: "xmark") }
+                        .accessibilityLabel("Close")
                 }
-                .navigationDestination(isPresented: $showRating) {
-                    RateOrderPlaceholderView { dismiss() }
+            }
+            .navigationDestination(isPresented: $showRating) {
+                RateOrderView(orderId: orderId) {
+                    if ratingAfterConfirm { dismiss() } else { showRating = false }
                 }
+            }
         }
         .onAppear { OrderNotifier.shared.requestAuthorizationIfNeeded() }
+        .onReceive(model.$openRatingRequested.filter { $0 }) { _ in
+            model.openRatingRequested = false
+            openRating(afterConfirm: false)
+        }
+    }
+
+    private func openRating(afterConfirm: Bool) {
+        ratingAfterConfirm = afterConfirm
+        showRating = true
+    }
+}
+
+/// Rate opened on its own, from an Orders inbox message (RCPT-01). Leaving it closes the cover.
+struct RateOrderFlow: View {
+    let orderId: String
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            RateOrderView(orderId: orderId) { dismiss() }
+        }
     }
 }
 
@@ -37,6 +71,7 @@ struct OrderTicketFlow: View {
 struct OrderTicketView: View {
     @ObservedObject var model: OrderTicketModel
     let onConfirmed: () -> Void
+    let onRate: () -> Void
 
     var body: some View {
         let state = model.state
@@ -54,6 +89,9 @@ struct OrderTicketView: View {
                         StepperRow(steps: state.steps)
                         StatusMessage(state: state)
                         ItemsCard(order: order)
+                        if state.isCompleted {
+                            ReceiptCard(state: state, onRate: onRate)
+                        }
                         if AppBuild.isDebug && !state.isCompleted {
                             DebugControls(viewModel: model.viewModel)
                         }
@@ -212,6 +250,44 @@ private struct ItemsCard: View {
     }
 }
 
+/// RCPT-01: how the order was paid, when (in the device's time zone), and the rating, or a way to rate it.
+private struct ReceiptCard: View {
+    let state: OrderTicketUiState
+    let onRate: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Receipt").font(.title3.weight(.bold))
+            VStack(alignment: .leading, spacing: 10) {
+                row("Paid with", state.paymentLabel ?? "—")
+                row("Paid on", paidOn ?? "—")
+                if let rating = state.ratingLabel { row("Your rating", rating) }
+            }
+            .padding(16)
+            .background(Palette.card, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+            if state.canRate {
+                Button("Rate this order", action: onRate)
+                    .buttonStyle(CapsuleButtonStyle(kind: .secondary))
+            }
+        }
+    }
+
+    private var paidOn: String? {
+        guard let seconds = state.paidAtEpochSeconds?.int64Value else { return nil }
+        return Date(timeIntervalSince1970: TimeInterval(seconds)).formatted(date: .abbreviated, time: .shortened)
+    }
+
+    private func row(_ label: String, _ value: String) -> some View {
+        HStack(alignment: .top) {
+            Text(label).foregroundStyle(.secondary)
+            Spacer(minLength: 12)
+            Text(value).multilineTextAlignment(.trailing)
+        }
+        .font(.subheadline)
+        .accessibilityElement(children: .combine)
+    }
+}
+
 /// Debug builds only: stand-ins for the store's own app.
 private struct DebugControls: View {
     let viewModel: OrderTicketViewModel
@@ -224,42 +300,5 @@ private struct DebugControls: View {
             Button("Trigger auto-complete") { viewModel.debugAutoComplete() }
                 .buttonStyle(CapsuleButtonStyle(kind: .secondary))
         }
-    }
-}
-
-/// Placeholder for Rate & Add to Favorites, which opens after [Confirm] closes an order.
-/// RCPT-01 replaces this with the rating, the per-item Favorite toggles and Skip.
-struct RateOrderPlaceholderView: View {
-    let onDone: () -> Void
-
-    var body: some View {
-        VStack(spacing: 16) {
-            let colors = Palette.badge(.openForLunch)
-            Image(systemName: "checkmark")
-                .font(.system(size: 28, weight: .bold))
-                .foregroundStyle(colors.foreground)
-                .frame(width: 64, height: 64)
-                .background(colors.background, in: Circle())
-                .padding(.top, 24)
-                .accessibilityHidden(true)
-            Text("Thanks! Your order is complete.")
-                .font(.title2.weight(.bold))
-                .multilineTextAlignment(.center)
-                .accessibilityAddTraits(.isHeader)
-            Text("Next: rate your order and add items to your favorites. This step is a placeholder until Rate & Add to Favorites (RCPT-01) is built.")
-                .font(.subheadline)
-                .padding(16)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(Palette.card, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
-            Spacer()
-            BottomAction(action: onDone) { CapsuleLabel(title: "Done") }
-        }
-        .padding(16)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Palette.screen)
-        .navigationTitle("Rate & Add to Favorites")
-        .navigationBarTitleDisplayMode(.inline)
-        // The order is closed, so going back to its ticket isn't useful.
-        .navigationBarBackButtonHidden()
     }
 }

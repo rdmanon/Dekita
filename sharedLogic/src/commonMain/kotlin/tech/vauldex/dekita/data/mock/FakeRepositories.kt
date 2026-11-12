@@ -33,7 +33,10 @@ import tech.vauldex.dekita.domain.CheckIn
 import tech.vauldex.dekita.domain.CompletionReason
 import tech.vauldex.dekita.domain.FavoriteItem
 import tech.vauldex.dekita.domain.FulfillmentMode
+import tech.vauldex.dekita.domain.InboxKind
 import tech.vauldex.dekita.domain.InboxMessage
+import tech.vauldex.dekita.domain.OrderRating
+import tech.vauldex.dekita.domain.RATING_TAGS
 import tech.vauldex.dekita.domain.Menu
 import tech.vauldex.dekita.domain.MenuItem
 import tech.vauldex.dekita.domain.Order
@@ -49,6 +52,7 @@ import tech.vauldex.dekita.domain.Store
 import tech.vauldex.dekita.domain.StoreAvailability
 import tech.vauldex.dekita.domain.TransitionResult
 import tech.vauldex.dekita.domain.UserProfile
+import tech.vauldex.dekita.domain.canBeRated
 import tech.vauldex.dekita.domain.canConfirm
 import tech.vauldex.dekita.domain.isActive
 
@@ -117,6 +121,13 @@ class FakeStoreRepository(
 
     override fun toggleFavorite(storeId: String) {
         _favoriteStoreIds.update { ids -> if (storeId in ids) ids - storeId else ids + storeId }
+    }
+
+    override fun toggleFavoriteItem(item: FavoriteItem) {
+        _favoriteItems.update { items ->
+            val existing = items.any { it.storeId == item.storeId && it.itemId == item.itemId }
+            if (existing) items.filterNot { it.storeId == item.storeId && it.itemId == item.itemId } else listOf(item) + items
+        }
     }
 
     override fun setAvailability(storeId: String, availability: StoreAvailability) {
@@ -411,6 +422,21 @@ class FakeOrderRepository(
         return result
     }
 
+    override fun rate(orderId: String, stars: Int, tags: Set<String>): Boolean {
+        // Checked here as a server would, not only in the screen.
+        if (stars !in 1..5 || !tags.all { it in RATING_TAGS }) return false
+        var rated = false
+        _orders.update { state ->
+            rated = false
+            val orders = state.dataOrNull() ?: return@update state
+            val order = orders.firstOrNull { it.id == orderId }?.takeIf { it.canBeRated } ?: return@update state
+            rated = true
+            val updated = order.copy(rating = OrderRating(stars, tags, clock.now()))
+            LoadState.Success(orders.map { if (it.id == orderId) updated else it })
+        }
+        return rated
+    }
+
     override fun advance(orderId: String): Boolean {
         val order = order(orderId)?.takeIf { it.isActive && !it.canConfirm } ?: return false
         val next = OrderStatusMachine.nextStatus(order.status, order.mode) ?: return false
@@ -529,6 +555,10 @@ class FakeInboxRepository(
     private val _messages = MutableStateFlow<LoadState<List<InboxMessage>>>(LoadState.Loading)
     override val messages: StateFlow<LoadState<List<InboxMessage>>> = _messages.asStateFlow()
 
+    // Declared before init: reset() uses it, and Kotlin runs initializers in declaration order.
+    /** Messages added in this session. A reload keeps them, as a server would. */
+    private val added = MutableStateFlow<List<InboxMessage>>(emptyList())
+
     private var loadJob: Job? = null
 
     init {
@@ -542,9 +572,24 @@ class FakeInboxRepository(
         }
     }
 
+    override fun add(id: String, title: String, body: String, kind: InboxKind, orderId: String?) {
+        if (added.value.any { it.id == id } || _messages.value.dataOrNull()?.any { it.id == id } == true) return
+        val message = InboxMessage(id, title, body, receivedAt = clock.now(), isRead = false, orderId = orderId, kind = kind)
+        added.update { listOf(message) + it }
+        _messages.update { state -> if (state is LoadState.Success) LoadState.Success(listOf(message) + state.data) else state }
+    }
+
     override fun reset() {
         loadJob?.cancel()
-        loadJob = scope.simulateLoad(_messages, config) { seedInbox(clock.now()) }
+        added.value = emptyList()
+        loadJob = scope.simulateLoad(_messages, config) { added.value + seedInbox(clock.now()) }
+    }
+
+    /** Debug only: removes every message, as for a customer who has never ordered. */
+    fun clearAll() {
+        loadJob?.cancel()
+        added.value = emptyList()
+        _messages.value = LoadState.Success(emptyList())
     }
 }
 

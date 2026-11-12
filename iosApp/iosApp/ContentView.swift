@@ -39,11 +39,13 @@ struct ContentView: View {
             switch cover {
             case .checkIn(let orderId): CheckInFlow(orderId: orderId)
             case .ticket(let orderId): OrderTicketFlow(orderId: orderId)
+            case .rate(let orderId): RateOrderFlow(orderId: orderId)
             }
         }
         // Outside the cover, so check-in can open the ticket after paying.
         .environment(\.openCheckIn) { cover = .checkIn($0) }
         .environment(\.openOrderTicket) { cover = .ticket($0) }
+        .environment(\.openRating) { cover = .rate($0) }
         .onReceive(notifier.$openedOrderId.compactMap { $0 }) { orderId in
             notifier.openedOrderId = nil
             // The id comes from outside the app's screens: open only a paid order, and only while signed in.
@@ -56,11 +58,13 @@ struct ContentView: View {
 enum AppCover: Identifiable, Hashable {
     case checkIn(String)
     case ticket(String)
+    case rate(String)
 
     var id: String {
         switch self {
         case .checkIn(let orderId): return "check-in-\(orderId)"
         case .ticket(let orderId): return "ticket-\(orderId)"
+        case .rate(let orderId): return "rate-\(orderId)"
         }
     }
 }

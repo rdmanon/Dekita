@@ -86,14 +86,43 @@ final class CheckInModel: ObservableObject {
 
 final class OrderTicketModel: ObservableObject {
     private let bridge: OrderTicketBridge
-    private var watch: FlowWatch?
+    private var watches: [FlowWatch] = []
 
     @Published private(set) var state: OrderTicketUiState
+
+    /// Set when the ticket opens on an auto-completed, unrated order (RCPT-01). Published, so a view that
+    /// subscribes a moment after the event still sees it. The view clears it once handled.
+    @Published var openRatingRequested = false
 
     var viewModel: OrderTicketViewModel { bridge.viewModel }
 
     init(orderId: String) {
         bridge = OrderTicketBridge(orderId: orderId)
+        state = bridge.currentState
+        watches = [
+            bridge.watch { [weak self] state in self?.state = state },
+            bridge.watchEvents { [weak self] event in
+                if event is OrderTicketEventOpenRating { self?.openRatingRequested = true }
+            },
+        ]
+    }
+
+    deinit {
+        watches.forEach { $0.cancel() }
+        bridge.close()
+    }
+}
+
+final class RateOrderModel: ObservableObject {
+    private let bridge: RateOrderBridge
+    private var watch: FlowWatch?
+
+    @Published private(set) var state: RateOrderUiState
+
+    var viewModel: RateOrderViewModel { bridge.viewModel }
+
+    init(orderId: String) {
+        bridge = RateOrderBridge(orderId: orderId)
         state = bridge.currentState
         watch = bridge.watch { [weak self] state in self?.state = state }
     }
@@ -172,6 +201,8 @@ final class OrdersModel: ObservableObject {
     private var watch: FlowWatch?
 
     @Published private(set) var state: OrdersUiState
+
+    var viewModel: OrdersViewModel { bridge.viewModel }
 
     init() {
         state = bridge.currentState

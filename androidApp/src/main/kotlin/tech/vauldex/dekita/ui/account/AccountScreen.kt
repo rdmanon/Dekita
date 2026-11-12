@@ -1,18 +1,14 @@
 package tech.vauldex.dekita.ui.account
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
@@ -21,9 +17,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import tech.vauldex.dekita.presentation.account.AccountViewModel
@@ -85,7 +79,7 @@ fun AccountScreen(viewModel: AccountViewModel, onSignIn: () -> Unit, onSignedOut
                     }
                 }
             }
-            // Payment methods and the inbox belong to an account, so guests don't see them.
+            // Payment methods belong to an account, so guests don't see them. The inbox is on Orders (RCPT-01).
             if (profile != null && state.isLoading) {
                 item(key = "loading") { LoadingIndicator("Loading account…") }
             } else if (profile != null) {
@@ -103,36 +97,6 @@ fun AccountScreen(viewModel: AccountViewModel, onSignIn: () -> Unit, onSignedOut
                             Text(method.label, style = MaterialTheme.typography.bodyLarge)
                             if (method.isDefault) {
                                 Text("Default", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
-                            }
-                        }
-                    }
-                }
-                item(key = "inbox-title") { SectionTitle("Inbox") }
-                itemsIndexed(state.inbox, key = { _, message -> message.id }) { index, message ->
-                    Surface(
-                        onClick = { viewModel.markRead(message.id) },
-                        color = MaterialTheme.colorScheme.surfaceContainer,
-                        shape = groupedShape(index, state.inbox.size),
-                        modifier = Modifier.fillMaxWidth(),
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(12.dp),
-                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
-                        ) {
-                            Box(
-                                Modifier.size(8.dp).background(
-                                    if (message.isRead) Color.Transparent else MaterialTheme.colorScheme.primary,
-                                    CircleShape,
-                                ),
-                            )
-                            Column(Modifier.weight(1f)) {
-                                Text(message.title, style = MaterialTheme.typography.titleMedium)
-                                Text(
-                                    message.body,
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
                             }
                         }
                     }
