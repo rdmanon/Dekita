@@ -12,6 +12,11 @@ struct ContentView: View {
     @ObservedObject private var notifier = OrderNotifier.shared
     @State private var cover: AppCover?
 
+    /// iOS 26 floats a `.search` tab as its own button; iOS 27 keeps it in the bar unless the tab is `.prominent`.
+    private static var searchTabRole: TabRole {
+        if #available(iOS 27, *) { .prominent } else { .search }
+    }
+
     var body: some View {
         TabView(selection: $flow.selection) {
             Tab("Discover", systemImage: "safari", value: AppTab.discover) {
@@ -23,7 +28,8 @@ struct ContentView: View {
             Tab("Account", systemImage: "person.crop.circle", value: AppTab.account) {
                 NavigationStack { AccountView() }
             }
-            Tab(value: AppTab.search, role: .search) {
+            // `.prominent` has no default icon, so the label is spelled out (the search role used to supply it).
+            Tab("Search", systemImage: "magnifyingglass", value: AppTab.search, role: Self.searchTabRole) {
                 NavigationStack(path: $flow.searchPath) { SearchView() }
             }
         }

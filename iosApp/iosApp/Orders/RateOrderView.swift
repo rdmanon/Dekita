@@ -110,26 +110,29 @@ private struct StarPicker: View {
 private struct TagPicker: View {
     let state: RateOrderUiState
     let onTag: (String) -> Void
+    @Environment(\.dynamicTypeSize) private var typeSize
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("Anything stand out? (optional)").font(.headline)
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 8) {
-                    ForEach(state.tagOptions, id: \.self) { tag in
-                        let selected = state.tags.contains(tag)
-                        Button { onTag(tag) } label: {
-                            Text(tag)
-                                .font(.subheadline.weight(.semibold))
-                                .padding(.horizontal, 14)
-                                .frame(minHeight: 36)
-                                .foregroundStyle(selected ? Color.white : Color.primary)
-                                .background(selected ? Palette.action : Palette.card, in: Capsule())
-                        }
-                        .buttonStyle(.plain)
-                        .disabled(state.alreadyRated)
-                        .accessibilityAddTraits(selected ? .isSelected : [])
+            // Wraps onto more lines instead of scrolling sideways, as Android's FlowRow does.
+            // Two columns on a phone keep "Friendly staff" on one line; accessibility sizes get one column.
+            let minimum: CGFloat = typeSize.isAccessibilitySize ? 280 : 140
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: minimum), spacing: 8)], alignment: .leading, spacing: 8) {
+                ForEach(state.tagOptions, id: \.self) { tag in
+                    let selected = state.tags.contains(tag)
+                    Button { onTag(tag) } label: {
+                        Text(tag)
+                            .font(.subheadline.weight(.semibold))
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 6)
+                            .frame(maxWidth: .infinity, minHeight: 36)
+                            .foregroundStyle(selected ? Color.white : Color.primary)
+                            .background(selected ? Palette.action : Palette.card, in: Capsule())
                     }
+                    .buttonStyle(.plain)
+                    .disabled(state.alreadyRated)
+                    .accessibilityAddTraits(selected ? .isSelected : [])
                 }
             }
         }

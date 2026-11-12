@@ -37,7 +37,7 @@ fun QuantityStepper(
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = modifier
-            .height(40.dp)
+            .height(36.dp)
             .border(1.dp, MaterialTheme.colorScheme.outline, CircleShape),
     ) {
         IconButton(onClick = onDecrease) {

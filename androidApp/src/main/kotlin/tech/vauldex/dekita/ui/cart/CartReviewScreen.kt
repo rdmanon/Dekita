@@ -4,6 +4,7 @@ import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -17,6 +18,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
@@ -59,9 +61,9 @@ import tech.vauldex.dekita.presentation.choiceLabel
 import tech.vauldex.dekita.presentation.label
 import tech.vauldex.dekita.presentation.message
 import tech.vauldex.dekita.presentation.optionsLabel
+import tech.vauldex.dekita.presentation.queueDetailLabel
 import tech.vauldex.dekita.presentation.updateButtonLabel
 import tech.vauldex.dekita.ui.components.BottomActionBar
-import tech.vauldex.dekita.ui.components.LiveQueueCounter
 import tech.vauldex.dekita.ui.components.PrimaryButton
 import tech.vauldex.dekita.ui.components.QuantityStepper
 import tech.vauldex.dekita.ui.components.StatusPill
@@ -144,8 +146,7 @@ fun CartReviewScreen(
             modifier = Modifier.fillMaxSize(),
         ) {
             state.store?.let { store ->
-                item(key = "store") { StoreCard(store, Modifier.padding(bottom = 8.dp)) }
-                item(key = "queue") { LiveQueueCounter(store, Modifier.padding(bottom = 16.dp)) }
+                item(key = "store") { StoreCard(store, Modifier.padding(bottom = 16.dp)) }
             }
             state.mode?.let { mode ->
                 item(key = "mode") { ModeSection(state, mode, viewModel::selectMode, Modifier.padding(bottom = 16.dp)) }
@@ -170,6 +171,7 @@ fun CartReviewScreen(
     state.editSheet?.let { sheet ->
         ItemSheet(
             sheet = sheet,
+            storeArtKey = state.store?.artKey,
             onToggle = viewModel::toggleEditOption,
             onQuantity = viewModel::setEditQuantity,
             onAdd = { viewModel.saveEdit() },
@@ -180,15 +182,30 @@ fun CartReviewScreen(
     }
 }
 
+/** The store and its live queue in one card, as the artboard has it. The queue line is empty for a paused store. */
 @Composable
 private fun StoreCard(store: Store, modifier: Modifier = Modifier) {
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(16.dp),
-        modifier = modifier.fillMaxWidth(),
-    ) {
-        StoreArt(store, Modifier.size(48.dp))
-        Text(store.name, style = MaterialTheme.typography.titleMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
+    Surface(color = MaterialTheme.colorScheme.surfaceContainer, shape = MaterialTheme.shapes.large, modifier = modifier.fillMaxWidth()) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
+            modifier = Modifier.padding(16.dp).semantics(mergeDescendants = true) {},
+        ) {
+            StoreArt(store, Modifier.size(48.dp))
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(store.name, style = MaterialTheme.typography.titleMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                val queue = store.queueDetailLabel()
+                if (queue.isNotEmpty()) {
+                    Text(queue, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+            if (store.isAcceptingOrders && store.queue != null) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Box(Modifier.size(8.dp).background(DekitaTheme.colors.liveDot, CircleShape))
+                    Text("Live", style = MaterialTheme.typography.labelMedium, color = DekitaTheme.colors.open.content)
+                }
+            }
+        }
     }
 }
 
@@ -281,7 +298,7 @@ private fun LineRow(
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
         ) {
-            if (store != null) StoreArt(store, Modifier.size(56.dp))
+            StoreArt(line.item.artKey ?: store?.artKey, Modifier.size(56.dp))
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text(line.item.name, style = MaterialTheme.typography.titleMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
                 val options = line.optionsLabel
@@ -361,7 +378,7 @@ private fun CheckoutBar(state: CartReviewUiState, onCheckout: () -> Unit) {
                 text = state.action.label,
                 onClick = onCheckout,
                 enabled = state.canCheckout,
-                icon = if (state.action == CheckoutAction.HEAD_TO_STORE) R.drawable.ic_place else R.drawable.ic_cart,
+                icon = if (state.action == CheckoutAction.HEAD_TO_STORE) R.drawable.ic_place else R.drawable.ic_credit_card,
             )
         }
     }

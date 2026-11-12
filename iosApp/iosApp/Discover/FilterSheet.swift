@@ -1,7 +1,7 @@
 import SwiftUI
 import SharedLogic
 
-/// Walking distance, category and status filters. They apply as you tap; the button just closes the sheet.
+/// Walking distance and status filters. Categories are the chips on Discover. They apply as you tap; the button just closes the sheet.
 struct FilterSheet: View {
     @ObservedObject var model: DiscoverModel
     @Environment(\.dismiss) private var dismiss
@@ -21,14 +21,6 @@ struct FilterSheet: View {
                     }
                     .pickerStyle(.inline)
                     .labelsHidden()
-                }
-                Section("Category") {
-                    ForEach(model.state.categories, id: \.self) { category in
-                        Toggle(category, isOn: Binding(
-                            get: { filters.categories.contains(category) },
-                            set: { _ in viewModel.toggleCategory(category: category) }
-                        ))
-                    }
                 }
                 Section("Status") {
                     ForEach(model.statuses, id: \.self) { status in

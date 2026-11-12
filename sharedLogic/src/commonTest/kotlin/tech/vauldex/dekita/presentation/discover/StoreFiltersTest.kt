@@ -2,6 +2,7 @@ package tech.vauldex.dekita.presentation.discover
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 import tech.vauldex.dekita.data.mock.seedStores
 import tech.vauldex.dekita.domain.BusinessType
@@ -113,7 +114,11 @@ class StoreFiltersTest {
         assertTrue(!StoreFilters(mode = FulfillmentMode.PICKUP).isRefined)
         assertTrue(StoreFilters(query = "x").isRefined)
         assertTrue(StoreFilters(walkLimit = WalkLimit.TEN).isRefined)
-        assertEquals(3, StoreFilters(walkLimit = WalkLimit.TEN, categories = setOf("Curry", "Soba")).sheetFilterCount)
+        // UI-01: the category chip isn't a sheet filter, so it neither counts nor switches to results.
+        assertEquals(1, StoreFilters(walkLimit = WalkLimit.TEN, categories = setOf("Curry")).sheetFilterCount)
+        assertFalse(StoreFilters(mode = FulfillmentMode.PICKUP, categories = setOf("Curry")).showsResults)
+        assertTrue(StoreFilters(query = "x").showsResults)
+        assertTrue(StoreFilters(walkLimit = WalkLimit.TEN).showsResults)
     }
 
     @Test

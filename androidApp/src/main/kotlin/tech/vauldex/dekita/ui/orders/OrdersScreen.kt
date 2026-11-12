@@ -11,10 +11,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
@@ -40,6 +38,7 @@ import tech.vauldex.dekita.ui.components.SectionTitle
 import tech.vauldex.dekita.ui.components.SignInPrompt
 import tech.vauldex.dekita.ui.components.StatusPill
 import tech.vauldex.dekita.ui.components.groupedShape
+import tech.vauldex.dekita.presentation.itemsLabel
 import tech.vauldex.dekita.presentation.label
 import tech.vauldex.dekita.ui.theme.DekitaTheme
 import tech.vauldex.dekita.ui.theme.Dimens
@@ -102,11 +101,12 @@ fun OrdersScreen(
             if (state.active.isEmpty()) {
                 item(key = "active-empty") { Text("No active orders.", style = MaterialTheme.typography.bodyMedium) }
             }
-            items(state.active, key = { it.id }) { order ->
+            itemsIndexed(state.active, key = { _, order -> order.id }) { index, order ->
+                val shape = groupedShape(index, state.active.size)
                 if (order.awaitsCheckIn) {
-                    DraftCard(order, onCheckIn = { onCheckIn(order.id) }, Modifier.padding(bottom = 12.dp))
+                    DraftRow(order, shape) { onCheckIn(order.id) }
                 } else {
-                    ActiveOrderCard(order, onClick = { onOpenTicket(order.id) }, Modifier.padding(bottom = 12.dp))
+                    ActiveOrderRow(order, shape) { onOpenTicket(order.id) }
                 }
             }
             if (state.inbox.isNotEmpty()) {
@@ -129,55 +129,60 @@ fun OrdersScreen(
     }
 }
 
+/** UI-01: one compact row per active order. The big number stays on the ticket. */
 @Composable
-private fun ActiveOrderCard(order: Order, onClick: () -> Unit, modifier: Modifier = Modifier) {
+private fun ActiveOrderRow(order: Order, shape: Shape, onClick: () -> Unit) {
     val numberColors = DekitaTheme.colors.orderNumber
-    Surface(
-        onClick = onClick,
-        color = MaterialTheme.colorScheme.surfaceContainer,
-        shape = MaterialTheme.shapes.extraLarge,
-        modifier = modifier,
-    ) {
-        Column(verticalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth().padding(16.dp)) {
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(numberColors.container, MaterialTheme.shapes.large)
-                    .padding(16.dp)
-                    .semantics(mergeDescendants = true) { contentDescription = "Order number ${order.number}" },
-            ) {
-                Text("Order number", style = MaterialTheme.typography.labelLarge, color = numberColors.content)
-                Text("#${order.number}", style = DekitaTheme.textStyles.orderNumber, color = numberColors.content)
-            }
-            Text("${order.storeName} · ${order.mode.label}", style = MaterialTheme.typography.titleMedium)
+    Surface(onClick = onClick, color = MaterialTheme.colorScheme.surfaceContainer, shape = shape, modifier = Modifier.fillMaxWidth()) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+        ) {
+            // Same colors as the ticket and the Discover banner, so the number looks the same everywhere.
             Text(
-                "${order.itemCount} items · ${order.total.formatted()}",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                "#${order.number}",
+                style = MaterialTheme.typography.titleLarge,
+                color = numberColors.content,
+                modifier = Modifier
+                    .background(numberColors.container, MaterialTheme.shapes.medium)
+                    .padding(horizontal = 10.dp, vertical = 6.dp)
+                    .semantics { contentDescription = "Order number ${order.number}" },
             )
-            order.checkIn?.tableNumber?.let { Text("Table $it", style = MaterialTheme.typography.titleMedium) }
-            order.currentStep?.let { StatusPill(it.label, DekitaTheme.colors.bothModes) }
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.weight(1f)) {
+                Text("${order.storeName} · ${order.mode.label}", style = MaterialTheme.typography.titleMedium)
+                val table = order.checkIn?.tableNumber?.let { " · Table $it" }.orEmpty()
+                Text(
+                    "${order.itemsLabel}$table",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                order.currentStep?.let { StatusPill(it.label, DekitaTheme.colors.bothModes) }
+            }
         }
     }
 }
 
-/** An in-store order built on the way. It has no ticket yet: the kitchen starts after check-in. */
+/** An in-store order built on the way. It has no ticket yet: tapping the row resumes check-in. */
 @Composable
-private fun DraftCard(order: Order, onCheckIn: () -> Unit, modifier: Modifier = Modifier) {
-    Surface(color = MaterialTheme.colorScheme.surfaceContainer, shape = MaterialTheme.shapes.extraLarge, modifier = modifier) {
-        Column(verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth().padding(16.dp)) {
-            StatusPill("Waiting for check-in", DekitaTheme.colors.bothModes)
-            Text("${order.storeName} · Eat-In", style = MaterialTheme.typography.titleMedium)
-            Text(
-                "${order.itemCount} items · ${order.total.formatted()}",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            order.checkIn?.let {
-                Text(it.label, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+private fun DraftRow(order: Order, shape: Shape, onCheckIn: () -> Unit) {
+    Surface(onClick = onCheckIn, color = MaterialTheme.colorScheme.surfaceContainer, shape = shape, modifier = Modifier.fillMaxWidth()) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.weight(1f)) {
+                StatusPill("Waiting for check-in", DekitaTheme.colors.bothModes)
+                Text("${order.storeName} · Eat-In", style = MaterialTheme.typography.titleMedium)
+                val checkedIn = order.checkIn?.let { " · ${it.label}" }.orEmpty()
+                Text(
+                    "${order.itemsLabel}$checkedIn",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
-            Button(onClick = onCheckIn, modifier = Modifier.fillMaxWidth().padding(top = 4.dp)) { Text("Resume check-in") }
+            Text("Resume", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
         }
     }
 }

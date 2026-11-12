@@ -19,6 +19,7 @@ import tech.vauldex.dekita.domain.CartLine
 import tech.vauldex.dekita.domain.FulfillmentMode
 import tech.vauldex.dekita.domain.ItemDraft
 import tech.vauldex.dekita.domain.Menu
+import tech.vauldex.dekita.domain.MenuItem
 import tech.vauldex.dekita.domain.Store
 import tech.vauldex.dekita.presentation.ITEM_SOLD_OUT_MESSAGE
 import tech.vauldex.dekita.presentation.OPTION_SOLD_OUT_MESSAGE
@@ -43,9 +44,37 @@ data class StoreDetailUiState(
     val sheet: ItemSheetState? = null,
     /** The other store's name while Add waits for the customer to agree to start a new cart. */
     val pendingReplaceStoreName: String? = null,
+    /** The tab the customer picked. Null, or a tab the menu no longer has, means the first tab. */
+    val selectedTabId: String? = null,
 ) {
     /** False while the store is paused or full, so every menu row shows Add as off. */
     val canOrder: Boolean get() = store?.isAcceptingOrders == true
+
+    /** UI-01: Popular first when the menu has popular items, then each category in menu order. */
+    val tabs: List<MenuTab> get() = menu.dataOrNull()?.let(::menuTabs).orEmpty()
+
+    val currentTab: MenuTab? get() = tabs.firstOrNull { it.id == selectedTabId } ?: tabs.firstOrNull()
+
+    /** The rows under [currentTab]. */
+    val visibleItems: List<MenuItem>
+        get() {
+            val menu = menu.dataOrNull() ?: return emptyList()
+            val tab = currentTab ?: return emptyList()
+            return if (tab.id == POPULAR_TAB_ID) menu.items.filter { it.isPopular } else menu.itemsIn(tab.id)
+        }
+
+    /** Shown in place of the rows when [currentTab] has nothing on it. */
+    val emptyTabMessage: String?
+        get() = currentTab?.takeIf { visibleItems.isEmpty() }?.let { "No ${it.name.lowercase()} on the menu right now." }
+}
+
+data class MenuTab(val id: String, val name: String)
+
+const val POPULAR_TAB_ID = "popular"
+
+fun menuTabs(menu: Menu): List<MenuTab> {
+    val popular = if (menu.items.any { it.isPopular }) listOf(MenuTab(POPULAR_TAB_ID, "Popular")) else emptyList()
+    return popular + menu.categories.map { MenuTab(it.id, it.name) }
 }
 
 enum class AddResult { ADDED, NEEDS_REPLACE, NOT_ADDED }
@@ -62,6 +91,7 @@ class StoreDetailViewModel(
 
     private val draft = MutableStateFlow<ItemDraft?>(null)
     private val pendingAdd = MutableStateFlow<PendingAdd?>(null)
+    private val selectedTab = MutableStateFlow<String?>(null)
 
     private val menuFlow = menuRepository.menu(storeId)
 
@@ -70,9 +100,8 @@ class StoreDetailViewModel(
             combine(storeRepository.stores, storeRepository.favoriteStoreIds, menuFlow, ::Triple),
             cartRepository.cart,
             cartRepository.preferredMode,
-            draft,
-            pendingAdd,
-        ) { (stores, favorites, menu), cart, preferred, draft, pending ->
+            combine(draft, pendingAdd, selectedTab, ::Triple),
+        ) { (stores, favorites, menu), cart, preferred, (draft, pending, tab) ->
             val storeList = stores.dataOrNull().orEmpty()
             val store = storeList.firstOrNull { it.id == storeId }
             StoreDetailUiState(
@@ -82,10 +111,15 @@ class StoreDetailViewModel(
                 cart = cart?.takeUnless { it.isEmpty },
                 sheet = sheetState(store, menu.dataOrNull(), cart, preferred, draft),
                 pendingReplaceStoreName = pending?.let { storeList.firstOrNull { s -> s.id == cart?.storeId }?.name ?: "another store" },
+                selectedTabId = tab,
             )
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_TIMEOUT_MILLIS), StoreDetailUiState())
 
     fun toggleFavorite() = storeRepository.toggleFavorite(storeId)
+
+    fun selectTab(tabId: String) {
+        selectedTab.value = tabId
+    }
 
     /** Opens the sheet for an item. Sold-out items don't open. */
     fun openItem(itemId: String) {

@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.lazy.LazyColumn
@@ -16,10 +17,15 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.carousel.HorizontalMultiBrowseCarousel
+import androidx.compose.material3.carousel.rememberCarouselState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -28,10 +34,12 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import tech.vauldex.dekita.R
 import tech.vauldex.dekita.presentation.discover.DiscoverUiState
 import tech.vauldex.dekita.presentation.discover.DiscoverViewModel
 import tech.vauldex.dekita.ui.components.groupedShape
@@ -48,6 +56,7 @@ fun DiscoverScreen(
     onStoreClick: (String) -> Unit,
     onFavoritesClick: () -> Unit,
     onHistoryClick: () -> Unit,
+    onSeeAllRecommended: () -> Unit,
     onResumeDraft: (orderId: String) -> Unit,
     onOpenTicket: (orderId: String) -> Unit,
 ) {
@@ -87,7 +96,7 @@ fun DiscoverScreen(
                 ModeSelector(
                     selected = state.filters.mode,
                     onSelect = viewModel::selectMode,
-                    modifier = Modifier.screenPadding().padding(top = 12.dp),
+                    modifier = Modifier.screenPadding().padding(top = 16.dp),
                 )
             }
             state.activeOrder?.let { order ->
@@ -95,7 +104,7 @@ fun DiscoverScreen(
                     ActiveOrderBanner(
                         order = order,
                         onOpen = { onOpenTicket(order.id) },
-                        modifier = Modifier.screenPadding().padding(top = 12.dp),
+                        modifier = Modifier.screenPadding().padding(top = 16.dp),
                     )
                 }
             }
@@ -104,7 +113,7 @@ fun DiscoverScreen(
                     DraftBanner(
                         draft = draft,
                         onResume = { onResumeDraft(draft.id) },
-                        modifier = Modifier.screenPadding().padding(top = 12.dp),
+                        modifier = Modifier.screenPadding().padding(top = 16.dp),
                     )
                 }
             }
@@ -114,20 +123,18 @@ fun DiscoverScreen(
                     lastOrderStoreName = state.lastOrderStoreName,
                     onFavoritesClick = onFavoritesClick,
                     onHistoryClick = onHistoryClick,
-                    modifier = Modifier.screenPadding().padding(top = 8.dp),
+                    modifier = Modifier.screenPadding().padding(top = 16.dp),
                 )
             }
-            storeSections(state, viewModel, onStoreClick)
+            storeSections(state, viewModel, onStoreClick, onSeeAllRecommended)
         }
     }
 
     if (showFilters) {
         FilterSheet(
             filters = state.filters,
-            categories = state.categories,
             resultCount = state.stores.size,
             onWalkLimit = viewModel::selectWalkLimit,
-            onToggleCategory = viewModel::toggleCategory,
             onToggleStatus = viewModel::toggleStatus,
             onClearAll = viewModel::clearFilters,
             onDismiss = { showFilters = false },
@@ -135,10 +142,12 @@ fun DiscoverScreen(
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 private fun LazyListScope.storeSections(
     state: DiscoverUiState,
     viewModel: DiscoverViewModel,
     onStoreClick: (String) -> Unit,
+    onSeeAllRecommended: () -> Unit,
 ) {
     val error = state.error
     when {
@@ -185,14 +194,32 @@ private fun LazyListScope.storeSections(
             } else if (state.recommended.isNotEmpty()) {
                 item(key = "recommended") {
                     Column {
-                        SectionHeading("Recommended")
-                        LazyRow(
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        SectionHeading(
+                            "Recommended",
+                            trailing = {
+                                IconButton(onClick = onSeeAllRecommended) {
+                                    Icon(
+                                        painterResource(R.drawable.ic_arrow_forward),
+                                        contentDescription = "See all recommended",
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
+                            },
+                        )
+                        // Cards are sized by the carousel: one large, the rest collapse to peeking tiles.
+                        HorizontalMultiBrowseCarousel(
+                            state = rememberCarouselState { state.recommended.size },
+                            preferredItemWidth = 236.dp,
+                            itemSpacing = 8.dp,
                             contentPadding = PaddingValues(horizontal = Dimens.ScreenPadding),
-                        ) {
-                            items(state.recommended, key = { it.store.id }) { match ->
-                                RecommendedCard(match.store, onClick = { onStoreClick(match.store.id) })
-                            }
+                            modifier = Modifier.fillMaxWidth().height(200.dp),
+                        ) { index ->
+                            val match = state.recommended[index]
+                            RecommendedCard(
+                                match.store,
+                                onClick = { onStoreClick(match.store.id) },
+                                modifier = Modifier.maskClip(MaterialTheme.shapes.extraLarge),
+                            )
                         }
                     }
                 }
@@ -225,16 +252,14 @@ private fun LazyListScope.storeSections(
 }
 
 @Composable
-private fun SectionHeading(text: String) {
-    Text(
-        text,
-        style = MaterialTheme.typography.titleLarge,
-        modifier = Modifier
-            .fillMaxWidth()
-            .screenPadding()
-            .padding(top = 24.dp, bottom = 12.dp)
-            .semantics { heading() },
-    )
+private fun SectionHeading(text: String, trailing: (@Composable () -> Unit)? = null) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier.fillMaxWidth().screenPadding().padding(top = 16.dp, bottom = if (trailing == null) 12.dp else 0.dp),
+    ) {
+        Text(text, style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f).semantics { heading() })
+        trailing?.invoke()
+    }
 }
 
 private fun Modifier.screenPadding(): Modifier = padding(horizontal = Dimens.ScreenPadding)

@@ -7,14 +7,20 @@ enum DiscoverRoute: Hashable {
     case history
     case store(id: String, name: String)
     case cart
+    /// "See All" on Recommended. Needs the Discover model, so only the Discover tab can open it.
+    case recommended
 }
 
 /// Opens the screen for a route. Attach with `.navigationDestination(for: DiscoverRoute.self)`.
 struct DiscoverDestination: View {
     let route: DiscoverRoute
+    /// The Discover tab's model, so "See All" keeps the chip and mode that are on. Nil on the Search tab.
+    var discover: DiscoverModel? = nil
 
     var body: some View {
         switch route {
+        case .recommended:
+            if let discover { RecommendedListView(model: discover) }
         case .favorites: FavoritesView()
         case .history: HistoryView()
         case let .store(id, name): StoreScreen(storeId: id, name: name)
@@ -24,34 +30,21 @@ struct DiscoverDestination: View {
 }
 
 /// The In-store / Pickup selector, shown before any store. "All" clears it.
-/// A native segmented control: capsule-shaped with a glass thumb on iOS 26.
 struct ModePicker: View {
     let mode: FulfillmentMode?
     let onSelect: (FulfillmentMode?) -> Void
 
-    private enum Option: Hashable { case all, inStore, pickup }
-
     var body: some View {
-        Picker("How you'll be served", selection: Binding(get: { option(for: mode) }, set: { onSelect(fulfillmentMode(for: $0)) })) {
-            Text("All").tag(Option.all)
-            Text("In-store").tag(Option.inStore)
-            Text("Pickup").tag(Option.pickup)
-        }
-        .pickerStyle(.segmented)
-    }
-
-    private func option(for mode: FulfillmentMode?) -> Option {
-        if mode == FulfillmentMode.inStore { return .inStore }
-        if mode == FulfillmentMode.pickup { return .pickup }
-        return .all
-    }
-
-    private func fulfillmentMode(for option: Option) -> FulfillmentMode? {
-        switch option {
-        case .all: return nil
-        case .inStore: return FulfillmentMode.inStore
-        case .pickup: return FulfillmentMode.pickup
-        }
+        SegmentedCapsule(
+            label: "How you'll be served",
+            options: [
+                ("All", Optional<FulfillmentMode>.none),
+                ("In-store", .some(FulfillmentMode.inStore)),
+                ("Pickup", .some(FulfillmentMode.pickup)),
+            ],
+            selection: mode,
+            onSelect: onSelect
+        )
     }
 }
 
@@ -113,10 +106,11 @@ private struct ShortcutTile: View {
     }
 }
 
-/// Capsule category chips, multi-select. The selected ones turn dark, as in the design.
+/// Capsule chips. Selected ones turn dark, as in the design. Discover allows several; the store tabs pass one.
 struct CategoryChips: View {
     let categories: [String]
     let selected: Set<String>
+    var horizontalPadding: CGFloat = 14
     let onToggle: (String) -> Void
 
     var body: some View {
@@ -128,7 +122,7 @@ struct CategoryChips: View {
                         Text(category)
                             .font(.subheadline.weight(isOn ? .semibold : .medium))
                             .foregroundStyle(isOn ? Color(.systemBackground) : Color.primary)
-                            .padding(.horizontal, 14)
+                            .padding(.horizontal, horizontalPadding)
                             .frame(height: 34)
                             .background(isOn ? Color.primary : Palette.card, in: Capsule())
                             // Keeps the touch target at 44 pt while the chip stays 34 pt tall.
@@ -175,18 +169,38 @@ struct NoMatchesCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("No stores match")
-                .font(.headline)
-            Text("Try another search, or turn off some filters.")
+            Text("No stores match your filters.")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
             Button("Clear filters", action: onClear)
                 .font(.subheadline.weight(.semibold))
-                .padding(.top, 4)
+                .foregroundStyle(Palette.link)
+                .frame(minHeight: 44, alignment: .leading)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(16)
+        .padding(.horizontal, 16)
+        .padding(.top, 16)
         .background(Palette.card, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+    }
+}
+
+/// "See All" on Recommended: every recommended store as a list. It reads the Discover model, so the mode
+/// and category chip that were on when it opened still apply.
+struct RecommendedListView: View {
+    @ObservedObject var model: DiscoverModel
+
+    var body: some View {
+        ScrollView {
+            if model.state.recommended.isEmpty {
+                NoMatchesCard { model.viewModel.clearFilters() }
+            } else {
+                StoreListCard(matches: model.state.recommended)
+            }
+        }
+        .contentMargins(16, for: .scrollContent)
+        .background(Palette.screen)
+        .navigationTitle("Recommended")
+        .navigationBarTitleDisplayMode(.inline)
     }
 }
 
@@ -255,7 +269,8 @@ struct ActiveOrderBanner: View {
             .contentShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
         }
         .buttonStyle(.plain)
-        .accessibilityElement(children: .combine)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Order number \(order.number), \(order.currentStep?.label ?? ""), \(order.storeName)")
         .accessibilityAddTraits(.isButton)
     }
 }
@@ -275,7 +290,7 @@ struct DraftBanner: View {
                     .background(Palette.tileIcon, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
                 VStack(alignment: .leading, spacing: 1) {
                     Text("Your Eat-In order is waiting").font(.subheadline.weight(.semibold))
-                    Text("\(draft.storeName) · \(draft.itemCount) items · \(draft.total.formatted())")
+                    Text("\(draft.storeName) · \(draft.itemsLabel)")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .lineLimit(1)

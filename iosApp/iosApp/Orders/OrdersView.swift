@@ -34,14 +34,24 @@ struct OrdersView: View {
                     if state.active.isEmpty {
                         Text("No active orders.").foregroundStyle(.secondary)
                     }
-                    ForEach(state.active, id: \.id) { order in
-                        if order.awaitsCheckIn {
-                            DraftCard(order: order) { openCheckIn(order.id) }
-                        } else {
-                            Button { openOrderTicket(order.id) } label: { ActiveOrderCard(order: order) }
-                                .buttonStyle(.plain)
-                                .accessibilityHint("Opens the order ticket")
+                    if !state.active.isEmpty {
+                        VStack(spacing: 0) {
+                            ForEach(Array(state.active.enumerated()), id: \.element.id) { index, order in
+                                if order.awaitsCheckIn {
+                                    Button { openCheckIn(order.id) } label: { DraftRow(order: order) }
+                                        .buttonStyle(.plain)
+                                        .accessibilityHint("Resumes check-in")
+                                } else {
+                                    Button { openOrderTicket(order.id) } label: { ActiveOrderRow(order: order) }
+                                        .buttonStyle(.plain)
+                                        .accessibilityHint("Opens the order ticket")
+                                }
+                                if index < state.active.count - 1 {
+                                    Divider().padding(.leading, 16)
+                                }
+                            }
                         }
+                        .background(Palette.card, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
                     }
                     if !state.inbox.isEmpty {
                         Text("Inbox").font(.title3.weight(.bold)).padding(.top, 8)
@@ -123,72 +133,85 @@ private struct InboxRowView: View {
     }
 }
 
-/// The ticket's order number large enough to show at the counter, then store, mode, total and status.
-private struct ActiveOrderCard: View {
+/// UI-01: one compact row per active order. The big number stays on the ticket.
+private struct ActiveOrderRow: View {
     let order: Order
+    @Environment(\.dynamicTypeSize) private var typeSize
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            VStack(spacing: 2) {
-                Text("ORDER NUMBER").font(.caption.weight(.semibold)).tracking(1)
-                Text("#\(order.number)").font(.system(size: 52, weight: .bold, design: .rounded))
+        let layout = rowLayout(typeSize)
+        layout {
+            // Neutral, like the ticket's number card; the peach stays on the Discover banner.
+            Text("#\(order.number)")
+                .font(.title2.weight(.bold))
+                .monospacedDigit()
+                .foregroundStyle(.primary)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .background(Palette.screen, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .accessibilityLabel("Order number \(order.number)")
+            VStack(alignment: .leading, spacing: 4) {
+                Text("\(order.storeName) · \(order.mode.label)").font(.headline)
+                Text(detail).font(.subheadline).foregroundStyle(.secondary)
+                StepCapsule(text: order.currentStep?.label ?? order.status.label)
             }
-            .foregroundStyle(Color.accentColor)
-            .frame(maxWidth: .infinity)
-            .padding(16)
-            .background(Palette.tileIcon, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-            .accessibilityElement(children: .ignore)
-            .accessibilityLabel("Order number \(order.number)")
-
-            Text("\(order.storeName) · \(order.mode.label)").font(.headline)
-            Text("\(order.itemCount) items · \(order.total.formatted())")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-            Text(order.currentStep?.label ?? order.status.label)
-                .font(.caption.weight(.semibold))
-                .padding(.horizontal, 8)
-                .frame(minHeight: 22)
-                .foregroundStyle(Color.accentColor)
-                .background(Palette.tileIcon, in: Capsule())
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .padding(16)
-        .background(Palette.card, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+        .contentShape(Rectangle())
+        .accessibilityElement(children: .combine)
+    }
+
+    private var detail: String {
+        var parts = [order.itemsLabel]
+        if let table = order.checkIn?.tableNumber { parts.append("Table \(table)") }
+        return parts.joined(separator: " · ")
     }
 }
 
-/// An in-store order built on the way. It has no ticket yet: the kitchen starts after check-in.
-private struct DraftCard: View {
+/// An in-store order built on the way. It has no ticket yet: tapping the row resumes check-in.
+private struct DraftRow: View {
     let order: Order
-    let onResume: () -> Void
+    @Environment(\.dynamicTypeSize) private var typeSize
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Waiting for check-in")
-                .font(.caption.weight(.semibold))
-                .padding(.horizontal, 8)
-                .frame(minHeight: 22)
-                .foregroundStyle(Color.accentColor)
-                .background(Palette.tileIcon, in: Capsule())
-            Text("\(order.storeName) · Eat-In").font(.headline)
-            Text("\(order.itemCount) items · \(order.total.formatted())")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-            if let checkIn = order.checkIn {
-                Text(checkIn.label)
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
+        let layout = rowLayout(typeSize)
+        layout {
+            VStack(alignment: .leading, spacing: 4) {
+                StepCapsule(text: "Waiting for check-in")
+                Text("\(order.storeName) · Eat-In").font(.headline)
+                Text(detail).font(.subheadline).foregroundStyle(.secondary)
             }
-            Button(action: onResume) {
-                Text("Resume check-in")
-                    .font(.headline)
-                    .frame(maxWidth: .infinity, minHeight: 44)
-            }
-            .buttonStyle(.borderedProminent)
-            .buttonBorderShape(.capsule)
-            .padding(.top, 4)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            Text("Resume").font(.subheadline.weight(.semibold)).foregroundStyle(Color.accentColor)
         }
-        .padding(16)
-        .background(Palette.card, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+        .contentShape(Rectangle())
+        .accessibilityElement(children: .combine)
+    }
+
+    private var detail: String {
+        var parts = [order.itemsLabel]
+        if let checkIn = order.checkIn { parts.append(checkIn.label) }
+        return parts.joined(separator: " · ")
+    }
+}
+
+
+/// The small status pill both rows share.
+private struct StepCapsule: View {
+    let text: String
+
+    var body: some View {
+        Text(text)
+            .font(.caption.weight(.semibold))
+            .padding(.horizontal, 8)
+            .frame(minHeight: 22)
+            .foregroundStyle(Color.accentColor)
+            // A capsule at one line; stays a pill instead of an oval when large text wraps it.
+            .background(Palette.tileIcon, in: RoundedRectangle(cornerRadius: 11, style: .continuous))
     }
 }
 

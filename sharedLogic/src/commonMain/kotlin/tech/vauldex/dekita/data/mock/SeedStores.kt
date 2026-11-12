@@ -46,6 +46,7 @@ private val baseStores: List<Store> = listOf(
         openLabel = "Open for Lunch",
         queue = QueueStatus(ordersAhead = 3, estimatedWaitMinutes = 8),
         artKey = "ramen",
+        prepMinutes = 6..8,
         location = around(walkMinutes = 4, bearingDegrees = 45.0),
     ),
     Store(
@@ -58,6 +59,7 @@ private val baseStores: List<Store> = listOf(
         openLabel = "Open for Lunch",
         queue = QueueStatus(ordersAhead = 0, estimatedWaitMinutes = 0),
         artKey = "curry",
+        prepMinutes = 4..6,
         location = around(walkMinutes = 6, bearingDegrees = 120.0),
     ),
     Store(
@@ -70,6 +72,7 @@ private val baseStores: List<Store> = listOf(
         openLabel = null,
         queue = null,
         artKey = "soba",
+        prepMinutes = 5..7,
         location = around(walkMinutes = 7, bearingDegrees = 200.0),
     ),
     Store(
@@ -82,6 +85,7 @@ private val baseStores: List<Store> = listOf(
         openLabel = "Open for Lunch",
         queue = QueueStatus(ordersAhead = 18, estimatedWaitMinutes = 35),
         artKey = "bento",
+        prepMinutes = 3..5,
         location = around(walkMinutes = 5, bearingDegrees = 300.0),
     ),
     Store(
@@ -106,6 +110,7 @@ private val baseStores: List<Store> = listOf(
         openLabel = "Open 24 hours",
         queue = QueueStatus(ordersAhead = 0, estimatedWaitMinutes = 0),
         artKey = "convenience",
+        prepMinutes = 1..2,
         location = around(walkMinutes = 3, bearingDegrees = 160.0),
     ),
     Store(
@@ -118,6 +123,7 @@ private val baseStores: List<Store> = listOf(
         openLabel = "Open for Lunch",
         queue = QueueStatus(ordersAhead = 15, estimatedWaitMinutes = 25),
         artKey = "udon",
+        prepMinutes = 4..6,
         location = around(walkMinutes = 9, bearingDegrees = 250.0),
     ),
     // A long Japanese name, so QA can check that store cards truncate it with an ellipsis.
@@ -131,6 +137,7 @@ private val baseStores: List<Store> = listOf(
         openLabel = "Open for Lunch",
         queue = QueueStatus(ordersAhead = 5, estimatedWaitMinutes = 12),
         artKey = "teishoku",
+        prepMinutes = 8..10,
         location = around(walkMinutes = 12, bearingDegrees = 80.0),
     ),
     // Farther than every walking-distance filter, so the 15 min filter still hides something.

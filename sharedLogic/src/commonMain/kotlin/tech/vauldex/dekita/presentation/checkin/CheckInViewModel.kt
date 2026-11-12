@@ -20,7 +20,8 @@ import tech.vauldex.dekita.domain.Order
 import tech.vauldex.dekita.domain.Store
 import tech.vauldex.dekita.domain.StoreAvailability
 import tech.vauldex.dekita.presentation.STOP_TIMEOUT_MILLIS
-import tech.vauldex.dekita.presentation.queueLabel
+import tech.vauldex.dekita.presentation.itemsLabel
+import tech.vauldex.dekita.presentation.queueDetailLabel
 
 data class CheckInUiState(
     val isLoading: Boolean = true,
@@ -53,7 +54,7 @@ data class CheckInUiState(
 
     val storeLine: String get() = draft?.let { "${it.storeName} · Eat-In" }.orEmpty()
 
-    val orderSummary: String get() = draft?.let { "${it.itemCount} items · ${it.total.formatted()}" }.orEmpty()
+    val orderSummary: String get() = draft?.itemsLabel.orEmpty()
 
     val distanceLabel: String
         get() = when {
@@ -62,14 +63,14 @@ data class CheckInUiState(
             else -> "$distanceMeters m away"
         }
 
-    val queueLabel: String get() = store?.queueLabel()?.ifEmpty { null } ?: "Updating…"
+    val queueLabel: String get() = store?.queueDetailLabel()?.ifEmpty { null } ?: "Updating…"
 
     /** Under [Start Cooking]: why it is off, or what tapping it does. */
     val startCookingHint: String
         get() = when {
             isPaused -> "${store?.name} isn't taking orders right now."
-            canStartCooking -> "You pay when you tap Start Cooking."
-            else -> "Start Cooking turns on when you're within ${Geofence.RADIUS_METERS} m of the store."
+            canStartCooking -> "You pay when you tap Start cooking."
+            else -> "Start cooking turns on when you're within ${Geofence.RADIUS_METERS} m of the store."
         }
 }
 

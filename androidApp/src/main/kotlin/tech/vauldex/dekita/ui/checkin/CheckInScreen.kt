@@ -1,6 +1,7 @@
 package tech.vauldex.dekita.ui.checkin
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -9,6 +10,7 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -28,8 +30,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import tech.vauldex.dekita.R
@@ -102,22 +106,27 @@ fun CheckInScreen(
     }
 }
 
+/** 40 dp pill as drawn, inside a 48 dp touch target. */
 @Composable
 private fun ScanQrButton(onClick: () -> Unit) {
-    Surface(
-        onClick = onClick,
-        shape = RoundedCornerShape(20.dp),
-        color = MaterialTheme.colorScheme.surface,
-        contentColor = MaterialTheme.colorScheme.primary,
-        shadowElevation = 3.dp,
+    Box(
+        contentAlignment = Alignment.Center,
+        modifier = Modifier.heightIn(min = Dimens.MinTouchTarget).clickable(role = Role.Button, onClick = onClick),
     ) {
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.height(Dimens.MinTouchTarget).padding(start = 12.dp, end = 16.dp),
+        Surface(
+            shape = RoundedCornerShape(20.dp),
+            color = MaterialTheme.colorScheme.surface,
+            contentColor = MaterialTheme.colorScheme.primary,
+            shadowElevation = 3.dp,
         ) {
-            Icon(painterResource(R.drawable.ic_qr_code), contentDescription = null, modifier = Modifier.size(18.dp))
-            Text("Scan QR", style = MaterialTheme.typography.labelLarge)
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.height(40.dp).padding(start = 12.dp, end = 16.dp),
+            ) {
+                Icon(painterResource(R.drawable.ic_qr_code), contentDescription = null, modifier = Modifier.size(18.dp))
+                Text("Scan QR", style = MaterialTheme.typography.labelLarge)
+            }
         }
     }
 }
@@ -154,8 +163,15 @@ private fun CheckInSheet(
             verticalArrangement = Arrangement.spacedBy(16.dp),
             modifier = Modifier
                 .windowInsetsPadding(WindowInsets.navigationBars)
-                .padding(start = 24.dp, end = 24.dp, top = 24.dp, bottom = 16.dp),
+                .padding(start = 24.dp, end = 24.dp, bottom = 32.dp),
         ) {
+            Box(
+                Modifier
+                    .align(Alignment.CenterHorizontally)
+                    .padding(top = 22.dp, bottom = 2.dp)
+                    .size(width = 32.dp, height = 4.dp)
+                    .background(MaterialTheme.colorScheme.outline, RoundedCornerShape(2.dp)),
+            )
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     Text(
@@ -176,26 +192,28 @@ private fun CheckInSheet(
             }
             Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 rows.forEachIndexed { index, (label, value) ->
-                    SummaryRow(label, value, groupedShape(index, rows.size))
+                    SummaryRow(label, value, groupedShape(index, rows.size, outer = 16.dp))
                 }
             }
 
-            Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            // Gaps from the artboard: 10 dp under the button, 8 dp under the hint.
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 Button(
                     onClick = onStartCooking,
                     enabled = state.canStartCooking,
-                    modifier = Modifier.fillMaxWidth().height(56.dp),
-                ) { Text("Start Cooking", style = MaterialTheme.typography.titleMedium) }
+                    modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp),
+                ) { Text("Start cooking", style = MaterialTheme.typography.titleMedium) }
                 Text(
                     state.startCookingHint,
                     style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.padding(top = 10.dp, bottom = 8.dp),
                 )
-            }
-
-            TextButton(onClick = onScanQr, modifier = Modifier.fillMaxWidth().height(Dimens.MinTouchTarget)) {
-                Icon(painterResource(R.drawable.ic_qr_code), contentDescription = null, modifier = Modifier.size(18.dp))
-                Text("Can't check in? Scan the store QR", modifier = Modifier.padding(start = 8.dp))
+                TextButton(onClick = onScanQr, modifier = Modifier.fillMaxWidth().heightIn(min = Dimens.MinTouchTarget)) {
+                    Icon(painterResource(R.drawable.ic_qr_code), contentDescription = null, modifier = Modifier.size(18.dp))
+                    Text("Can't check in? Scan the store QR", modifier = Modifier.padding(start = 8.dp))
+                }
             }
         }
     }
@@ -208,13 +226,14 @@ private fun ArrivalChip(state: CheckInUiState) {
         state.checkIn != null -> StatusPill("Checked in", colors.open)
         state.isInRange -> Row(
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(4.dp),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
             modifier = Modifier
+                .heightIn(min = 32.dp)
                 .background(colors.open.container, MaterialTheme.shapes.small)
-                .padding(horizontal = 8.dp, vertical = 4.dp),
+                .padding(start = 8.dp, end = 12.dp),
         ) {
-            Icon(painterResource(R.drawable.ic_check), contentDescription = null, tint = colors.open.content, modifier = Modifier.size(16.dp))
-            Text("In range", style = MaterialTheme.typography.labelMedium, color = colors.open.content)
+            Icon(painterResource(R.drawable.ic_check), contentDescription = null, tint = colors.open.content, modifier = Modifier.size(18.dp))
+            Text("In range", style = MaterialTheme.typography.labelLarge, color = colors.open.content)
         }
         else -> StatusPill("Not in range", colors.paused)
     }
@@ -227,7 +246,7 @@ private fun SummaryRow(label: String, value: String, shape: Shape) {
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier
             .fillMaxWidth()
-            .height(52.dp)
+            .heightIn(min = 52.dp)
             .background(MaterialTheme.colorScheme.surfaceContainer, shape)
             .padding(horizontal = 16.dp)
             .semantics(mergeDescendants = true) {},

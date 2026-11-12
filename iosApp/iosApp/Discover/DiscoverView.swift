@@ -1,11 +1,11 @@
 import SwiftUI
 import SharedLogic
 
-/// Discover, the start of every order. From the top: the In-store / Pickup selector, a banner for an
+/// Discover, the start of every order. From the top: the title, the In-store / Pickup selector, a banner for an
 /// in-store draft waiting for check-in, the decided
 /// customer's Favorites and History (Search is the floating Search tab), then the undecided
-/// customer's categories, Recommended and Nearby. A category or filter swaps the home sections
-/// for one result list.
+/// customer's categories, Recommended and Nearby. The mode and the category chip filter those sections
+/// in place; a search or a Filters-sheet filter swaps them for one result list.
 struct DiscoverView: View {
     @StateObject private var model = DiscoverModel()
     @State private var showFilters = false
@@ -17,6 +17,16 @@ struct DiscoverView: View {
         let state = model.state
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
+                // The artboard puts the subtitle above the title, which a system large title can't do.
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Lunchtime near you")
+                        .font(.subheadline.weight(.medium))
+                        .foregroundStyle(.secondary)
+                    Text("Discover")
+                        .font(.largeTitle.weight(.bold))
+                        .accessibilityAddTraits(.isHeader)
+                }
+                .accessibilityElement(children: .combine)
                 ModePicker(mode: state.filters.mode) { model.viewModel.selectMode(mode: $0) }
                 if let order = state.activeOrder {
                     ActiveOrderBanner(order: order) { openOrderTicket(order.id) }
@@ -34,9 +44,11 @@ struct DiscoverView: View {
             .padding(.bottom, 24)
         }
         .background(Palette.screen)
+        // The title is drawn in the content, so the bar keeps only its buttons. The name stays for the back button.
         .navigationTitle("Discover")
-        .modifier(NavigationSubtitle(text: "Lunchtime near you"))
+        .navigationBarTitleDisplayMode(.inline)
         .toolbar {
+            ToolbarItem(placement: .principal) { Color.clear.accessibilityHidden(true) }
             ToolbarItem(placement: .topBarTrailing) {
                 FilterButton(count: Int(state.filters.sheetFilterCount)) { showFilters = true }
             }
@@ -50,7 +62,7 @@ struct DiscoverView: View {
         }
         .sheet(isPresented: $showFilters) { FilterSheet(model: model) }
         .sheet(isPresented: $showDebugPanel) { DebugPanelView() }
-        .navigationDestination(for: DiscoverRoute.self) { DiscoverDestination(route: $0) }
+        .navigationDestination(for: DiscoverRoute.self) { DiscoverDestination(route: $0, discover: model) }
     }
 }
 
@@ -100,7 +112,15 @@ private struct RecommendedSection: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            SectionHeader(title: "Recommended")
+            HStack(alignment: .firstTextBaseline) {
+                SectionHeader(title: "Recommended")
+                NavigationLink(value: DiscoverRoute.recommended) {
+                    Text("See All").font(.subheadline)
+                        .frame(minHeight: 44)
+                        .contentShape(Rectangle())
+                }
+                .foregroundStyle(Palette.link)
+            }
             ScrollView(.horizontal, showsIndicators: false) {
                 LazyHStack(spacing: 12) {
                     ForEach(matches, id: \.store.id) { match in
@@ -132,18 +152,5 @@ struct FilterButton: View {
             )
         }
         .accessibilityValue(count > 0 ? "\(count) on" : "Off")
-    }
-}
-
-/// iOS 26 shows a subtitle under the large title. Earlier versions show the title alone.
-private struct NavigationSubtitle: ViewModifier {
-    let text: String
-
-    func body(content: Content) -> some View {
-        if #available(iOS 26.0, *) {
-            content.navigationSubtitle(text)
-        } else {
-            content
-        }
     }
 }

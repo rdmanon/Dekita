@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// The iOS artboards' call to action: a full-width capsule, 56 pt high.
+/// The iOS artboards' call to action: a full-width capsule, 56 pt high, with an inset highlight and an orange glow.
 /// `.primary` is the filled #C2410C button; `.secondary` is the tinted one used for "Add Card".
 struct CapsuleButtonStyle: ButtonStyle {
     enum Kind { case primary, secondary }
@@ -23,6 +23,16 @@ private struct CapsuleButtonBody: View {
             .foregroundStyle(kind == .primary ? Color.white : Color.accentColor)
             .frame(maxWidth: .infinity, minHeight: 56)
             .background(kind == .primary ? Palette.action : Palette.tileIcon, in: Capsule())
+            .overlay {
+                // The artboards' inset highlight along the top edge.
+                if kind == .primary {
+                    Capsule().strokeBorder(
+                        LinearGradient(colors: [.white.opacity(0.45), .clear, .black.opacity(0.15)], startPoint: .top, endPoint: .bottom),
+                        lineWidth: 1
+                    )
+                }
+            }
+            .shadow(color: kind == .primary && isEnabled ? Palette.action.opacity(0.35) : .clear, radius: 12, y: 8)
             .contentShape(Capsule())
             .opacity(isEnabled ? (configuration.isPressed ? 0.8 : 1) : 0.45)
     }
@@ -61,7 +71,6 @@ struct BottomAction<Label: View>: View {
     var body: some View {
         Button(action: action) { label }
             .buttonStyle(CapsuleButtonStyle())
-            .shadow(color: Palette.action.opacity(0.3), radius: 12, y: 6)
             .padding(.horizontal, 16)
             .padding(.bottom, 8)
     }

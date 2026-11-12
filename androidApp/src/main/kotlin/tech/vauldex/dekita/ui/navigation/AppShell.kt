@@ -12,12 +12,14 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -72,6 +74,7 @@ import tech.vauldex.dekita.ui.checkin.SeatCheckScreen
 import tech.vauldex.dekita.ui.discover.DiscoverScreen
 import tech.vauldex.dekita.ui.discover.FavoritesScreen
 import tech.vauldex.dekita.ui.discover.HistoryScreen
+import tech.vauldex.dekita.ui.discover.RecommendedScreen
 import tech.vauldex.dekita.ui.orders.OrderTicketScreen
 import tech.vauldex.dekita.ui.orders.OrdersScreen
 import tech.vauldex.dekita.ui.orders.RateOrderScreen
@@ -89,6 +92,7 @@ import tech.vauldex.dekita.ui.store.StoreDetailScreen
 @Serializable data object AccountRoute
 @Serializable data class StoreDetailRoute(val storeId: String)
 @Serializable data object FavoritesRoute
+@Serializable data object RecommendedRoute
 @Serializable data object HistoryRoute
 @Serializable data object CartRoute
 
@@ -156,11 +160,12 @@ fun AppShell(
             if (showBottomBar) {
                 NavigationBar {
                     TopLevelTab.entries.forEach { tab ->
+                        val selected = destination?.hierarchy?.any { it.hasRoute(tab.graphClass) } == true
                         NavigationBarItem(
-                            selected = destination?.hierarchy?.any { it.hasRoute(tab.graphClass) } == true,
+                            selected = selected,
                             onClick = { navController.navigateToTab(tab) },
                             icon = { Icon(painterResource(tab.icon), contentDescription = null) },
-                            label = { Text(tab.label) },
+                            label = { Text(tab.label, fontWeight = if (selected) FontWeight.Bold else null) },
                         )
                     }
                 }
@@ -188,6 +193,7 @@ fun AppShell(
                         },
                         onFavoritesClick = { if (entry.isResumed()) navController.navigate(FavoritesRoute) },
                         onHistoryClick = { if (entry.isResumed()) navController.navigate(HistoryRoute) },
+                        onSeeAllRecommended = { if (entry.isResumed()) navController.navigate(RecommendedRoute) },
                         onResumeDraft = { orderId -> if (entry.isResumed()) navController.navigate(CheckInRoute(orderId)) },
                         onOpenTicket = { orderId -> if (entry.isResumed()) navController.navigate(OrderTicketRoute(orderId)) },
                     )
@@ -195,6 +201,24 @@ fun AppShell(
                 composable<FavoritesRoute> { entry ->
                     FavoritesScreen(
                         viewModel = viewModel { FavoritesViewModel(container.storeRepository) },
+                        onStoreClick = { storeId ->
+                            if (entry.isResumed()) navController.navigate(StoreDetailRoute(storeId))
+                        },
+                        onBack = { if (entry.isResumed()) navController.popBackStack() },
+                    )
+                }
+                composable<RecommendedRoute> { entry ->
+                    // Discover's own view model, so the chip filter carries over to this list.
+                    val discoverEntry = remember(entry) { navController.getBackStackEntry<DiscoverRoute>() }
+                    RecommendedScreen(
+                        viewModel = viewModel(discoverEntry) {
+                            DiscoverViewModel(
+                                container.storeRepository,
+                                container.orderRepository,
+                                container.cartRepository,
+                                container.authRepository,
+                            )
+                        },
                         onStoreClick = { storeId ->
                             if (entry.isResumed()) navController.navigate(StoreDetailRoute(storeId))
                         },
@@ -445,6 +469,7 @@ private fun NavGraphBuilder.orderDestinations(container: AppContainer, navContro
                     container.paymentRepository,
                     container.inboxRepository,
                     container.orderSimulator,
+                    container.storeRepository,
                 )
             },
             onBack = { if (entry.isResumed()) navController.popBackStack() },

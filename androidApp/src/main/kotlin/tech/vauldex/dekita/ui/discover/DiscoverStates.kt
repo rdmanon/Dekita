@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -53,13 +54,19 @@ import tech.vauldex.dekita.ui.components.groupedShape
 /** No results: says so and offers the one action that always helps. */
 @Composable
 internal fun NoMatchesState(onClearFilters: () -> Unit, modifier: Modifier = Modifier) {
-    MessageCard(
-        icon = R.drawable.ic_storefront,
-        title = "No stores match",
-        body = "Try another search, or turn off some filters.",
-        modifier = modifier,
+    Surface(
+        color = MaterialTheme.colorScheme.surfaceContainer,
+        shape = MaterialTheme.shapes.large,
+        modifier = modifier.fillMaxWidth(),
     ) {
-        FilledTonalButton(onClick = onClearFilters) { Text("Clear filters") }
+        Column(Modifier.padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 4.dp)) {
+            Text(
+                "No stores match your filters.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            TextButton(onClick = onClearFilters, modifier = Modifier.offset(x = (-12).dp)) { Text("Clear filters") }
+        }
     }
 }
 
@@ -157,15 +164,13 @@ internal fun DiscoverPlaceholder(modifier: Modifier = Modifier) {
     }
 }
 
-/** Walking distance, category and status filters. They apply as you tap; the button just closes the sheet. */
+/** Walking distance and status filters. Category lives in the chips on the page. They apply as you tap; the button just closes the sheet. */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 internal fun FilterSheet(
     filters: StoreFilters,
-    categories: List<String>,
     resultCount: Int,
     onWalkLimit: (WalkLimit) -> Unit,
-    onToggleCategory: (String) -> Unit,
     onToggleStatus: (StoreAvailability) -> Unit,
     onClearAll: () -> Unit,
     onDismiss: () -> Unit,
@@ -187,13 +192,6 @@ internal fun FilterSheet(
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 WalkLimit.entries.forEach { limit ->
                     SelectChip(limit.label, filters.walkLimit == limit) { onWalkLimit(limit) }
-                }
-            }
-
-            FilterGroupTitle("Category")
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                categories.forEach { category ->
-                    SelectChip(category, category in filters.categories) { onToggleCategory(category) }
                 }
             }
 

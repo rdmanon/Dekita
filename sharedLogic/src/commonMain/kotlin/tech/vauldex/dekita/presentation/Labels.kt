@@ -80,10 +80,25 @@ fun Store.queueLabel(): String {
     }
 }
 
-/** Which modes a store offers, for the iOS card subtitle. Null for single-mode stores, whose badge already says it. */
+/** UI-01: the long queue line, for the Cart store card and the check-in Queue row: "3 orders ahead · ~8 min wait". */
+fun Store.queueDetailLabel(): String {
+    val queue = queue
+    return when {
+        availability == StoreAvailability.PAUSED -> "Not accepting orders"
+        queue == null -> ""
+        availability == StoreAvailability.FULL -> "${queue.headline()} · not taking new orders"
+        queue.ordersAhead == 0 -> "No wait"
+        else -> "${queue.headline()} · ~${queue.estimatedWaitMinutes} min wait"
+    }
+}
+
+/** UI-01: what Share sends. Plain text: stores have no web page or deep link yet. */
+fun Store.shareText(): String = "$name · $category · $walkMinutes min walk"
+
+/** Which modes a store offers, for card and store subtitles. Null for single-mode stores, whose badge already says it. */
 val BusinessType.modesLabel: String?
     get() = when (this) {
-        BusinessType.BOTH -> "In-store & Pickup"
+        BusinessType.BOTH -> "${FulfillmentMode.IN_STORE.choiceLabel} & ${FulfillmentMode.PICKUP.choiceLabel}"
         BusinessType.IN_STORE_ONLY, BusinessType.PICKUP_ONLY -> null
     }
 
@@ -202,7 +217,7 @@ fun checkoutInfo(action: CheckoutAction, mode: FulfillmentMode): String = when {
     action == CheckoutAction.HEAD_TO_STORE ->
         "You pay when you check in at the store. Cooking starts then, so your food is fresh when you sit down."
     mode == FulfillmentMode.PICKUP ->
-        "You pay now. We start preparing right away and tell you when it's ready for pickup."
+        "You pay now. We start cooking right away and tell you when it's ready for pickup."
     else -> "You pay now, then show your order when you arrive."
 }
 
@@ -237,7 +252,7 @@ const val NO_SEAT_DETAIL = "Your order is saved. Nothing is cooked or charged un
 const val SWITCH_TO_TAKEOUT = "Switch to Takeout"
 const val SWITCH_TO_TAKEOUT_DETAIL = "Pay now and take your food with you."
 const val WAIT_IN_LINE = "Wait in line"
-const val WAIT_IN_LINE_DETAIL = "Stay on check-in and tap Start Cooking again once you have a seat."
+const val WAIT_IN_LINE_DETAIL = "Stay on check-in and tap Start cooking again once you have a seat."
 const val CANCEL_EXIT = "Cancel / Exit"
 const val CANCEL_EXIT_DETAIL = "Back to Discover. Your order stays in Orders as a draft."
 

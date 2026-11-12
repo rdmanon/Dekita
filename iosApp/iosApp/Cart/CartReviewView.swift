@@ -1,9 +1,9 @@
 import SwiftUI
 import SharedLogic
 
-/// Cart Review (CART-01), laid out as the iOS Cart artboard: the store and its live queue, the order mode,
+/// Cart Review (CART-01), laid out as the iOS Cart artboard: the store card with its live queue, the order mode,
 /// editable lines, totals and one checkout button. The button follows the store's business type: single-mode
-/// stores pay now; stores with both offer Eat-In ("Head to store", a DRAFT order) or Takeout ("Pay now").
+/// stores pay now; stores with both offer Eat-In ("Head to Store", a DRAFT order) or Takeout ("Pay Now").
 /// A guest's checkout opens sign-in as a sheet over this screen, so finishing it lands back here unchanged.
 /// "Pay now" opens the payment sheet (PAY-01); a fresh one each time, so every checkout gets its own id.
 struct CartReviewView: View {
@@ -22,8 +22,7 @@ struct CartReviewView: View {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 14) {
                         if let store = state.store {
-                            Text(store.name).font(.title3.weight(.bold)).padding(.horizontal, 4)
-                            LiveQueueCounterView(store: store)
+                            CartStoreCard(store: store)
                         }
                         if let mode = state.mode {
                             CartModeSection(
@@ -33,28 +32,30 @@ struct CartReviewView: View {
                                 onSelect: { model.viewModel.selectMode(mode: $0) }
                             )
                         }
-                        Text("Your order").font(.headline).padding(.horizontal, 4)
                         VStack(spacing: 0) {
                             ForEach(Array(state.lines.enumerated()), id: \.element.line.lineId) { index, lineUi in
                                 CartLineRow(
                                     lineUi: lineUi,
+                                    fallbackArtKey: state.store?.artKey ?? "",
                                     onEdit: { model.viewModel.editLine(lineId: lineUi.line.lineId) },
                                     onDecrease: { model.viewModel.decrease(lineId: lineUi.line.lineId) },
                                     onIncrease: { model.viewModel.increase(lineId: lineUi.line.lineId) },
                                     onRemove: { model.viewModel.remove(lineId: lineUi.line.lineId) }
                                 )
-                                if index < state.lines.count - 1 {
-                                    Divider().padding(.leading, 16)
-                                }
+                                // Starts after the art, as in the artboard.
+                                Divider().padding(.leading, index < state.lines.count - 1 ? 80 : 16)
                             }
+                            Button { dismiss() } label: {
+                                Label("Add more items", systemImage: "plus")
+                                    .font(.callout.weight(.semibold))
+                                    .foregroundStyle(Palette.link)
+                                    .frame(maxWidth: .infinity, minHeight: 50, alignment: .leading)
+                                    .padding(.horizontal, 16)
+                                    .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
                         }
                         .background(Palette.card, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
-                        Button { dismiss() } label: {
-                            Label("Add more items", systemImage: "plus")
-                                .font(.body.weight(.semibold))
-                                .frame(maxWidth: .infinity, minHeight: 44)
-                        }
-                        .tint(Palette.action)
                         CartTotals(cart: cart)
                     }
                     .padding(16)
@@ -71,8 +72,8 @@ struct CartReviewView: View {
                         }
                         BottomAction(action: { model.viewModel.checkout() }) {
                             CapsuleLabel(
-                                title: state.action.label,
-                                systemImage: state.action == CheckoutAction.headToStore ? "figure.walk" : "creditcard"
+                                title: state.action == CheckoutAction.headToStore ? Copy.headToStore : Copy.payNow,
+                                systemImage: state.action == CheckoutAction.headToStore ? "mappin.and.ellipse" : "creditcard"
                             )
                         }
                         .disabled(!state.canCheckout)
@@ -100,7 +101,8 @@ struct CartReviewView: View {
             if let sheet = model.state.editSheet {
                 ItemSheetContent(
                     sheet: sheet,
-                    actionTitle: LabelsKt.updateButtonLabel(total: sheet.draft.totalPrice),
+                    storeArtKey: state.store?.artKey ?? "",
+                    actionTitle: Copy.update(total: sheet.draft.totalPrice),
                     onToggle: { model.viewModel.toggleEditOption(groupId: $0, optionId: $1) },
                     onQuantity: { model.viewModel.setEditQuantity(quantity: $0) },
                     onAction: { _ = model.viewModel.saveEdit() },
@@ -166,7 +168,7 @@ private struct CartPaymentSheet: View {
     }
 }
 
-/// Eat-In / Takeout as a segmented control for stores with both modes; a fixed pill otherwise.
+/// "How are you eating?" and the Eat-In / Takeout control for stores with both modes; a fixed pill otherwise.
 /// The line under it says when the customer pays.
 private struct CartModeSection: View {
     let mode: FulfillmentMode
@@ -177,11 +179,20 @@ private struct CartModeSection: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             if canChoose {
-                Picker("Order mode", selection: Binding(get: { mode }, set: { onSelect($0) })) {
-                    Text(FulfillmentMode.inStore.choiceLabel).tag(FulfillmentMode.inStore)
-                    Text(FulfillmentMode.pickup.choiceLabel).tag(FulfillmentMode.pickup)
-                }
-                .pickerStyle(.segmented)
+                Text("How are you eating?")
+                    .font(.headline)
+                    .padding(.horizontal, 4)
+                    .padding(.top, 4)
+                    .accessibilityAddTraits(.isHeader)
+                SegmentedCapsule(
+                    label: "Order mode",
+                    options: [
+                        (FulfillmentMode.inStore.choiceLabel, FulfillmentMode.inStore),
+                        (FulfillmentMode.pickup.choiceLabel, FulfillmentMode.pickup),
+                    ],
+                    selection: mode,
+                    onSelect: onSelect
+                )
             } else {
                 let colors = Palette.badge(mode == FulfillmentMode.pickup ? .pickupOnly : .inStoreOnly)
                 Text(mode.choiceLabel)
@@ -194,28 +205,62 @@ private struct CartModeSection: View {
             Label(LabelsKt.checkoutInfo(action: action, mode: mode), systemImage: "info.circle")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
+                .padding(.horizontal, 4)
         }
-        .padding(14)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Palette.card, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
     }
 }
 
-/// One line: name, choices, price, Edit and the quantity stepper. A line that can't be ordered right now
-/// (sold out, or not offered in this mode) is marked and offers Remove instead of the stepper.
+/// The store at the top of the cart: art, name, the long queue line and the Live mark. The queue line
+/// comes from the shared label, so it reads like the Android card.
+private struct CartStoreCard: View {
+    let store: Store
+
+    var body: some View {
+        HStack(spacing: 12) {
+            StoreArtView(store: store, cornerRadius: 12)
+                .frame(width: 48, height: 48)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(store.name).font(.headline)
+                let queue = store.queueDetailLabel()
+                if !queue.isEmpty {
+                    Text(queue).font(.footnote).foregroundStyle(.secondary)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            if store.isAcceptingOrders, store.queue != nil {
+                HStack(spacing: 6) {
+                    Circle().fill(.green).frame(width: 8, height: 8)
+                    Text("LIVE").font(.caption.weight(.bold)).foregroundStyle(Palette.badge(.openForLunch).foreground)
+                }
+            }
+        }
+        .padding(14)
+        .background(Palette.card, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .accessibilityElement(children: .combine)
+    }
+}
+
+/// One line: art, name, choices and Edit, with the price over the quantity stepper. A line that can't be
+/// ordered right now (sold out, or not offered in this mode) is marked and offers Remove instead of the stepper.
+/// At accessibility text sizes the price and stepper drop under the name, so nothing squeezes.
 private struct CartLineRow: View {
     let lineUi: CartLineUi
+    let fallbackArtKey: String
     let onEdit: () -> Void
     let onDecrease: () -> Void
     let onIncrease: () -> Void
     let onRemove: () -> Void
+    @Environment(\.dynamicTypeSize) private var typeSize
 
     var body: some View {
         let line = lineUi.line
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(alignment: .top, spacing: 12) {
+        let layout = typeSize.isAccessibilitySize ? AnyLayout(VStackLayout(alignment: .leading, spacing: 10)) : AnyLayout(HStackLayout(spacing: 12))
+        layout {
+            HStack(spacing: 12) {
+                StoreArtView(artKey: line.item.artKey ?? fallbackArtKey, cornerRadius: 14)
+                    .frame(width: 52, height: 52)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(line.item.name).font(.body.weight(.semibold))
+                    Text(line.item.name).font(.callout.weight(.semibold))
                     if !line.optionsLabel.isEmpty {
                         Text(line.optionsLabel).font(.footnote).foregroundStyle(.secondary)
                     }
@@ -227,17 +272,16 @@ private struct CartLineRow: View {
                             .foregroundStyle(Palette.badge(.full).foreground)
                             .background(Palette.badge(.full).background, in: Capsule())
                     }
+                    Button("Edit", action: onEdit)
+                        .font(.footnote.weight(.semibold))
+                        .foregroundStyle(Palette.link)
+                        .buttonStyle(.borderless)
+                        .frame(minHeight: 28)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
-                Text(line.lineTotal.formatted()).font(.subheadline.weight(.semibold))
             }
-            .accessibilityElement(children: .combine)
-            HStack {
-                Button("Edit", action: onEdit)
-                    .font(.subheadline.weight(.semibold))
-                    .tint(Palette.action)
-                    .buttonStyle(.borderless)
-                Spacer()
+            VStack(alignment: typeSize.isAccessibilitySize ? .leading : .trailing, spacing: 8) {
+                Text(line.lineTotal.formatted()).font(.subheadline.weight(.semibold))
                 if lineUi.isAvailable {
                     QuantityStepperView(
                         quantity: Int(line.quantity),
@@ -249,6 +293,7 @@ private struct CartLineRow: View {
                     Button("Remove", role: .destructive, action: onRemove)
                         .font(.subheadline.weight(.semibold))
                         .buttonStyle(.borderless)
+                        .frame(minHeight: 32)
                 }
             }
         }
@@ -267,19 +312,19 @@ private struct QuantityStepperView: View {
 
     var body: some View {
         let canIncrease = quantity < Int(ItemDraftKt.MAX_QUANTITY)
-        HStack(spacing: 4) {
+        HStack(spacing: 0) {
             Button(action: onDecrease) {
                 Image(systemName: quantity <= 1 ? "trash" : "minus")
-                    .frame(width: 36, height: 36)
+                    .frame(width: 34, height: 32)
             }
             .accessibilityLabel(quantity <= 1 ? "Remove \(itemName)" : "Decrease \(itemName)")
             Text("\(quantity)")
-                .font(.body.weight(.semibold).monospacedDigit())
-                .frame(minWidth: 24)
+                .font(.subheadline.weight(.semibold).monospacedDigit())
+                .frame(minWidth: 16)
                 .accessibilityLabel("Quantity \(quantity)")
             Button(action: onIncrease) {
                 Image(systemName: "plus")
-                    .frame(width: 36, height: 36)
+                    .frame(width: 34, height: 32)
             }
             .disabled(!canIncrease)
             .accessibilityLabel("Increase \(itemName)")
@@ -302,10 +347,10 @@ private struct CartTotals: View {
             }
             .font(.subheadline)
             HStack(alignment: .firstTextBaseline) {
-                Text("Total").font(.headline)
+                Text("Total").font(.headline.weight(.bold))
                 Text("tax incl.").font(.footnote).foregroundStyle(.secondary)
                 Spacer()
-                Text(cart.total.formatted()).font(.headline)
+                Text(cart.total.formatted()).font(.headline.weight(.bold))
             }
         }
         .padding(16)

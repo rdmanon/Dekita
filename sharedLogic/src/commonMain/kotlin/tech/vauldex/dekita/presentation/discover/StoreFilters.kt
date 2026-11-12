@@ -16,6 +16,7 @@ data class StoreFilters(
     val mode: FulfillmentMode? = null,
     val query: String = "",
     val walkLimit: WalkLimit? = null,
+    /** Picked with the Discover chips; several combine with OR among themselves. */
     val categories: Set<String> = emptySet(),
     val statuses: Set<StoreAvailability> = emptySet(),
 ) {
@@ -25,9 +26,15 @@ data class StoreFilters(
 
     val isCleared: Boolean get() = mode == null && !isRefined
 
-    /** The number shown on the Filters button: walking distance, categories and statuses. */
+    /** The number shown on the Filters button: walking distance and statuses. Categories are the chips, not the sheet. */
     val sheetFilterCount: Int
-        get() = (if (walkLimit != null) 1 else 0) + categories.size + statuses.size
+        get() = (if (walkLimit != null) 1 else 0) + statuses.size
+
+    /**
+     * UI-01: a search or a Filters-sheet filter switches Discover to the result list. The mode and the category
+     * chip filter the home sections in place instead.
+     */
+    val showsResults: Boolean get() = query.isNotBlank() || walkLimit != null || statuses.isNotEmpty()
 
     /**
      * Returns the match, or null when [store] is filtered out. Search looks at the store name, its category

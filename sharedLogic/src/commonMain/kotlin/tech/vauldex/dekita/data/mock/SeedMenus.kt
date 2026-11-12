@@ -65,12 +65,15 @@ private val ramenBarMenu = SeedStoreIds.RAMEN_BAR.let { store ->
             MenuCategory("ramen", "Ramen"),
             MenuCategory("sides", "Sides"),
             MenuCategory("drinks", "Drinks"),
+            // Empty on purpose, so the empty-tab state can be seen.
+            MenuCategory("desserts", "Desserts"),
         ),
         items = listOf(
             MenuItem(
                 id = "item-shoyu-ramen", storeId = store, categoryId = "ramen",
                 name = "Shoyu Ramen", description = "Soy broth, chashu, egg, nori",
                 basePrice = yen(980), modifierGroups = listOf(spiceLevel("ramen-spice"), ramenToppings),
+                isPopular = true,
             ),
             MenuItem(
                 id = "item-tonkotsu-ramen", storeId = store, categoryId = "ramen",
@@ -86,10 +89,11 @@ private val ramenBarMenu = SeedStoreIds.RAMEN_BAR.let { store ->
             MenuItem(
                 id = "item-gyoza", storeId = store, categoryId = "sides",
                 name = "Gyoza (6 pcs)", description = "Pan-fried pork dumplings", basePrice = yen(450),
+                artKey = "gyoza", isPopular = true,
             ),
             MenuItem(
                 id = "item-edamame", storeId = store, categoryId = "sides",
-                name = "Edamame", description = "Salted soybeans", basePrice = yen(300),
+                name = "Edamame", description = "Salted soybeans", basePrice = yen(300), artKey = "edamame",
             ),
             MenuItem(
                 id = "item-ramen-kit", storeId = store, categoryId = "sides",
@@ -116,6 +120,7 @@ private val martMenu = SeedStoreIds.MART.let { store ->
             MenuItem(
                 id = "item-onigiri-salmon", storeId = store, categoryId = "onigiri",
                 name = "Salmon Onigiri", description = "Rice ball with grilled salmon", basePrice = yen(180),
+                isPopular = true,
             ),
             MenuItem(
                 id = "item-onigiri-tuna", storeId = store, categoryId = "onigiri",
@@ -169,7 +174,7 @@ private val curryStandMenu = SeedStoreIds.CURRY_STAND.let { store ->
         items = listOf(
             MenuItem(
                 id = "item-beef-curry", storeId = store, categoryId = "curry",
-                name = "Beef Curry", description = "Slow-cooked beef, rice", basePrice = yen(850),
+                name = "Beef Curry", description = "Slow-cooked beef, rice", basePrice = yen(850), isPopular = true,
                 modifierGroups = listOf(
                     spiceLevel("curry-spice", ModifierOption("curry-spice-extra-hot", "Extra hot", isSoldOut = true)),
                 ),
@@ -190,7 +195,7 @@ private val sobaHouseMenu = SeedStoreIds.SOBA_HOUSE.let { store ->
         items = listOf(
             MenuItem(
                 id = "item-zaru-soba", storeId = store, categoryId = "soba",
-                name = "Zaru Soba", description = "Chilled buckwheat noodles", basePrice = yen(800),
+                name = "Zaru Soba", description = "Chilled buckwheat noodles", basePrice = yen(800), isPopular = true,
             ),
             MenuItem(
                 id = "item-tempura-soba", storeId = store, categoryId = "soba",
@@ -207,7 +212,7 @@ private val bentoKitchenMenu = SeedStoreIds.BENTO_KITCHEN.let { store ->
         items = listOf(
             MenuItem(
                 id = "item-salmon-bento", storeId = store, categoryId = "bento",
-                name = "Grilled Salmon Bento", description = "Salmon, rice, tamagoyaki", basePrice = yen(900),
+                name = "Grilled Salmon Bento", description = "Salmon, rice, tamagoyaki", basePrice = yen(900), isPopular = true,
             ),
             MenuItem(
                 id = "item-hamburg-bento", storeId = store, categoryId = "bento",
@@ -228,7 +233,7 @@ private val udonHallMenu = SeedStoreIds.UDON_HALL.let { store ->
             ),
             MenuItem(
                 id = "item-kitsune-udon", storeId = store, categoryId = "udon",
-                name = "Kitsune Udon", description = "With sweet fried tofu", basePrice = yen(650),
+                name = "Kitsune Udon", description = "With sweet fried tofu", basePrice = yen(650), isPopular = true,
             ),
         ),
     )
@@ -242,7 +247,7 @@ private val teishokuMenu = SeedStoreIds.TEISHOKU.let { store ->
             MenuItem(
                 id = "item-saba-teishoku", storeId = store, categoryId = "teishoku",
                 name = "鯖の塩焼き定食 (Grilled Mackerel Set)", description = "Rice, miso soup, pickles",
-                basePrice = yen(1100),
+                basePrice = yen(1100), isPopular = true,
             ),
             MenuItem(
                 id = "item-nanban-teishoku", storeId = store, categoryId = "teishoku",

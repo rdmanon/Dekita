@@ -31,6 +31,7 @@ import kotlin.time.Clock
 import kotlin.time.Instant
 import tech.vauldex.dekita.R
 import tech.vauldex.dekita.domain.Store
+import tech.vauldex.dekita.presentation.discover.DiscoverViewModel
 import tech.vauldex.dekita.presentation.discover.FavoriteItemEntry
 import tech.vauldex.dekita.presentation.discover.FavoritesViewModel
 import tech.vauldex.dekita.presentation.discover.HistoryOrderEntry
@@ -104,6 +105,36 @@ private fun FavoriteItemRow(entry: FavoriteItemEntry, shape: Shape, onClick: () 
                     overflow = TextOverflow.Ellipsis,
                 )
                 StoreStatusLine(entry.store)
+            }
+        }
+    }
+}
+
+/**
+ * Every recommended store, in a list. It shares Discover's view model, so a category chip picked there
+ * still filters this list.
+ */
+@Composable
+fun RecommendedScreen(viewModel: DiscoverViewModel, onStoreClick: (String) -> Unit, onBack: () -> Unit) {
+    val state by viewModel.state.collectAsStateWithLifecycle()
+    DecidedScaffold(title = "Recommended", onBack = onBack) { padding ->
+        val error = state.error
+        when {
+            state.isLoading -> LoadingIndicator("Loading stores…", Modifier.padding(padding))
+            error != null -> LoadErrorState(error, viewModel::retry, Modifier.padding(padding).padding(Dimens.ScreenPadding))
+            state.recommended.isEmpty() -> NoMatchesState(
+                onClearFilters = viewModel::clearFilters,
+                modifier = Modifier.padding(padding).padding(Dimens.ScreenPadding),
+            )
+            else -> LazyColumn(contentPadding = listPadding(padding), modifier = Modifier.fillMaxSize()) {
+                itemsIndexed(state.recommended, key = { _, match -> "store-${match.store.id}" }) { index, match ->
+                    StoreRow(
+                        store = match.store,
+                        shape = groupedShape(index, state.recommended.size),
+                        onClick = { onStoreClick(match.store.id) },
+                        modifier = Modifier.padding(bottom = 2.dp),
+                    )
+                }
             }
         }
     }

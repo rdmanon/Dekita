@@ -16,28 +16,35 @@ import tech.vauldex.dekita.data.InboxRepository
 import tech.vauldex.dekita.data.LoadState
 import tech.vauldex.dekita.data.OrderRepository
 import tech.vauldex.dekita.data.PaymentRepository
+import tech.vauldex.dekita.data.StoreRepository
 import tech.vauldex.dekita.data.dataOrNull
 import tech.vauldex.dekita.data.mock.OrderSimulator
 import tech.vauldex.dekita.domain.CompletionReason
+import tech.vauldex.dekita.domain.FulfillmentMode
 import tech.vauldex.dekita.domain.Order
 import tech.vauldex.dekita.domain.OrderStatus
 import tech.vauldex.dekita.domain.OrderStep
 import tech.vauldex.dekita.domain.PaymentMethod
 import tech.vauldex.dekita.domain.Session
+import tech.vauldex.dekita.domain.Store
 import tech.vauldex.dekita.domain.TransitionResult
 import tech.vauldex.dekita.domain.canBeRated
 import tech.vauldex.dekita.domain.canConfirm
 import tech.vauldex.dekita.domain.currentStep
 import tech.vauldex.dekita.domain.paidAt
 import tech.vauldex.dekita.domain.steps
-import tech.vauldex.dekita.presentation.ORDER_PLACED_MESSAGE
 import tech.vauldex.dekita.presentation.STOP_TIMEOUT_MILLIS
 import tech.vauldex.dekita.presentation.label
-import tech.vauldex.dekita.presentation.orderReadyMessage
 
 enum class StepState { DONE, CURRENT, TODO }
 
-data class TicketStep(val step: OrderStep, val label: String, val state: StepState) {
+data class TicketStep(
+    val step: OrderStep,
+    val label: String,
+    val state: StepState,
+    /** UI-01: when the order reached this step, in seconds since 1970. Null until it does. */
+    val atEpochSeconds: Long? = null,
+) {
     /** For TalkBack and VoiceOver, for example "Cooking, step 2 of 3, current". */
     fun spokenDescription(position: Int, count: Int): String {
         val status = when (state) {
@@ -55,14 +62,18 @@ data class OrderTicketUiState(
     /** Null when there is no paid order with this id, or while signed out. */
     val order: Order? = null,
     val steps: List<TicketStep> = emptyList(),
-    /** Under the stepper: the notification text, the served confirmation, or how the order closed. */
-    val message: String = "",
+    /** UI-01: the banner at the top of the ticket, for example "Your order will be ready shortly." */
+    val bannerTitle: String = "",
+    /** The banner's second line, for example "We'll let you know when it's served." */
+    val bannerDetail: String = "",
     /** True once the order is ready or served: the message shows in green and [Confirm] turns on. */
     val canConfirm: Boolean = false,
     /** RCPT-01 receipt: the payment method's masked label, such as "Test Visa •••• 4242". */
     val paymentLabel: String? = null,
     /** When the order was paid, in seconds since 1970. Each platform formats it in the device time zone. */
     val paidAtEpochSeconds: Long? = null,
+    /** UI-01: the store's usual cooking time, "Usually 6–8 min", while the order is cooking. Null otherwise. */
+    val cookingNote: String? = null,
 ) {
     /** "Rated 4 of 5 · Tasty", or null while unrated. */
     val ratingLabel: String? get() = order?.rating?.label
@@ -78,12 +89,20 @@ data class OrderTicketUiState(
 
     val tableLabel: String? get() = order?.checkIn?.tableNumber?.let { "Table $it" }
 
-    /** Under the [Confirm] button. Null once the order is completed. */
+    /** UI-01: on the number card, for example "Paid ¥1,550 with Test Visa •••• 4242". */
+    val paidLine: String
+        get() = order?.let { order ->
+            val total = order.total.formatted()
+            paymentLabel?.let { "Paid $total with $it" } ?: "Paid $total"
+        }.orEmpty()
+
+    /** Above the confirm button. Null once the order is completed. */
     val confirmHint: String?
         get() = when {
             order == null || isCompleted -> null
-            canConfirm -> "Tap Confirm once you've received your order."
-            else -> "You can confirm once your order is ready."
+            canConfirm -> "Got your order? Confirm to close it."
+            order.mode == FulfillmentMode.PICKUP -> "Confirm after you pick up your order."
+            else -> "Confirm after your order is served."
         }
 }
 
@@ -103,14 +122,20 @@ class OrderTicketViewModel(
     private val paymentRepository: PaymentRepository,
     private val inboxRepository: InboxRepository,
     private val orderSimulator: OrderSimulator,
+    private val storeRepository: StoreRepository,
 ) : ViewModel() {
 
     val state: StateFlow<OrderTicketUiState> =
-        combine(orderRepository.orders, authRepository.session, paymentRepository.methods, ::toUiState)
+        combine(orderRepository.orders, authRepository.session, paymentRepository.methods, storeRepository.stores, ::toUiState)
             .stateIn(
                 viewModelScope,
                 SharingStarted.WhileSubscribed(STOP_TIMEOUT_MILLIS),
-                toUiState(orderRepository.orders.value, authRepository.session.value, paymentRepository.methods.value),
+                toUiState(
+                    orderRepository.orders.value,
+                    authRepository.session.value,
+                    paymentRepository.methods.value,
+                    storeRepository.stores.value,
+                ),
             )
 
     private val _events = Channel<OrderTicketEvent>(Channel.BUFFERED)
@@ -152,23 +177,43 @@ class OrderTicketViewModel(
         orders: LoadState<List<Order>>,
         session: Session?,
         methods: LoadState<List<PaymentMethod>>,
+        stores: LoadState<List<Store>>,
     ): OrderTicketUiState {
         val isSignedIn = session != null
         val order = orders.dataOrNull()
             ?.firstOrNull { it.id == orderId && it.status != OrderStatus.DRAFT }
             ?.takeIf { isSignedIn }
             ?: return OrderTicketUiState(isLoading = orders is LoadState.Loading, isSignedIn = isSignedIn)
+        val steps = order.ticketSteps()
+        val store = stores.dataOrNull()?.firstOrNull { it.id == order.storeId }
         return OrderTicketUiState(
             isLoading = false,
             isSignedIn = true,
             order = order,
-            steps = order.ticketSteps(),
-            message = order.ticketMessage(),
+            steps = steps,
+            bannerTitle = order.bannerTitle(),
+            bannerDetail = order.bannerDetail(),
             canConfirm = order.canConfirm,
             paymentLabel = order.paymentMethodId?.let { id -> methods.dataOrNull()?.firstOrNull { it.id == id }?.label },
             paidAtEpochSeconds = order.paidAt?.epochSeconds,
+            cookingNote = store?.prepMinutes
+                ?.takeIf { steps.any { it.step == OrderStep.COOKING && it.state == StepState.CURRENT } }
+                ?.let(::usuallyLabel),
         )
     }
+}
+
+/** "Usually 6–8 min", or "Usually 6 min" when the range is one number. */
+internal fun usuallyLabel(minutes: IntRange): String =
+    if (minutes.first == minutes.last) "Usually ${minutes.first} min" else "Usually ${minutes.first}–${minutes.last} min"
+
+/** The ticket step a status belongs to. Null for statuses that come before or after the steps. */
+private fun stepFor(status: OrderStatus): OrderStep? = when (status) {
+    OrderStatus.PAID, OrderStatus.QUEUED -> OrderStep.RECEIVED
+    OrderStatus.PREPARING -> OrderStep.COOKING
+    OrderStatus.READY_FOR_PICKUP -> OrderStep.READY
+    OrderStatus.SERVED -> OrderStep.SERVED
+    OrderStatus.DRAFT, OrderStatus.COMPLETED -> null
 }
 
 private fun Order.ticketSteps(): List<TicketStep> {
@@ -179,14 +224,21 @@ private fun Order.ticketSteps(): List<TicketStep> {
             index == currentIndex -> StepState.CURRENT
             else -> StepState.TODO
         }
-        TicketStep(step, step.label, state)
+        val reachedAt = history.firstOrNull { stepFor(it.status) == step }?.at?.epochSeconds
+        TicketStep(step, step.label, state, atEpochSeconds = reachedAt)
     }
 }
 
-private fun Order.ticketMessage(): String = when (status) {
-    OrderStatus.COMPLETED -> "Completed · ${completionReason?.label.orEmpty()}"
-    OrderStatus.READY_FOR_PICKUP -> orderReadyMessage(number)
-    OrderStatus.SERVED -> checkIn?.tableNumber?.let { "Served at table $it. Enjoy!" } ?: "Your order has been served. Enjoy!"
-    // Eat-In is paid after check-in, so the customer is already at the store.
-    else -> if (checkIn != null) "The kitchen has your order. You'll be served shortly." else ORDER_PLACED_MESSAGE
+private fun Order.bannerTitle(): String = when (status) {
+    OrderStatus.COMPLETED -> "Completed"
+    OrderStatus.READY_FOR_PICKUP -> "Your order is ready for pickup."
+    OrderStatus.SERVED -> "Your order has been served."
+    else -> "Your order will be ready shortly."
+}
+
+private fun Order.bannerDetail(): String = when (status) {
+    OrderStatus.COMPLETED -> completionReason?.label.orEmpty()
+    OrderStatus.READY_FOR_PICKUP -> "Pick it up at the $storeName counter."
+    OrderStatus.SERVED -> checkIn?.tableNumber?.let { "Served at table $it. Enjoy!" } ?: "Enjoy! Confirm below once you have it."
+    else -> if (mode == FulfillmentMode.PICKUP) "We'll let you know when it's ready for pickup." else "We'll let you know when it's served."
 }

@@ -37,10 +37,13 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import tech.vauldex.dekita.R
+import tech.vauldex.dekita.presentation.itemsLabel
 import tech.vauldex.dekita.presentation.label
 import tech.vauldex.dekita.ui.theme.DekitaTheme
 import tech.vauldex.dekita.domain.currentStep
@@ -267,7 +270,12 @@ internal fun ActiveOrderBanner(order: Order, onOpen: () -> Unit, modifier: Modif
         Row(
             horizontalArrangement = Arrangement.spacedBy(12.dp),
             verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
+            modifier = Modifier
+                .padding(horizontal = 16.dp, vertical = 14.dp)
+                // Read as "Order number 43, Ready, Test Mart"; on this inner row so the Surface keeps its tap action.
+                .clearAndSetSemantics {
+                    contentDescription = "Order number ${order.number}, ${order.currentStep?.label.orEmpty()}, ${order.storeName}"
+                },
         ) {
             Icon(painterResource(R.drawable.ic_orders), contentDescription = null, modifier = Modifier.size(24.dp))
             Column(verticalArrangement = Arrangement.spacedBy(2.dp), modifier = Modifier.weight(1f)) {
@@ -308,7 +316,7 @@ internal fun DraftBanner(draft: Order, onResume: () -> Unit, modifier: Modifier 
             Column(verticalArrangement = Arrangement.spacedBy(2.dp), modifier = Modifier.weight(1f)) {
                 Text("Your Eat-In order is waiting", style = MaterialTheme.typography.titleMedium, maxLines = 1)
                 Text(
-                    "${draft.storeName} · ${draft.itemCount} items · ${draft.total.formatted()}",
+                    "${draft.storeName} · ${draft.itemsLabel}",
                     style = MaterialTheme.typography.labelMedium,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
