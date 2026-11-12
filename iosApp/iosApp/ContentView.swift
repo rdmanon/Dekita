@@ -37,7 +37,8 @@ struct ContentView: View {
         .environmentObject(flow)
         .fullScreenCover(item: $cover) { cover in
             switch cover {
-            case .checkIn(let orderId): CheckInFlow(orderId: orderId)
+            // The cover sits outside environmentObject above, so it gets the flow itself (SEAT-01 navigates with it).
+            case .checkIn(let orderId): CheckInFlow(orderId: orderId).environmentObject(flow)
             case .ticket(let orderId): OrderTicketFlow(orderId: orderId)
             case .rate(let orderId): RateOrderFlow(orderId: orderId)
             }
