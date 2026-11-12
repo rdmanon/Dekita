@@ -32,6 +32,7 @@ import tech.vauldex.dekita.domain.Menu
 import tech.vauldex.dekita.domain.MenuItem
 import tech.vauldex.dekita.domain.ModifierOption
 import tech.vauldex.dekita.domain.Order
+import tech.vauldex.dekita.domain.PaymentType
 import tech.vauldex.dekita.domain.SignInMethod
 import tech.vauldex.dekita.domain.Store
 import tech.vauldex.dekita.domain.StoreAvailability
@@ -56,6 +57,9 @@ import tech.vauldex.dekita.presentation.checkin.CheckInUiState
 import tech.vauldex.dekita.presentation.checkin.CheckInViewModel
 import tech.vauldex.dekita.presentation.checkin.QrScannerUiState
 import tech.vauldex.dekita.presentation.checkin.QrScannerViewModel
+import tech.vauldex.dekita.presentation.checkin.SeatCheckEvent
+import tech.vauldex.dekita.presentation.checkin.SeatCheckUiState
+import tech.vauldex.dekita.presentation.checkin.SeatCheckViewModel
 import tech.vauldex.dekita.presentation.discover.DiscoverUiState
 import tech.vauldex.dekita.presentation.discover.DiscoverViewModel
 import tech.vauldex.dekita.presentation.discover.FavoritesUiState
@@ -248,6 +252,26 @@ class CheckInBridge(orderId: String) : ScreenBridge() {
     val currentState: CheckInUiState get() = viewModel.state.value
 
     fun watch(onState: (CheckInUiState) -> Unit): FlowWatch = viewModel.state.watch(onState)
+}
+
+/** SEAT-01 seat verification for one checked-in draft. iOS offers Apple Pay as its wallet. */
+class SeatCheckBridge(orderId: String) : ScreenBridge() {
+    val viewModel: SeatCheckViewModel = makeViewModel(SeatCheckViewModel::class) {
+        SeatCheckViewModel(
+            orderId,
+            container.orderRepository,
+            container.storeRepository,
+            container.cartRepository,
+            container.paymentRepository,
+            PaymentType.APPLE_PAY,
+        )
+    }
+
+    val currentState: SeatCheckUiState get() = viewModel.state.value
+
+    fun watch(onState: (SeatCheckUiState) -> Unit): FlowWatch = viewModel.state.watch(onState)
+
+    fun watchEvents(onEvent: (SeatCheckEvent) -> Unit): FlowWatch = viewModel.events.watch(onEvent)
 }
 
 /** The QR fallback. Its view model listens for scans for as long as the screen is open. */
@@ -456,6 +480,11 @@ class DebugBridge {
     fun simulateNewUser() = container.simulateNewUser()
 
     fun fillSampleCart() = container.fillSampleCart()
+
+    /** SEAT-01: every seat taken, or free again. */
+    fun toggleSeatsFull(store: Store) {
+        container.storeFeedSimulator.setSeatsFull(store.id, !store.seatsFull)
+    }
 
     // AVAIL-01: live store changes, as the store's own app would push them. Each acts on the picked store.
 

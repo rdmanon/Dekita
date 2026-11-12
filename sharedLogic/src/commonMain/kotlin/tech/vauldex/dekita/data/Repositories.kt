@@ -74,6 +74,9 @@ interface CartRepository {
     /** A quantity of 0 removes the line; removing the last line clears the cart. */
     fun updateQuantity(lineId: String, quantity: Int)
 
+    /** Replaces any cart with [cart]. SEAT-01: a draft switched to Takeout becomes the cart again. */
+    fun restore(cart: Cart)
+
     fun clear()
 }
 
@@ -99,11 +102,18 @@ interface OrderRepository {
 
     /**
      * Pays an Eat-In draft at the store once the customer has checked in, moving it to QUEUED.
-     * Returns the paid order, or null when [orderId] is not a checked-in in-store draft.
+     * [paymentMethodId] is the method picked on the seat check's payment sheet (SEAT-01); null uses the
+     * default one. Returns the paid order, or null when [orderId] is not a checked-in in-store draft.
      *
      * shortcut: a mock payment that always succeeds. PAY-01 replaces it.
      */
-    fun payAtCheckIn(orderId: String): Order?
+    fun payAtCheckIn(orderId: String, paymentMethodId: String? = null): Order?
+
+    /**
+     * Removes a DRAFT order and returns it, so its lines can go back into the cart (SEAT-01's Switch to
+     * Takeout). Returns null, and changes nothing, when there is no such order or it is no longer a draft.
+     */
+    fun discardDraft(orderId: String): Order?
 
     /**
      * Rates a completed order once. Returns false, and changes nothing, when the order isn't completed,
