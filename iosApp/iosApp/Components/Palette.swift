@@ -10,6 +10,8 @@ enum Palette {
     static let tileIcon = Color(light: 0xFDE8DD, dark: 0x4A2A1C)
     /// The filled call-to-action color (#C2410C). White text on it is 5.2:1.
     static let action = Color(light: 0xC2410C, dark: 0xC2410C)
+    /// Tinted icons and links (#A93A0B), such as the menu row's add button. 6.4:1 on white.
+    static let link = Color(light: 0xA93A0B, dark: 0xFFB59A)
     /// Inline errors and the error card's text.
     static let error = Color(light: 0xB3261E, dark: 0xFFB4AB)
 

@@ -71,7 +71,7 @@ import tech.vauldex.dekita.ui.components.QuantityStepper
 import tech.vauldex.dekita.ui.components.StatusPill
 import tech.vauldex.dekita.ui.components.StoreArt
 import tech.vauldex.dekita.ui.components.groupedShape
-import tech.vauldex.dekita.ui.debug.LocalOpenDebugPanel
+import tech.vauldex.dekita.ui.debug.DebugPanelAction
 import tech.vauldex.dekita.ui.store.ItemSheet
 import tech.vauldex.dekita.ui.theme.DekitaTheme
 import tech.vauldex.dekita.ui.theme.Dimens
@@ -115,6 +115,7 @@ fun CartReviewScreen(
                         Icon(painterResource(R.drawable.ic_arrow_back), contentDescription = "Back")
                     }
                 },
+                actions = { DebugPanelAction() },
             )
         },
         bottomBar = {

@@ -16,6 +16,7 @@ import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import tech.vauldex.dekita.data.LoadState
 import tech.vauldex.dekita.data.dataOrNull
+import tech.vauldex.dekita.domain.BusinessType
 import tech.vauldex.dekita.domain.CartLine
 import tech.vauldex.dekita.domain.FulfillmentMode
 import tech.vauldex.dekita.domain.OrderStatus
@@ -223,5 +224,48 @@ class FakeRepositoriesTest {
         repository.reset()
         finishLoading()
         assertFalse(menu.value.dataOrNull()!!.items.first { it.id == "item-gyoza" }.isSoldOut)
+    }
+
+    @Test
+    fun businessTypeChangeIsPushedToTheFeedAndResetRestoresIt() = runTest {
+        val repository = FakeStoreRepository(backgroundScope, MockConfig())
+        finishLoading()
+
+        repository.setBusinessType(SeedStoreIds.RAMEN_BAR, BusinessType.PICKUP_ONLY)
+        assertEquals(BusinessType.PICKUP_ONLY, repository.stores.value.dataOrNull()!!.first { it.id == SeedStoreIds.RAMEN_BAR }.businessType)
+
+        repository.reset()
+        finishLoading()
+        assertEquals(BusinessType.BOTH, repository.stores.value.dataOrNull()!!.first { it.id == SeedStoreIds.RAMEN_BAR }.businessType)
+    }
+
+    @Test
+    fun optionSoldOutReachesEveryItemThatOffersIt() = runTest {
+        val repository = FakeMenuRepository(backgroundScope, MockConfig())
+        val menu = repository.menu(SeedStoreIds.RAMEN_BAR)
+        finishLoading()
+
+        repository.setOptionSoldOut(SeedStoreIds.RAMEN_BAR, "topping-egg", soldOut = true)
+        val withEgg = menu.value.dataOrNull()!!.items.filter { item -> item.modifierGroups.any { g -> g.options.any { it.id == "topping-egg" } } }
+        assertTrue(withEgg.size > 1, "The seed shares the egg topping between ramen items")
+        assertTrue(withEgg.all { item -> item.modifierGroups.flatMap { it.options }.first { it.id == "topping-egg" }.isSoldOut })
+
+        repository.setOptionSoldOut(SeedStoreIds.RAMEN_BAR, "topping-egg", soldOut = false)
+        assertFalse(menu.value.dataOrNull()!!.options.first { it.id == "topping-egg" }.isSoldOut)
+    }
+
+    @Test
+    fun aSellOutBeforeTheMenuOpensIsKeptWhenItLoads() = runTest {
+        val repository = FakeMenuRepository(backgroundScope, MockConfig())
+        repository.setItemSoldOut(SeedStoreIds.RAMEN_BAR, "item-gyoza", soldOut = true)
+
+        val menu = repository.menu(SeedStoreIds.RAMEN_BAR)
+        // A change while the load is in flight is kept too.
+        repository.setOptionSoldOut(SeedStoreIds.RAMEN_BAR, "topping-nori", soldOut = true)
+        finishLoading()
+
+        val loaded = menu.value.dataOrNull()!!
+        assertTrue(loaded.items.first { it.id == "item-gyoza" }.isSoldOut)
+        assertTrue(loaded.options.first { it.id == "topping-nori" }.isSoldOut)
     }
 }

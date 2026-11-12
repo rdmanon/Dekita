@@ -123,6 +123,10 @@ struct ItemSheetContent: View {
                 .disabled(!sheet.canAdd)
             }
             .toolbar {
+                // Debug builds only: the panel opens over the sheet, so changes show here at once.
+                if AppBuild.isDebug {
+                    ToolbarItem(placement: .topBarLeading) { DebugPanelButton() }
+                }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button(action: onClose) { Image(systemName: "xmark") }
                         .accessibilityLabel("Close")
@@ -132,9 +136,11 @@ struct ItemSheetContent: View {
         }
     }
 
-    /// A checkmark row for single-choice groups, a circle for multi-choice ones. Sold-out options are disabled.
+    /// A checkmark row for single-choice groups, a circle for multi-choice ones. Sold-out options are disabled,
+    /// except one picked before it sold out: it stays on, marked in red, so it can be removed.
     private func optionRow(group: ModifierGroup, option: ModifierOption, selected: Bool) -> some View {
         let single = group.maxSelections == 1
+        let soldOutPick = selected && option.isSoldOut
         return Button {
             onToggle(group.id, option.id)
         } label: {
@@ -145,7 +151,8 @@ struct ItemSheetContent: View {
                 }
                 Text(option.name).foregroundStyle(.primary)
                 Spacer()
-                Text(option.isSoldOut ? "Sold out" : option.priceLabel).foregroundStyle(.secondary)
+                Text(option.isSoldOut ? "Sold out" : option.priceLabel)
+                    .foregroundStyle(soldOutPick ? AnyShapeStyle(Palette.error) : AnyShapeStyle(.secondary))
                 if single && selected {
                     Image(systemName: "checkmark").foregroundStyle(Color.accentColor).fontWeight(.semibold)
                 }
@@ -154,7 +161,7 @@ struct ItemSheetContent: View {
         }
         // Plain style: the row text stays in the label color instead of the button tint.
         .buttonStyle(.plain)
-        .disabled(option.isSoldOut)
+        .disabled(!sheet.draft.canToggle(group: group, option: option))
         .accessibilityAddTraits(selected ? .isSelected : [])
     }
 

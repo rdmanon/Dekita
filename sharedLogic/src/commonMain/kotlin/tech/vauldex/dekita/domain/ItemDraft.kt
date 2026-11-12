@@ -13,13 +13,20 @@ data class ItemDraft(
     val missingRequiredGroups: List<ModifierGroup>
         get() = item.modifierGroups.filter { selectedIn(it).size < it.minSelections }
 
-    val canAdd: Boolean get() = !item.isSoldOut && missingRequiredGroups.isEmpty()
+    /** Picked options that have since sold out or left the menu. They block Add until changed. */
+    val soldOutSelections: List<ModifierOption>
+        get() = item.modifierGroups.flatMap { selectedIn(it) }.filter { item.hasSoldOut(it) }
+
+    val canAdd: Boolean get() = !item.isSoldOut && missingRequiredGroups.isEmpty() && soldOutSelections.isEmpty()
 
     val totalPrice: Money get() = toCartLine().lineTotal
 
     fun selectedIn(group: ModifierGroup): List<ModifierOption> = selected[group.id].orEmpty()
 
     fun isSelected(group: ModifierGroup, option: ModifierOption): Boolean = selectedIn(group).any { it.id == option.id }
+
+    /** A sold-out option can't be picked, but one picked before it sold out can still be removed. */
+    fun canToggle(group: ModifierGroup, option: ModifierOption): Boolean = !option.isSoldOut || isSelected(group, option)
 
     /**
      * A single-choice group swaps its choice; a required one can't be emptied. Other groups add or remove

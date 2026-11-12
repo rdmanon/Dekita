@@ -31,6 +31,7 @@ import tech.vauldex.dekita.presentation.addButtonLabel
 import tech.vauldex.dekita.presentation.priceLabel
 import tech.vauldex.dekita.presentation.ruleLabel
 import tech.vauldex.dekita.presentation.store.ItemSheetState
+import tech.vauldex.dekita.ui.debug.DebugPanelAction
 import tech.vauldex.dekita.ui.theme.Dimens
 
 /**
@@ -58,7 +59,11 @@ internal fun ItemSheet(
                 .padding(start = Dimens.ScreenPadding, end = Dimens.ScreenPadding, bottom = 24.dp),
         ) {
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text(item.name, style = MaterialTheme.typography.headlineSmall)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(item.name, style = MaterialTheme.typography.headlineSmall, modifier = Modifier.weight(1f))
+                    // Debug builds only: the panel opens over the sheet, so changes show here at once.
+                    DebugPanelAction()
+                }
                 Text(item.description, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Text(item.basePrice.formatted(), style = MaterialTheme.typography.titleMedium)
             }
@@ -112,6 +117,9 @@ private fun ModifierGroupSection(group: ModifierGroup, sheet: ItemSheetState, on
         }
         group.options.forEach { option ->
             val selected = sheet.draft.isSelected(group, option)
+            // A choice that sold out after it was picked stays on, in error color, so it can be removed.
+            val enabled = sheet.draft.canToggle(group, option)
+            val soldOutPick = selected && option.isSoldOut
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -120,21 +128,21 @@ private fun ModifierGroupSection(group: ModifierGroup, sheet: ItemSheetState, on
                     .heightIn(min = Dimens.MinTouchTarget)
                     .toggleable(
                         value = selected,
-                        enabled = !option.isSoldOut,
+                        enabled = enabled,
                         role = if (single) Role.RadioButton else Role.Checkbox,
                         onValueChange = { onToggle(group.id, option.id) },
                     ),
             ) {
                 if (single) {
-                    RadioButton(selected = selected, onClick = null, enabled = !option.isSoldOut)
+                    RadioButton(selected = selected, onClick = null, enabled = enabled)
                 } else {
-                    Checkbox(checked = selected, onCheckedChange = null, enabled = !option.isSoldOut)
+                    Checkbox(checked = selected, onCheckedChange = null, enabled = enabled)
                 }
                 Text(option.name, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
                 Text(
                     if (option.isSoldOut) "Sold out" else option.priceLabel,
                     style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = if (soldOutPick) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
         }

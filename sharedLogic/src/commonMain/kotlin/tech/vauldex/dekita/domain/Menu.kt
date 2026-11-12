@@ -6,6 +6,10 @@ data class Menu(
     val items: List<MenuItem>,
 ) {
     fun itemsIn(categoryId: String): List<MenuItem> = items.filter { it.categoryId == categoryId }
+
+    /** Every option on the menu once, in menu order. Items that share an option share its sold-out state. */
+    val options: List<ModifierOption>
+        get() = items.flatMap { item -> item.modifierGroups.flatMap { it.options } }.distinctBy { it.id }
 }
 
 data class MenuCategory(val id: String, val name: String)
@@ -21,7 +25,11 @@ data class MenuItem(
     /** Items can be limited to one mode even when the store offers both. */
     val availableModes: Set<FulfillmentMode> = FulfillmentMode.entries.toSet(),
     val modifierGroups: List<ModifierGroup> = emptyList(),
-)
+) {
+    /** True when this version of the item has [option] sold out, or no longer offers it. */
+    fun hasSoldOut(option: ModifierOption): Boolean =
+        modifierGroups.flatMap { it.options }.firstOrNull { it.id == option.id }?.isSoldOut ?: true
+}
 
 data class ModifierGroup(
     val id: String,

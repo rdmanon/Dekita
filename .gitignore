@@ -29,3 +29,6 @@ keystore.properties
 .env.*
 !.env.example
 .serena/
+
+# graphify knowledge-graph output (local tooling)
+graphify-out/

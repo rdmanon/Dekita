@@ -11,21 +11,26 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flatMapLatest
-import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import tech.vauldex.dekita.data.LoadState
 import tech.vauldex.dekita.data.mock.SeedAuth
+import tech.vauldex.dekita.data.mock.availabilityStatus
+import tech.vauldex.dekita.data.mock.debugLabel
+import tech.vauldex.dekita.data.mock.defaultAvailabilityStoreId
 import tech.vauldex.dekita.data.dataOrNull
 import tech.vauldex.dekita.di.AppContainer
+import tech.vauldex.dekita.domain.BusinessType
 import tech.vauldex.dekita.domain.CheckInQr
 import tech.vauldex.dekita.domain.DialCode
 import tech.vauldex.dekita.domain.Geofence
 import tech.vauldex.dekita.domain.Menu
 import tech.vauldex.dekita.domain.MenuItem
+import tech.vauldex.dekita.domain.ModifierOption
 import tech.vauldex.dekita.domain.Order
 import tech.vauldex.dekita.domain.PaymentType
 import tech.vauldex.dekita.domain.SignInMethod
@@ -318,8 +323,14 @@ data class DebugState(
     val session: String,
     /** Null until the store feed has loaded. */
     val stores: List<Store>?,
-    /** CART-01: the cart store's menu items, for "Stop Selling". Empty without a cart or before its menu loads. */
-    val cartItems: List<MenuItem>,
+    /** AVAIL-01: the store the "Live availability" controls act on. Null until the store feed has loaded. */
+    val availabilityStore: Store?,
+    /** That store's live state in one line, such as "Paused · Both". Empty until the feed has loaded. */
+    val availabilityStatus: String,
+    /** That store's menu items, for "Stop Selling". Empty before its menu loads. */
+    val availabilityItems: List<MenuItem>,
+    /** Every option on that store's menu once, for "Stop Selling" an option. */
+    val availabilityOptions: List<ModifierOption>,
     /** The in-store draft's check-in status, such as "Draft #44 at Test Ramen Bar: 320 m, out of range". Null with no draft. */
     val checkInStatus: String?,
 )
@@ -340,11 +351,28 @@ class DebugBridge {
         forceSsoFailure = config.forceSsoFailure.value,
         session = sessionLabel(container.authRepository.session.value?.method),
         stores = container.storeRepository.stores.value.dataOrNull(),
-        cartItems = cartStoreId()?.let { container.menuRepository.menu(it).value.dataOrNull()?.items }.orEmpty(),
+        availabilityStore = availabilityStore(),
+        availabilityStatus = availabilityStore()?.availabilityStatus().orEmpty(),
+        availabilityItems = availabilityMenu()?.items.orEmpty(),
+        availabilityOptions = availabilityMenu()?.options.orEmpty(),
         checkInStatus = checkInStatus(),
     )
 
-    private fun cartStoreId(): String? = container.cartRepository.cart.value?.storeId
+    // AVAIL-01: the store picked in the panel, else the cart's store, else Test Ramen Bar.
+    private val pickedStoreId = MutableStateFlow<String?>(null)
+
+    private fun availabilityStoreId(): String =
+        pickedStoreId.value ?: defaultAvailabilityStoreId(container.cartRepository.cart.value)
+
+    private fun availabilityStore(): Store? =
+        container.storeRepository.stores.value.dataOrNull()?.firstOrNull { it.id == availabilityStoreId() }
+
+    private fun availabilityMenu(): Menu? = container.menuRepository.menu(availabilityStoreId()).value.dataOrNull()
+
+    /** Every service mode, in the order the panel lists them. */
+    val businessTypes: List<BusinessType> = BusinessType.entries
+
+    fun businessTypeLabel(type: BusinessType): String = type.debugLabel
 
     fun watch(onState: (DebugState) -> Unit): FlowWatch =
         combine(
@@ -356,15 +384,15 @@ class DebugBridge {
             container.orderRepository.orders,
             container.locationRepository.customerLocation,
         ) { _ -> }
-            .combine(cartMenu()) { _, _ -> currentState }
+            .combine(availabilityMenuChanges()) { _, _ -> currentState }
             .watch(onState)
 
-    /** Changes when the cart moves to another store or that store's menu changes (sold out and back). */
+    /** Changes when the controls move to another store or that store's menu changes (sold out and back). */
     @OptIn(ExperimentalCoroutinesApi::class)
-    private fun cartMenu(): Flow<Any?> = container.cartRepository.cart
-        .map { it?.storeId }
-        .distinctUntilChanged()
-        .flatMapLatest { storeId -> if (storeId == null) flowOf(null) else container.menuRepository.menu(storeId) }
+    private fun availabilityMenuChanges(): Flow<Any?> =
+        combine(pickedStoreId, container.cartRepository.cart) { _, _ -> availabilityStoreId() }
+            .distinctUntilChanged()
+            .flatMapLatest { storeId -> container.menuRepository.menu(storeId) }
 
     fun setLoadingDelayMillis(millis: Long) {
         config.loadingDelay.value = millis.milliseconds
@@ -376,11 +404,6 @@ class DebugBridge {
 
     fun setForceSsoFailure(on: Boolean) {
         config.forceSsoFailure.value = on
-    }
-
-    fun togglePaused(store: Store) {
-        val paused = store.availability == StoreAvailability.PAUSED
-        container.storeFeedSimulator.setAvailability(store.id, if (paused) StoreAvailability.OPEN else StoreAvailability.PAUSED)
     }
 
     fun failNextStoreLoad() {
@@ -397,15 +420,29 @@ class DebugBridge {
         container.storeFeedSimulator.setSeatsFull(store.id, !store.seatsFull)
     }
 
-    fun toggleSoldOut(item: MenuItem) {
-        container.menuSimulator.setItemSoldOut(item.storeId, item.id, !item.isSoldOut)
+    // AVAIL-01: live store changes, as the store's own app would push them. Each acts on the picked store.
+
+    fun selectAvailabilityStore(storeId: String) {
+        pickedStoreId.value = storeId
     }
 
-    /** CART-01: moves the queue at the cart's store, to watch Cart Review's live counter. */
-    fun adjustCartQueue(delta: Int) {
-        val storeId = cartStoreId() ?: return
-        container.storeFeedSimulator.adjustQueue(storeId, delta)
+    /** "Stop Accepting Orders" (false) or "Resume Accepting Orders" (true). */
+    fun setAcceptingOrders(accepting: Boolean) {
+        container.storeFeedSimulator.setAvailability(
+            availabilityStoreId(),
+            if (accepting) StoreAvailability.OPEN else StoreAvailability.PAUSED,
+        )
     }
+
+    fun setBusinessType(type: BusinessType) = container.storeFeedSimulator.setBusinessType(availabilityStoreId(), type)
+
+    fun adjustQueue(delta: Int) = container.storeFeedSimulator.adjustQueue(availabilityStoreId(), delta)
+
+    fun setItemSoldOut(item: MenuItem, soldOut: Boolean) =
+        container.menuSimulator.setItemSoldOut(item.storeId, item.id, soldOut)
+
+    fun setOptionSoldOut(option: ModifierOption, soldOut: Boolean) =
+        container.menuSimulator.setOptionSoldOut(availabilityStoreId(), option.id, soldOut)
 
     fun resetMockData() = container.resetMockData()
 

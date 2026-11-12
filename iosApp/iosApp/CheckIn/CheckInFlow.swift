@@ -66,15 +66,3 @@ struct CheckInFlow: View {
         }
     }
 }
-
-/// The debug panel button for the check-in screens. Debug builds only.
-struct DebugPanelButton: View {
-    @State private var showDebugPanel = false
-
-    var body: some View {
-        Button { showDebugPanel = true } label: {
-            Label("Debug panel", systemImage: "ladybug")
-        }
-        .sheet(isPresented: $showDebugPanel) { DebugPanelView() }
-    }
-}

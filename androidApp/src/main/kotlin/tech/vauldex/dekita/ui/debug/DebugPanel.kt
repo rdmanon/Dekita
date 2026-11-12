@@ -3,6 +3,7 @@ package tech.vauldex.dekita.ui.debug
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -10,11 +11,18 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -29,18 +37,25 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlin.math.roundToInt
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
+import tech.vauldex.dekita.R
 import tech.vauldex.dekita.data.dataOrNull
 import tech.vauldex.dekita.data.mock.SeedAuth
+import tech.vauldex.dekita.data.mock.availabilityStatus
+import tech.vauldex.dekita.data.mock.debugLabel
+import tech.vauldex.dekita.data.mock.defaultAvailabilityStoreId
 import tech.vauldex.dekita.di.AppContainer
+import tech.vauldex.dekita.domain.BusinessType
 import tech.vauldex.dekita.domain.FulfillmentMode
 import tech.vauldex.dekita.domain.CheckInQr
 import tech.vauldex.dekita.domain.Geofence
+import tech.vauldex.dekita.domain.Store
 import tech.vauldex.dekita.domain.StoreAvailability
 import tech.vauldex.dekita.getPlatform
 
@@ -52,6 +67,8 @@ class DebugSection(val title: String, val content: @Composable (AppContainer) ->
 
 /** The panel's sections, in order. Later tickets add their simulation controls to this list. */
 internal val debugSections: List<DebugSection> = listOf(
+    // First, so it shows at half height over the screen being checked.
+    DebugSection("Live availability") { container -> AvailabilityControls(container) },
     DebugSection("Build") { BuildInfo() },
     DebugSection("Mock data") { container -> MockDataControls(container) },
     DebugSection("Discover") { container -> DiscoverControls(container) },
@@ -130,39 +147,10 @@ private fun MockDataControls(container: AppContainer) {
     Button(onClick = { container.resetMockData() }) { Text("Reset mock data") }
 }
 
-/** Live store changes for DISC-01: pause a store, break the feed, or start as a new customer. */
+/** DISC-01: break the feed, or start as a new customer. Store pauses are under Live availability. */
 @Composable
 private fun DiscoverControls(container: AppContainer) {
-    val stores by container.storeRepository.stores.collectAsStateWithLifecycle()
     val simulator = container.storeFeedSimulator
-
-    Text(
-        "Changes reach Discover at once, with no refresh.",
-        style = MaterialTheme.typography.bodyMedium,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-    )
-    val loaded = stores.dataOrNull()
-    if (loaded == null) {
-        Text("The store feed is not loaded.", style = MaterialTheme.typography.bodyMedium)
-    }
-    loaded.orEmpty().forEach { store ->
-        val paused = store.availability == StoreAvailability.PAUSED
-        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-            Text(
-                store.name,
-                style = MaterialTheme.typography.bodyMedium,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f),
-            )
-            TextButton(
-                onClick = {
-                    simulator.setAvailability(store.id, if (paused) StoreAvailability.OPEN else StoreAvailability.PAUSED)
-                },
-            ) { Text(if (paused) "Resume orders" else "Stop Accepting Orders") }
-        }
-    }
-
     OutlinedButton(
         onClick = {
             simulator.failNextLoad()
@@ -192,39 +180,134 @@ private fun AuthControls(container: AppContainer) {
     OutlinedButton(onClick = { container.fillSampleCart() }) { Text("Fill sample cart") }
 }
 
-/** CART-01: the live queue and "Stop Selling" for the cart store's items, to check Cart Review's blocked states. */
+/** CART-01: a cart to check out. Its store's live changes are under Live availability, which starts on it. */
 @Composable
 private fun CartControls(container: AppContainer) {
     val cart by container.cartRepository.cart.collectAsStateWithLifecycle()
-    val storeId = cart?.storeId
     OutlinedButton(onClick = { container.fillSampleCart() }) { Text("Fill sample cart") }
-    if (storeId == null) {
+    if (cart == null) {
         Text("The cart is empty. Fill it, or add items from a store.", style = MaterialTheme.typography.bodyMedium)
+    }
+}
+
+/**
+ * AVAIL-01: what a store's own app can change at any moment. Every change reaches the screens that are
+ * already open (Discover, Store detail, the item sheet, Cart Review) with no refresh.
+ */
+@Composable
+private fun AvailabilityControls(container: AppContainer) {
+    val stores by container.storeRepository.stores.collectAsStateWithLifecycle()
+    val cart by container.cartRepository.cart.collectAsStateWithLifecycle()
+    var pickedStoreId by rememberSaveable { mutableStateOf<String?>(null) }
+    val storeId = pickedStoreId ?: defaultAvailabilityStoreId(cart)
+    val loaded = stores.dataOrNull()
+    val store = loaded?.firstOrNull { it.id == storeId }
+    val feed = container.storeFeedSimulator
+    val menus = container.menuSimulator
+
+    Text(
+        "Changes reach open screens at once, with no refresh. Open the panel over a screen to watch it change.",
+        style = MaterialTheme.typography.bodyMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+    if (loaded == null || store == null) {
+        Text("The store feed is not loaded.", style = MaterialTheme.typography.bodyMedium)
         return
     }
+    StorePicker(loaded, store, onPick = { pickedStoreId = it })
+    Text(store.availabilityStatus(), style = MaterialTheme.typography.bodyMedium)
 
-    Text("Queue at the cart's store", style = MaterialTheme.typography.bodyMedium)
-    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        OutlinedButton(onClick = { container.storeFeedSimulator.adjustQueue(storeId, -1) }) { Text("One fewer ahead") }
-        OutlinedButton(onClick = { container.storeFeedSimulator.adjustQueue(storeId, 1) }) { Text("One more ahead") }
+    val accepting = store.availability != StoreAvailability.PAUSED
+    Button(
+        onClick = { feed.setAvailability(store.id, if (accepting) StoreAvailability.PAUSED else StoreAvailability.OPEN) },
+        modifier = Modifier.fillMaxWidth(),
+    ) { Text(if (accepting) "Stop Accepting Orders" else "Resume Accepting Orders") }
+
+    Text("Service mode", style = MaterialTheme.typography.labelLarge)
+    SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
+        BusinessType.entries.forEachIndexed { index, type ->
+            SegmentedButton(
+                selected = store.businessType == type,
+                onClick = { feed.setBusinessType(store.id, type) },
+                shape = SegmentedButtonDefaults.itemShape(index, BusinessType.entries.size),
+            ) { Text(type.debugLabel, maxLines = 1) }
+        }
     }
 
-    val menuFlow = remember(storeId) { container.menuRepository.menu(storeId) }
-    val menu by menuFlow.collectAsStateWithLifecycle()
-    Text("Menu items", style = MaterialTheme.typography.bodyMedium)
-    menu.dataOrNull()?.items.orEmpty().forEach { item ->
-        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-            Text(
-                item.name,
-                style = MaterialTheme.typography.bodyMedium,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f),
-            )
-            TextButton(onClick = { container.menuSimulator.setItemSoldOut(storeId, item.id, !item.isSoldOut) }) {
-                Text(if (item.isSoldOut) "Resume selling" else "Stop Selling")
+    Text("Queue", style = MaterialTheme.typography.labelLarge)
+    if (store.queue == null) {
+        Text("No queue while the store isn't accepting orders.", style = MaterialTheme.typography.bodyMedium)
+    } else {
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            listOf(-1, 1, 5).forEach { delta ->
+                OutlinedButton(onClick = { feed.adjustQueue(store.id, delta) }) { Text(if (delta < 0) "−1" else "+$delta") }
             }
         }
+    }
+
+    val menuFlow = remember(store.id) { container.menuRepository.menu(store.id) }
+    val menu by menuFlow.collectAsStateWithLifecycle()
+    val loadedMenu = menu.dataOrNull()
+    if (loadedMenu == null) {
+        Text("Loading the menu…", style = MaterialTheme.typography.bodyMedium)
+        return
+    }
+    Text("Menu items", style = MaterialTheme.typography.labelLarge)
+    loadedMenu.items.forEach { item ->
+        SellingRow(item.name, item.isSoldOut) { menus.setItemSoldOut(store.id, item.id, it) }
+    }
+    if (loadedMenu.options.isNotEmpty()) {
+        Text("Options", style = MaterialTheme.typography.labelLarge)
+        loadedMenu.options.forEach { option ->
+            SellingRow(option.name, option.isSoldOut) { menus.setOptionSoldOut(store.id, option.id, it) }
+        }
+    }
+}
+
+@Composable
+private fun StorePicker(stores: List<Store>, selected: Store, onPick: (String) -> Unit) {
+    var expanded by remember { mutableStateOf(false) }
+    Box {
+        OutlinedButton(onClick = { expanded = true }, modifier = Modifier.fillMaxWidth()) {
+            Text(selected.name, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+            Icon(painterResource(R.drawable.ic_expand_more), contentDescription = "Choose a store")
+        }
+        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+            stores.forEach { store ->
+                DropdownMenuItem(
+                    text = { Text(store.name) },
+                    onClick = {
+                        onPick(store.id)
+                        expanded = false
+                    },
+                )
+            }
+        }
+    }
+}
+
+/** An item or option with its Stop Selling / Resume Selling switch. */
+@Composable
+private fun SellingRow(name: String, soldOut: Boolean, onSetSoldOut: (Boolean) -> Unit) {
+    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+        Text(
+            if (soldOut) "$name (sold out)" else name,
+            style = MaterialTheme.typography.bodyMedium,
+            color = if (soldOut) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f),
+        )
+        TextButton(onClick = { onSetSoldOut(!soldOut) }) { Text(if (soldOut) "Resume Selling" else "Stop Selling") }
+    }
+}
+
+/** The top-bar entry to the panel, for screens that react to its live changes. Nothing in release builds. */
+@Composable
+internal fun DebugPanelAction() {
+    val open = LocalOpenDebugPanel.current ?: return
+    IconButton(onClick = open) {
+        Icon(painterResource(R.drawable.ic_bug), contentDescription = "Debug panel")
     }
 }
 

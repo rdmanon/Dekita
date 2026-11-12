@@ -2,7 +2,7 @@ import SwiftUI
 import SharedLogic
 
 /// The debug panel, as a native sheet. Only debug builds open it (`AppBuild.isDebug`).
-/// The same controls as the Android panel: build info, mock data, live store changes, sign-in and check-in.
+/// The same controls as the Android panel: live availability, build info, mock data, Discover, sign-in and check-in.
 struct DebugPanelView: View {
     @StateObject private var model = DebugModel()
     @State private var tableNumber = ""
@@ -12,6 +12,9 @@ struct DebugPanelView: View {
         let bridge = model.bridge
         NavigationStack {
             Form {
+                // First, so it shows at half height over the screen being checked.
+                availabilitySections(state: state, bridge: bridge)
+
                 Section {
                     LabeledContent("Platform", value: "iOS \(UIDevice.current.systemVersion)")
                     LabeledContent("Build", value: "debug")
@@ -37,50 +40,18 @@ struct DebugPanelView: View {
                 }
 
                 Section {
-                    if let stores = state.stores {
-                        ForEach(stores, id: \.id) { store in
-                            HStack {
-                                Text(store.name).lineLimit(1)
-                                Spacer()
-                                Button(store.availability == .paused ? "Resume orders" : "Stop Accepting Orders") {
-                                    bridge.togglePaused(store: store)
-                                }
-                                .buttonStyle(.borderless)
-                                .font(.footnote)
-                            }
-                        }
-                    } else {
-                        Text("The store feed is not loaded.")
-                    }
                     Button("Simulate store feed error") { bridge.failNextStoreLoad() }
                     Button("Simulate new user (no favorites or history)") { bridge.simulateNewUser() }
                 } header: {
                     Text("Discover")
-                } footer: {
-                    Text("Changes reach Discover at once, with no refresh.")
                 }
 
                 Section {
                     Button("Fill sample cart") { bridge.fillSampleCart() }
-                    HStack {
-                        Text("Queue at the cart's store")
-                        Spacer()
-                        Button("−1") { bridge.adjustCartQueue(delta: -1) }.buttonStyle(.borderless)
-                        Button("+1") { bridge.adjustCartQueue(delta: 1) }.buttonStyle(.borderless)
-                    }
-                    ForEach(state.cartItems, id: \.id) { item in
-                        HStack {
-                            Text(item.name).lineLimit(1)
-                            Spacer()
-                            Button(item.isSoldOut ? "Resume" : "Stop Selling") { bridge.toggleSoldOut(item: item) }
-                                .buttonStyle(.borderless)
-                                .font(.footnote)
-                        }
-                    }
                 } header: {
                     Text("Cart")
                 } footer: {
-                    Text("Changes reach Cart Review at once: the live queue, and sold-out lines that block checkout.")
+                    Text("Live availability starts on the cart's store.")
                 }
 
                 Section {
@@ -105,6 +76,90 @@ struct DebugPanelView: View {
         }
         .presentationDetents([.medium, .large])
         .onAppear { if tableNumber.isEmpty { tableNumber = bridge.defaultTableNumber } }
+    }
+
+    /// AVAIL-01: what a store's own app can change at any moment. Every change reaches the screens that are
+    /// already open (Discover, the store, the item sheet, Cart Review) with no refresh.
+    @ViewBuilder
+    private func availabilitySections(state: DebugState, bridge: DebugBridge) -> some View {
+        Section {
+            if let store = state.availabilityStore, let stores = state.stores {
+                Picker("Store", selection: Binding(
+                    get: { store.id },
+                    set: { bridge.selectAvailabilityStore(storeId: $0) }
+                )) {
+                    ForEach(stores, id: \.id) { Text($0.name).tag($0.id) }
+                }
+                .pickerStyle(.menu)
+                Text(state.availabilityStatus).foregroundStyle(.secondary)
+
+                let accepting = store.availability != .paused
+                Button(accepting ? "Stop Accepting Orders" : "Resume Accepting Orders") {
+                    bridge.setAcceptingOrders(accepting: !accepting)
+                }
+
+                Picker("Service mode", selection: Binding(
+                    get: { store.businessType },
+                    set: { bridge.setBusinessType(type: $0) }
+                )) {
+                    ForEach(bridge.businessTypes, id: \.self) { Text(bridge.businessTypeLabel(type: $0)).tag($0) }
+                }
+                .pickerStyle(.segmented)
+
+                if let queue = store.queue {
+                    HStack {
+                        Text("Queue: \(queue.ordersAhead) ahead")
+                        Spacer()
+                        Button("−1") { bridge.adjustQueue(delta: -1) }.buttonStyle(.borderless)
+                        Button("+1") { bridge.adjustQueue(delta: 1) }.buttonStyle(.borderless)
+                        Button("+5") { bridge.adjustQueue(delta: 5) }.buttonStyle(.borderless)
+                    }
+                } else {
+                    Text("No queue while the store isn't accepting orders.").foregroundStyle(.secondary)
+                }
+            } else {
+                Text("The store feed is not loaded.")
+            }
+        } header: {
+            Text("Live availability")
+        } footer: {
+            Text("Changes reach open screens at once, with no refresh. Open the panel over a screen to watch it change.")
+        }
+
+        if state.availabilityStore != nil {
+            Section("Menu items") {
+                if state.availabilityItems.isEmpty {
+                    Text("Loading the menu…").foregroundStyle(.secondary)
+                }
+                ForEach(state.availabilityItems, id: \.id) { item in
+                    sellingRow(name: item.name, soldOut: item.isSoldOut) {
+                        bridge.setItemSoldOut(item: item, soldOut: $0)
+                    }
+                }
+            }
+            if !state.availabilityOptions.isEmpty {
+                Section("Options") {
+                    ForEach(state.availabilityOptions, id: \.id) { option in
+                        sellingRow(name: option.name, soldOut: option.isSoldOut) {
+                            bridge.setOptionSoldOut(option: option, soldOut: $0)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /// An item or option with its Stop Selling / Resume Selling switch.
+    private func sellingRow(name: String, soldOut: Bool, onSet: @escaping (Bool) -> Void) -> some View {
+        HStack {
+            Text(soldOut ? "\(name) (sold out)" : name)
+                .foregroundStyle(soldOut ? .secondary : .primary)
+                .lineLimit(1)
+            Spacer()
+            Button(soldOut ? "Resume Selling" : "Stop Selling") { onSet(!soldOut) }
+                .buttonStyle(.borderless)
+                .font(.footnote)
+        }
     }
 
     /// SEAT-01: "seats full" per Eat-In store, to try the seat check's fallbacks.
