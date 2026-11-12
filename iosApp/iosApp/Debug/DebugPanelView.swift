@@ -98,12 +98,36 @@ struct DebugPanelView: View {
                 }
 
                 checkInSection(state: state, bridge: bridge)
+                seatSection(state: state, bridge: bridge)
             }
             .navigationTitle("Debug Panel")
             .navigationBarTitleDisplayMode(.inline)
         }
         .presentationDetents([.medium, .large])
         .onAppear { if tableNumber.isEmpty { tableNumber = bridge.defaultTableNumber } }
+    }
+
+    /// SEAT-01: "seats full" per Eat-In store, to try the seat check's fallbacks.
+    private func seatSection(state: DebugState, bridge: DebugBridge) -> some View {
+        Section {
+            if let stores = state.stores {
+                ForEach(stores.filter { $0.supports(mode: .inStore) }, id: \.id) { store in
+                    HStack {
+                        Text(store.name).lineLimit(1)
+                        Spacer()
+                        Button(store.seatsFull ? "Free seats" : "Seats full") { bridge.toggleSeatsFull(store: store) }
+                            .buttonStyle(.borderless)
+                            .font(.footnote)
+                    }
+                }
+            } else {
+                Text("The store feed is not loaded.")
+            }
+        } header: {
+            Text("Seat check")
+        } footer: {
+            Text("A store with full seats skips \"Have you found a seat?\" and offers Takeout, waiting or leaving.")
+        }
     }
 
     /// CHECKIN-01: arrival and QR scans, in place of GPS and the camera. Each acts on the in-store draft.

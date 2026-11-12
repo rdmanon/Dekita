@@ -34,7 +34,8 @@ struct ContentView: View {
         }
         .environmentObject(flow)
         .environment(\.openCheckIn) { checkIn = CheckInTarget(orderId: $0) }
-        .fullScreenCover(item: $checkIn) { CheckInFlow(orderId: $0.orderId) }
+        // The cover sits outside environmentObject above, so it gets the flow itself (SEAT-01 navigates with it).
+        .fullScreenCover(item: $checkIn) { CheckInFlow(orderId: $0.orderId).environmentObject(flow) }
     }
 }
 
