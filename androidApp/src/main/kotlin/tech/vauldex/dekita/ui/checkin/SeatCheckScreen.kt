@@ -37,9 +37,10 @@ import tech.vauldex.dekita.ui.theme.Dimens
 /**
  * Placeholder for seat verification, which opens after a successful check-in. SEAT-01 replaces this
  * with the real prompt (seat available, switch to Pickup, wait, or cancel) before the kitchen starts.
+ * Its button pays with a mock payment (PAY-01 replaces it) and calls [onPaid] with the order to show.
  */
 @Composable
-fun SeatCheckScreen(viewModel: CheckInViewModel, onBack: () -> Unit, onDone: () -> Unit) {
+fun SeatCheckScreen(viewModel: CheckInViewModel, onBack: () -> Unit, onPaid: (orderId: String) -> Unit) {
     val state by viewModel.state.collectAsStateWithLifecycle()
 
     Scaffold(
@@ -82,14 +83,18 @@ fun SeatCheckScreen(viewModel: CheckInViewModel, onBack: () -> Unit, onDone: () 
                 Surface(color = MaterialTheme.colorScheme.surfaceContainer, shape = MaterialTheme.shapes.large) {
                     Text(
                         "Next: confirm there's a seat for you before the kitchen starts cooking. " +
-                            "This step is a placeholder until seat verification (SEAT-01) is built.",
+                            "This step is a placeholder until seat verification (SEAT-01) is built, " +
+                            "and payment is simulated until PAY-01.",
                         style = MaterialTheme.typography.bodyMedium,
                         modifier = Modifier.padding(16.dp),
                     )
                 }
                 Box(Modifier.weight(1f))
-                Button(onClick = onDone, modifier = Modifier.fillMaxWidth().height(56.dp)) {
-                    Text("Done", style = MaterialTheme.typography.titleMedium)
+                Button(
+                    onClick = { viewModel.payAtCheckIn()?.let(onPaid) },
+                    modifier = Modifier.fillMaxWidth().height(56.dp),
+                ) {
+                    Text("Pay now · ${draft.total.formatted()}", style = MaterialTheme.typography.titleMedium)
                 }
             }
         }

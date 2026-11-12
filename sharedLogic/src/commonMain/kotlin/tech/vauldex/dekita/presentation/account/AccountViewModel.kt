@@ -7,11 +7,9 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import tech.vauldex.dekita.data.AuthRepository
-import tech.vauldex.dekita.data.InboxRepository
 import tech.vauldex.dekita.data.LoadState
 import tech.vauldex.dekita.data.PaymentRepository
 import tech.vauldex.dekita.data.dataOrNull
-import tech.vauldex.dekita.domain.InboxMessage
 import tech.vauldex.dekita.domain.PaymentMethod
 import tech.vauldex.dekita.domain.UserProfile
 import tech.vauldex.dekita.presentation.STOP_TIMEOUT_MILLIS
@@ -21,24 +19,22 @@ data class AccountUiState(
     val profile: UserProfile? = null,
     val isLoading: Boolean = true,
     val paymentMethods: List<PaymentMethod> = emptyList(),
-    val inbox: List<InboxMessage> = emptyList(),
 ) {
     val isSignedIn: Boolean get() = profile != null
 }
 
+/** The Account tab: profile and payment methods. The inbox moved to Orders with RCPT-01. */
 class AccountViewModel(
     private val authRepository: AuthRepository,
     paymentRepository: PaymentRepository,
-    private val inboxRepository: InboxRepository,
 ) : ViewModel() {
 
     val state: StateFlow<AccountUiState> =
-        combine(authRepository.session, paymentRepository.methods, inboxRepository.messages) { session, methods, messages ->
+        combine(authRepository.session, paymentRepository.methods) { session, methods ->
             AccountUiState(
                 profile = session?.profile,
-                isLoading = methods is LoadState.Loading || messages is LoadState.Loading,
+                isLoading = methods is LoadState.Loading,
                 paymentMethods = methods.dataOrNull().orEmpty(),
-                inbox = messages.dataOrNull().orEmpty(),
             )
         }.stateIn(
             viewModelScope,
@@ -46,8 +42,6 @@ class AccountViewModel(
             // Start from the current session, so a signed-in user never sees the guest card flash.
             AccountUiState(profile = authRepository.session.value?.profile),
         )
-
-    fun markRead(messageId: String) = inboxRepository.markRead(messageId)
 
     fun signOut() = authRepository.signOut()
 }

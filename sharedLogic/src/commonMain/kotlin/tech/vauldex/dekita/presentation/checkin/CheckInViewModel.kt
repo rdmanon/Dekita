@@ -105,4 +105,12 @@ class CheckInViewModel(
         if (current.checkIn != null) return true
         return orderRepository.checkIn(orderId, CheckIn(CheckInMethod.GEOFENCE))
     }
+
+    /**
+     * Pays for the checked-in draft so the kitchen starts. Returns the order id, to open its ticket,
+     * or null when the draft isn't checked in or was already paid.
+     *
+     * shortcut: runs from the seat check placeholder with a mock payment. SEAT-01 and PAY-01 replace both.
+     */
+    fun payAtCheckIn(): String? = orderRepository.payAtCheckIn(orderId)?.id
 }

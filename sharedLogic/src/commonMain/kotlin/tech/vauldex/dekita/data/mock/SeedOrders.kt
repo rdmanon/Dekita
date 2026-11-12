@@ -10,6 +10,7 @@ import tech.vauldex.dekita.domain.CartLine
 import tech.vauldex.dekita.domain.CompletionReason
 import tech.vauldex.dekita.domain.FulfillmentMode
 import tech.vauldex.dekita.domain.Order
+import tech.vauldex.dekita.domain.OrderRating
 import tech.vauldex.dekita.domain.OrderStatus
 import tech.vauldex.dekita.domain.OrderStatusMachine
 import tech.vauldex.dekita.domain.TransitionResult
@@ -27,16 +28,23 @@ private fun seedOrder(
     paymentMethodId: String,
     createdAt: Instant,
     steps: List<Step>,
+    rating: SeedRating? = null,
 ): Order {
     val store = seedStores.first { it.id == storeId }
     val draft = Order.draft(id, number, storeId, store.name, mode, lines, paymentMethodId, createdAt)
-    return steps.fold(draft) { order, step ->
+    val placed = steps.fold(draft) { order, step ->
         when (val result = OrderStatusMachine.transition(order, step.status, createdAt + step.after, step.reason)) {
             is TransitionResult.Accepted -> result.order
             is TransitionResult.Rejected -> error("Invalid seed order $id: ${result.reason}")
         }
     }
+    if (rating == null) return placed
+    check(placed.status == OrderStatus.COMPLETED) { "Invalid seed order $id: only a completed order has a rating" }
+    return placed.copy(rating = OrderRating(rating.stars, rating.tags, placed.lastUpdatedAt + rating.after))
 }
+
+/** A seed rating, given [after] the order completed. */
+private class SeedRating(val stars: Int, val tags: Set<String>, val after: Duration)
 
 /** The design's cart: Shoyu Ramen (Medium · Extra Egg) and Gyoza at Test Ramen Bar, ¥1,550 in store. */
 internal fun seedSampleCart(): Cart {
@@ -129,6 +137,8 @@ internal fun seedOrders(now: Instant): List<Order> {
                 Step(OrderStatus.SERVED, 50.minutes),
                 Step(OrderStatus.COMPLETED, 52.minutes, CompletionReason.CUSTOMER_CONFIRMED),
             ),
+            // Rated, so the receipts show both a rated and an unrated order (RCPT-01).
+            rating = SeedRating(5, setOf("Friendly staff"), after = 3.minutes),
         ),
     )
 }

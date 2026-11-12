@@ -63,7 +63,13 @@ import tech.vauldex.dekita.presentation.discover.FavoritesViewModel
 import tech.vauldex.dekita.presentation.discover.HistoryUiState
 import tech.vauldex.dekita.presentation.discover.HistoryViewModel
 import tech.vauldex.dekita.presentation.discover.WalkLimit
+import tech.vauldex.dekita.presentation.orders.OrderNotice
+import tech.vauldex.dekita.presentation.orders.OrderTicketEvent
+import tech.vauldex.dekita.presentation.orders.OrderTicketUiState
+import tech.vauldex.dekita.presentation.orders.OrderTicketViewModel
 import tech.vauldex.dekita.presentation.orders.OrdersUiState
+import tech.vauldex.dekita.presentation.orders.RateOrderUiState
+import tech.vauldex.dekita.presentation.orders.RateOrderViewModel
 import tech.vauldex.dekita.presentation.orders.OrdersViewModel
 import tech.vauldex.dekita.presentation.store.StoreDetailUiState
 import tech.vauldex.dekita.presentation.store.StoreDetailViewModel
@@ -102,7 +108,7 @@ abstract class ScreenBridge {
 
 class DiscoverBridge : ScreenBridge() {
     val viewModel: DiscoverViewModel = makeViewModel(DiscoverViewModel::class) {
-        DiscoverViewModel(container.storeRepository, container.orderRepository, container.cartRepository)
+        DiscoverViewModel(container.storeRepository, container.orderRepository, container.cartRepository, container.authRepository)
     }
 
     val currentState: DiscoverUiState get() = viewModel.state.value
@@ -173,12 +179,64 @@ val Order.createdEpochSeconds: Long get() = createdAt.epochSeconds
 
 class OrdersBridge : ScreenBridge() {
     val viewModel: OrdersViewModel = makeViewModel(OrdersViewModel::class) {
-        OrdersViewModel(container.orderRepository, container.authRepository)
+        OrdersViewModel(container.orderRepository, container.inboxRepository, container.authRepository)
     }
 
     val currentState: OrdersUiState get() = viewModel.state.value
 
     fun watch(onState: (OrdersUiState) -> Unit): FlowWatch = viewModel.state.watch(onState)
+}
+
+/** ORDER-01: one order's ticket, with live status and [Confirm]. */
+class OrderTicketBridge(orderId: String) : ScreenBridge() {
+    val viewModel: OrderTicketViewModel = makeViewModel(OrderTicketViewModel::class) {
+        OrderTicketViewModel(
+            orderId,
+            container.orderRepository,
+            container.authRepository,
+            container.paymentRepository,
+            container.inboxRepository,
+            container.orderSimulator,
+        )
+    }
+
+    val currentState: OrderTicketUiState get() = viewModel.state.value
+
+    fun watch(onState: (OrderTicketUiState) -> Unit): FlowWatch = viewModel.state.watch(onState)
+
+    fun watchEvents(onEvent: (OrderTicketEvent) -> Unit): FlowWatch = viewModel.events.watch(onEvent)
+}
+
+/** RCPT-01: Rate & Add to Favorites for one completed order. */
+class RateOrderBridge(orderId: String) : ScreenBridge() {
+    val viewModel: RateOrderViewModel = makeViewModel(RateOrderViewModel::class) {
+        RateOrderViewModel(
+            orderId,
+            container.orderRepository,
+            container.storeRepository,
+            container.inboxRepository,
+            container.authRepository,
+        )
+    }
+
+    val currentState: RateOrderUiState get() = viewModel.state.value
+
+    fun watch(onState: (RateOrderUiState) -> Unit): FlowWatch = viewModel.state.watch(onState)
+}
+
+/**
+ * The app-wide feed for iOS system notifications. Unlike the screen bridges it is watched for the
+ * app's whole life, so notices keep arriving while no order screen is open.
+ */
+class OrderNoticeBridge {
+    private val notifications get() = AppContainer.instance.orderNotifications
+
+    fun watchNotices(onNotice: (OrderNotice) -> Unit): FlowWatch = notifications.notices.watch(onNotice)
+
+    fun watchSignedOut(onSignedOut: () -> Unit): FlowWatch = notifications.signedOut.watch { onSignedOut() }
+
+    /** A notification tap opens the ticket only for a paid order while signed in. */
+    fun canOpenTicket(orderId: String): Boolean = notifications.canOpenTicket(orderId)
 }
 
 /** "On your way" and the seat check placeholder, for one in-store draft. */
@@ -205,7 +263,7 @@ class QrScannerBridge(orderId: String) : ScreenBridge() {
 
 class AccountBridge : ScreenBridge() {
     val viewModel: AccountViewModel = makeViewModel(AccountViewModel::class) {
-        AccountViewModel(container.authRepository, container.paymentRepository, container.inboxRepository)
+        AccountViewModel(container.authRepository, container.paymentRepository)
     }
 
     val currentState: AccountUiState get() = viewModel.state.value
@@ -294,6 +352,8 @@ class CartReviewBridge : ScreenBridge() {
 data class DebugState(
     val loadingDelayMillis: Long,
     val liveQueue: Boolean,
+    /** ORDER-01: orders paid in this session move through their statuses on a timer. */
+    val liveOrders: Boolean,
     val forceSsoFailure: Boolean,
     /** "guest", or "signed in with phone" and so on. */
     val session: String,
@@ -324,6 +384,7 @@ class DebugBridge {
     val currentState: DebugState get() = DebugState(
         loadingDelayMillis = config.loadingDelay.value.inWholeMilliseconds,
         liveQueue = config.liveQueue.value,
+        liveOrders = config.liveOrders.value,
         forceSsoFailure = config.forceSsoFailure.value,
         session = sessionLabel(container.authRepository.session.value?.method),
         stores = container.storeRepository.stores.value.dataOrNull(),
@@ -354,6 +415,7 @@ class DebugBridge {
         combine(
             config.loadingDelay,
             config.liveQueue,
+            config.liveOrders,
             config.forceSsoFailure,
             container.authRepository.session,
             container.storeRepository.stores,
@@ -376,6 +438,10 @@ class DebugBridge {
 
     fun setLiveQueue(on: Boolean) {
         config.liveQueue.value = on
+    }
+
+    fun setLiveOrders(on: Boolean) {
+        config.liveOrders.value = on
     }
 
     fun setForceSsoFailure(on: Boolean) {

@@ -11,12 +11,16 @@ struct DiscoverView: View {
     @State private var showFilters = false
     @State private var showDebugPanel = false
     @Environment(\.openCheckIn) private var openCheckIn
+    @Environment(\.openOrderTicket) private var openOrderTicket
 
     var body: some View {
         let state = model.state
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
                 ModePicker(mode: state.filters.mode) { model.viewModel.selectMode(mode: $0) }
+                if let order = state.activeOrder {
+                    ActiveOrderBanner(order: order) { openOrderTicket(order.id) }
+                }
                 if let draft = state.draftToResume {
                     DraftBanner(draft: draft) { openCheckIn(draft.id) }
                 }

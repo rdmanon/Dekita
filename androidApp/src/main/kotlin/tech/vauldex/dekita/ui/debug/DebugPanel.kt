@@ -127,6 +127,7 @@ private val loadingDelayOptions = listOf(0.milliseconds, 800.milliseconds, 2.sec
 private fun MockDataControls(container: AppContainer) {
     val loadingDelay by container.mockConfig.loadingDelay.collectAsStateWithLifecycle()
     val liveQueue by container.mockConfig.liveQueue.collectAsStateWithLifecycle()
+    val liveOrders by container.mockConfig.liveOrders.collectAsStateWithLifecycle()
     Text("Loading delay", style = MaterialTheme.typography.bodyMedium)
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         loadingDelayOptions.forEach { option ->
@@ -141,6 +142,11 @@ private fun MockDataControls(container: AppContainer) {
         selected = liveQueue,
         onClick = { container.mockConfig.liveQueue.value = !liveQueue },
         label = { Text("Live queue updates") },
+    )
+    FilterChip(
+        selected = liveOrders,
+        onClick = { container.mockConfig.liveOrders.value = !liveOrders },
+        label = { Text("Live order status") },
     )
     Button(onClick = { container.resetMockData() }) { Text("Reset mock data") }
 }

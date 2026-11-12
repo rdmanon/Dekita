@@ -227,6 +227,39 @@ struct LoadingPlaceholder: View {
     }
 }
 
+/// The latest paid order that isn't closed yet, with its live step. Tapping it opens the ticket (ORDER-01).
+struct ActiveOrderBanner: View {
+    let order: Order
+    let onOpen: () -> Void
+
+    var body: some View {
+        Button(action: onOpen) {
+            HStack(spacing: 10) {
+                Image(systemName: "receipt")
+                    .font(.system(size: 17, weight: .semibold))
+                    .frame(width: 36, height: 36)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("Order #\(order.number) · \(order.currentStep?.label ?? "")")
+                        .font(.subheadline.weight(.semibold))
+                        .lineLimit(1)
+                    Text(order.storeName)
+                        .font(.caption)
+                        .lineLimit(1)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                Text("View").font(.subheadline.weight(.semibold))
+            }
+            .foregroundStyle(Palette.orderNumber.foreground)
+            .padding(12)
+            .background(Palette.orderNumber.background, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+            .contentShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .accessibilityElement(children: .combine)
+        .accessibilityAddTraits(.isButton)
+    }
+}
+
 /// An in-store draft waiting for check-in. Tapping it goes back to the "On your way" screen.
 struct DraftBanner: View {
     let draft: Order

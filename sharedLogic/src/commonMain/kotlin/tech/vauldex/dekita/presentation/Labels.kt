@@ -11,7 +11,10 @@ import tech.vauldex.dekita.domain.MenuItem
 import tech.vauldex.dekita.domain.ModifierGroup
 import tech.vauldex.dekita.domain.ModifierOption
 import tech.vauldex.dekita.domain.Money
+import tech.vauldex.dekita.domain.OrderRating
 import tech.vauldex.dekita.domain.OrderStatus
+import tech.vauldex.dekita.domain.RATING_TAGS
+import tech.vauldex.dekita.domain.OrderStep
 import tech.vauldex.dekita.domain.QueueStatus
 import tech.vauldex.dekita.domain.Store
 import tech.vauldex.dekita.domain.StoreAvailability
@@ -96,6 +99,33 @@ val OrderStatus.label: String
         OrderStatus.SERVED -> "Served"
         OrderStatus.COMPLETED -> "Completed"
     }
+
+/** The ticket's stepper and the Orders list: Received, Cooking, then Ready or Served. */
+val OrderStep.label: String
+    get() = when (this) {
+        OrderStep.RECEIVED -> "Received"
+        OrderStep.COOKING -> "Cooking"
+        OrderStep.READY -> "Ready"
+        OrderStep.SERVED -> "Served"
+    }
+
+/** Sent right after payment when the customer still has to go to the store. */
+const val ORDER_PLACED_MESSAGE = "Your order will be ready shortly. Please come to the store."
+
+/** Sent when a pickup or takeout order is ready. */
+fun orderReadyMessage(number: Int): String = "Your order #$number is ready for pickup"
+
+/** "Rated 4 of 5 · Tasty, Quick", for the receipt. */
+val OrderRating.label: String
+    get() = buildString {
+        append("Rated $stars of 5")
+        if (tags.isNotEmpty()) append(" · ").append(RATING_TAGS.filter { it in tags }.joinToString(", "))
+    }
+
+/** The inbox message that asks the customer to rate a skipped order (RCPT-01). No push is sent. */
+fun ratePromptTitle(number: Int): String = "Rate order #$number"
+
+fun ratePromptBody(storeName: String): String = "How was $storeName? Rate your order and save the items you liked."
 
 val CompletionReason.label: String
     get() = when (this) {

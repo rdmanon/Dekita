@@ -49,6 +49,7 @@ fun DiscoverScreen(
     onFavoritesClick: () -> Unit,
     onHistoryClick: () -> Unit,
     onResumeDraft: (orderId: String) -> Unit,
+    onOpenTicket: (orderId: String) -> Unit,
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     // Kept above the loading branch so the saved scroll position is still here when the list comes back.
@@ -88,6 +89,15 @@ fun DiscoverScreen(
                     onSelect = viewModel::selectMode,
                     modifier = Modifier.screenPadding().padding(top = 12.dp),
                 )
+            }
+            state.activeOrder?.let { order ->
+                item(key = "active-order") {
+                    ActiveOrderBanner(
+                        order = order,
+                        onOpen = { onOpenTicket(order.id) },
+                        modifier = Modifier.screenPadding().padding(top = 12.dp),
+                    )
+                }
             }
             state.draftToResume?.let { draft ->
                 item(key = "draft") {

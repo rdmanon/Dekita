@@ -3,9 +3,10 @@ import SharedLogic
 
 /// Placeholder for seat verification, which opens after a successful check-in. SEAT-01 replaces this
 /// with the real prompt (seat available, switch to Pickup, wait, or cancel) before the kitchen starts.
+/// Its button pays with a mock payment, which PAY-01 replaces.
 struct SeatCheckView: View {
     @ObservedObject var model: CheckInModel
-    let onDone: () -> Void
+    let onPay: () -> Void
 
     var body: some View {
         let state = model.state
@@ -25,14 +26,14 @@ struct SeatCheckView: View {
                         .accessibilityAddTraits(.isHeader)
                     Text(state.storeLine)
                         .foregroundStyle(.secondary)
-                    Text("Next: confirm there's a seat for you before the kitchen starts cooking. This step is a placeholder until seat verification (SEAT-01) is built.")
+                    Text("Next: confirm there's a seat for you before the kitchen starts cooking. This step is a placeholder until seat verification (SEAT-01) is built, and payment is simulated until PAY-01.")
                         .font(.subheadline)
                         .padding(16)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .background(Palette.card, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
                     Spacer()
-                    Button(action: onDone) {
-                        Text("Done")
+                    Button(action: onPay) {
+                        Text("Pay now · \(state.draft?.total.formatted() ?? "")")
                             .font(.headline)
                             .frame(maxWidth: .infinity, minHeight: 50)
                     }

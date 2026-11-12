@@ -36,6 +36,7 @@ struct DebugPanelView: View {
                     }
                     .pickerStyle(.segmented)
                     Toggle("Live queue updates", isOn: Binding(get: { state.liveQueue }, set: { bridge.setLiveQueue(on: $0) }))
+                    Toggle("Live order status", isOn: Binding(get: { state.liveOrders }, set: { bridge.setLiveOrders(on: $0) }))
                     Button("Reset mock data") { bridge.resetMockData() }
                 }
 
