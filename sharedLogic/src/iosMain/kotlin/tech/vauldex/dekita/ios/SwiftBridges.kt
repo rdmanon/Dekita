@@ -32,7 +32,6 @@ import tech.vauldex.dekita.domain.Menu
 import tech.vauldex.dekita.domain.MenuItem
 import tech.vauldex.dekita.domain.ModifierOption
 import tech.vauldex.dekita.domain.Order
-import tech.vauldex.dekita.domain.PaymentType
 import tech.vauldex.dekita.domain.SignInMethod
 import tech.vauldex.dekita.domain.Store
 import tech.vauldex.dekita.domain.StoreAvailability
@@ -57,9 +56,6 @@ import tech.vauldex.dekita.presentation.checkin.CheckInUiState
 import tech.vauldex.dekita.presentation.checkin.CheckInViewModel
 import tech.vauldex.dekita.presentation.checkin.QrScannerUiState
 import tech.vauldex.dekita.presentation.checkin.QrScannerViewModel
-import tech.vauldex.dekita.presentation.checkin.SeatCheckEvent
-import tech.vauldex.dekita.presentation.checkin.SeatCheckUiState
-import tech.vauldex.dekita.presentation.checkin.SeatCheckViewModel
 import tech.vauldex.dekita.presentation.discover.DiscoverUiState
 import tech.vauldex.dekita.presentation.discover.DiscoverViewModel
 import tech.vauldex.dekita.presentation.discover.FavoritesUiState
@@ -67,7 +63,13 @@ import tech.vauldex.dekita.presentation.discover.FavoritesViewModel
 import tech.vauldex.dekita.presentation.discover.HistoryUiState
 import tech.vauldex.dekita.presentation.discover.HistoryViewModel
 import tech.vauldex.dekita.presentation.discover.WalkLimit
+import tech.vauldex.dekita.presentation.orders.OrderNotice
+import tech.vauldex.dekita.presentation.orders.OrderTicketEvent
+import tech.vauldex.dekita.presentation.orders.OrderTicketUiState
+import tech.vauldex.dekita.presentation.orders.OrderTicketViewModel
 import tech.vauldex.dekita.presentation.orders.OrdersUiState
+import tech.vauldex.dekita.presentation.orders.RateOrderUiState
+import tech.vauldex.dekita.presentation.orders.RateOrderViewModel
 import tech.vauldex.dekita.presentation.orders.OrdersViewModel
 import tech.vauldex.dekita.presentation.store.StoreDetailUiState
 import tech.vauldex.dekita.presentation.store.StoreDetailViewModel
@@ -106,7 +108,7 @@ abstract class ScreenBridge {
 
 class DiscoverBridge : ScreenBridge() {
     val viewModel: DiscoverViewModel = makeViewModel(DiscoverViewModel::class) {
-        DiscoverViewModel(container.storeRepository, container.orderRepository, container.cartRepository)
+        DiscoverViewModel(container.storeRepository, container.orderRepository, container.cartRepository, container.authRepository)
     }
 
     val currentState: DiscoverUiState get() = viewModel.state.value
@@ -177,12 +179,64 @@ val Order.createdEpochSeconds: Long get() = createdAt.epochSeconds
 
 class OrdersBridge : ScreenBridge() {
     val viewModel: OrdersViewModel = makeViewModel(OrdersViewModel::class) {
-        OrdersViewModel(container.orderRepository, container.authRepository)
+        OrdersViewModel(container.orderRepository, container.inboxRepository, container.authRepository)
     }
 
     val currentState: OrdersUiState get() = viewModel.state.value
 
     fun watch(onState: (OrdersUiState) -> Unit): FlowWatch = viewModel.state.watch(onState)
+}
+
+/** ORDER-01: one order's ticket, with live status and [Confirm]. */
+class OrderTicketBridge(orderId: String) : ScreenBridge() {
+    val viewModel: OrderTicketViewModel = makeViewModel(OrderTicketViewModel::class) {
+        OrderTicketViewModel(
+            orderId,
+            container.orderRepository,
+            container.authRepository,
+            container.paymentRepository,
+            container.inboxRepository,
+            container.orderSimulator,
+        )
+    }
+
+    val currentState: OrderTicketUiState get() = viewModel.state.value
+
+    fun watch(onState: (OrderTicketUiState) -> Unit): FlowWatch = viewModel.state.watch(onState)
+
+    fun watchEvents(onEvent: (OrderTicketEvent) -> Unit): FlowWatch = viewModel.events.watch(onEvent)
+}
+
+/** RCPT-01: Rate & Add to Favorites for one completed order. */
+class RateOrderBridge(orderId: String) : ScreenBridge() {
+    val viewModel: RateOrderViewModel = makeViewModel(RateOrderViewModel::class) {
+        RateOrderViewModel(
+            orderId,
+            container.orderRepository,
+            container.storeRepository,
+            container.inboxRepository,
+            container.authRepository,
+        )
+    }
+
+    val currentState: RateOrderUiState get() = viewModel.state.value
+
+    fun watch(onState: (RateOrderUiState) -> Unit): FlowWatch = viewModel.state.watch(onState)
+}
+
+/**
+ * The app-wide feed for iOS system notifications. Unlike the screen bridges it is watched for the
+ * app's whole life, so notices keep arriving while no order screen is open.
+ */
+class OrderNoticeBridge {
+    private val notifications get() = AppContainer.instance.orderNotifications
+
+    fun watchNotices(onNotice: (OrderNotice) -> Unit): FlowWatch = notifications.notices.watch(onNotice)
+
+    fun watchSignedOut(onSignedOut: () -> Unit): FlowWatch = notifications.signedOut.watch { onSignedOut() }
+
+    /** A notification tap opens the ticket only for a paid order while signed in. */
+    fun canOpenTicket(orderId: String): Boolean = notifications.canOpenTicket(orderId)
 }
 
 /** "On your way" and the seat check placeholder, for one in-store draft. */
@@ -194,26 +248,6 @@ class CheckInBridge(orderId: String) : ScreenBridge() {
     val currentState: CheckInUiState get() = viewModel.state.value
 
     fun watch(onState: (CheckInUiState) -> Unit): FlowWatch = viewModel.state.watch(onState)
-}
-
-/** SEAT-01 seat verification for one checked-in draft. iOS offers Apple Pay as its wallet. */
-class SeatCheckBridge(orderId: String) : ScreenBridge() {
-    val viewModel: SeatCheckViewModel = makeViewModel(SeatCheckViewModel::class) {
-        SeatCheckViewModel(
-            orderId,
-            container.orderRepository,
-            container.storeRepository,
-            container.cartRepository,
-            container.paymentRepository,
-            PaymentType.APPLE_PAY,
-        )
-    }
-
-    val currentState: SeatCheckUiState get() = viewModel.state.value
-
-    fun watch(onState: (SeatCheckUiState) -> Unit): FlowWatch = viewModel.state.watch(onState)
-
-    fun watchEvents(onEvent: (SeatCheckEvent) -> Unit): FlowWatch = viewModel.events.watch(onEvent)
 }
 
 /** The QR fallback. Its view model listens for scans for as long as the screen is open. */
@@ -229,7 +263,7 @@ class QrScannerBridge(orderId: String) : ScreenBridge() {
 
 class AccountBridge : ScreenBridge() {
     val viewModel: AccountViewModel = makeViewModel(AccountViewModel::class) {
-        AccountViewModel(container.authRepository, container.paymentRepository, container.inboxRepository)
+        AccountViewModel(container.authRepository, container.paymentRepository)
     }
 
     val currentState: AccountUiState get() = viewModel.state.value
@@ -318,6 +352,8 @@ class CartReviewBridge : ScreenBridge() {
 data class DebugState(
     val loadingDelayMillis: Long,
     val liveQueue: Boolean,
+    /** ORDER-01: orders paid in this session move through their statuses on a timer. */
+    val liveOrders: Boolean,
     val forceSsoFailure: Boolean,
     /** "guest", or "signed in with phone" and so on. */
     val session: String,
@@ -348,6 +384,7 @@ class DebugBridge {
     val currentState: DebugState get() = DebugState(
         loadingDelayMillis = config.loadingDelay.value.inWholeMilliseconds,
         liveQueue = config.liveQueue.value,
+        liveOrders = config.liveOrders.value,
         forceSsoFailure = config.forceSsoFailure.value,
         session = sessionLabel(container.authRepository.session.value?.method),
         stores = container.storeRepository.stores.value.dataOrNull(),
@@ -378,6 +415,7 @@ class DebugBridge {
         combine(
             config.loadingDelay,
             config.liveQueue,
+            config.liveOrders,
             config.forceSsoFailure,
             container.authRepository.session,
             container.storeRepository.stores,
@@ -402,6 +440,10 @@ class DebugBridge {
         config.liveQueue.value = on
     }
 
+    fun setLiveOrders(on: Boolean) {
+        config.liveOrders.value = on
+    }
+
     fun setForceSsoFailure(on: Boolean) {
         config.forceSsoFailure.value = on
     }
@@ -414,11 +456,6 @@ class DebugBridge {
     fun simulateNewUser() = container.simulateNewUser()
 
     fun fillSampleCart() = container.fillSampleCart()
-
-    /** SEAT-01: every seat taken, or free again. */
-    fun toggleSeatsFull(store: Store) {
-        container.storeFeedSimulator.setSeatsFull(store.id, !store.seatsFull)
-    }
 
     // AVAIL-01: live store changes, as the store's own app would push them. Each acts on the picked store.
 

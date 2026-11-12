@@ -4,9 +4,13 @@ import kotlin.time.Clock
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.getAndUpdate
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.updateAndGet
@@ -21,6 +25,7 @@ import tech.vauldex.dekita.data.MenuRepository
 import tech.vauldex.dekita.data.OrderRepository
 import tech.vauldex.dekita.data.PaymentRepository
 import tech.vauldex.dekita.data.StoreRepository
+import tech.vauldex.dekita.data.dataOrNull
 import tech.vauldex.dekita.domain.BusinessType
 import tech.vauldex.dekita.domain.Cart
 import tech.vauldex.dekita.domain.CartLine
@@ -28,7 +33,10 @@ import tech.vauldex.dekita.domain.CheckIn
 import tech.vauldex.dekita.domain.CompletionReason
 import tech.vauldex.dekita.domain.FavoriteItem
 import tech.vauldex.dekita.domain.FulfillmentMode
+import tech.vauldex.dekita.domain.InboxKind
 import tech.vauldex.dekita.domain.InboxMessage
+import tech.vauldex.dekita.domain.OrderRating
+import tech.vauldex.dekita.domain.RATING_TAGS
 import tech.vauldex.dekita.domain.Menu
 import tech.vauldex.dekita.domain.MenuItem
 import tech.vauldex.dekita.domain.Order
@@ -44,6 +52,9 @@ import tech.vauldex.dekita.domain.Store
 import tech.vauldex.dekita.domain.StoreAvailability
 import tech.vauldex.dekita.domain.TransitionResult
 import tech.vauldex.dekita.domain.UserProfile
+import tech.vauldex.dekita.domain.canBeRated
+import tech.vauldex.dekita.domain.canConfirm
+import tech.vauldex.dekita.domain.isActive
 
 // In-memory fakes over the seed data. They never touch the network or disk.
 // Pass a test scope in tests so the simulated delay runs on virtual time.
@@ -64,9 +75,6 @@ interface StoreFeedSimulator {
 
     /** Switches a store's service mode (In-store only, Pickup only or both), as the store's own app would. */
     fun setBusinessType(storeId: String, businessType: BusinessType)
-
-    /** SEAT-01: marks every seat taken, or free again. See [Store.seatsFull]. */
-    fun setSeatsFull(storeId: String, full: Boolean)
 }
 
 class FakeStoreRepository(
@@ -115,6 +123,13 @@ class FakeStoreRepository(
         _favoriteStoreIds.update { ids -> if (storeId in ids) ids - storeId else ids + storeId }
     }
 
+    override fun toggleFavoriteItem(item: FavoriteItem) {
+        _favoriteItems.update { items ->
+            val existing = items.any { it.storeId == item.storeId && it.itemId == item.itemId }
+            if (existing) items.filterNot { it.storeId == item.storeId && it.itemId == item.itemId } else listOf(item) + items
+        }
+    }
+
     override fun setAvailability(storeId: String, availability: StoreAvailability) {
         val updated = feed.updateAndGet { stores ->
             stores.map { if (it.id == storeId) it.withAvailability(availability) else it }
@@ -144,11 +159,6 @@ class FakeStoreRepository(
                 }
             }
         }
-        _stores.update { state -> if (state is LoadState.Success) LoadState.Success(updated) else state }
-    }
-
-    override fun setSeatsFull(storeId: String, full: Boolean) {
-        val updated = feed.updateAndGet { stores -> stores.map { if (it.id == storeId) it.copy(seatsFull = full) else it } }
         _stores.update { state -> if (state is LoadState.Success) LoadState.Success(updated) else state }
     }
 
@@ -316,10 +326,6 @@ class FakeCartRepository : CartRepository, Resettable {
         }
     }
 
-    override fun restore(cart: Cart) {
-        _cart.value = cart.takeUnless { it.isEmpty }
-    }
-
     override fun clear() {
         _cart.value = null
     }
@@ -330,14 +336,32 @@ class FakeCartRepository : CartRepository, Resettable {
     }
 }
 
+/** Debug-only moves of an order, as the store's own app would make them. Only the fake implements this. */
+interface OrderSimulator {
+    /** Moves a paid order one status on, stopping at Ready or Served. Returns false when it can't move. */
+    fun advance(orderId: String): Boolean
+
+    /** Completes a Ready or Served order as if the customer never tapped [Confirm]. Returns false otherwise. */
+    fun autoComplete(orderId: String): Boolean
+}
+
+/**
+ * Orders over the seed data. Orders paid in this session move on by themselves, like a busy kitchen:
+ * one status every [MockConfig.ORDER_STEP_INTERVAL], then auto-complete [MockConfig.AUTO_COMPLETE_AFTER]
+ * after Ready or Served. Seed orders stay where they are, so QA can check them; the debug buttons move them.
+ */
 class FakeOrderRepository(
     private val scope: CoroutineScope,
     private val config: MockConfig,
     private val clock: Clock,
-) : OrderRepository, Resettable {
+) : OrderRepository, OrderSimulator, Resettable {
 
     private val _orders = MutableStateFlow<LoadState<List<Order>>>(LoadState.Loading)
     override val orders: StateFlow<LoadState<List<Order>>> = _orders.asStateFlow()
+
+    // Sized so tryEmit never drops a change while a slow collector catches up.
+    private val _statusChanges = MutableSharedFlow<Order>(extraBufferCapacity = 64)
+    override val statusChanges: Flow<Order> = _statusChanges.asSharedFlow()
 
     // Declared before init: reset() uses it, and Kotlin runs initializers in declaration order.
     /** Orders made in this session. A reload keeps them, as a server would. */
@@ -362,27 +386,114 @@ class FakeOrderRepository(
                 is TransitionResult.Rejected -> state
             }
         }
-        (result as? TransitionResult.Accepted)?.let { keepCreated(it.order) }
+        // Emitted after the update, which can run its block more than once.
+        (result as? TransitionResult.Accepted)?.let { _statusChanges.tryEmit(it.order) }
         return result
     }
 
-    override fun createDraft(cart: Cart, storeName: String): Order {
-        val known = (_orders.value as? LoadState.Success)?.data ?: (created.value + seedOrders(clock.now()))
+    override fun createDraft(cart: Cart, storeName: String): Order =
+        // Eat-In is paid at check-in, so there is no payment method yet.
+        newDraft(cart, storeName).also(::add)
+
+    override fun placeOrder(cart: Cart, storeName: String): Order {
+        val draft = newDraft(cart, storeName)
+        val order = paid(draft) ?: error("A new draft can always be paid")
+        add(order)
+        _statusChanges.tryEmit(order)
+        drive(order.id)
+        return order
+    }
+
+    override fun payAtCheckIn(orderId: String): Order? {
+        var result: Order? = null
+        _orders.update { state ->
+            result = null
+            val orders = state.dataOrNull() ?: return@update state
+            val draft = orders.firstOrNull { it.id == orderId }?.takeIf { it.awaitsCheckIn && it.checkIn != null }
+                ?: return@update state
+            val order = paid(draft) ?: return@update state
+            result = order
+            LoadState.Success(orders.map { if (it.id == orderId) order else it })
+        }
+        result?.let {
+            _statusChanges.tryEmit(it)
+            drive(it.id)
+        }
+        return result
+    }
+
+    override fun rate(orderId: String, stars: Int, tags: Set<String>): Boolean {
+        // Checked here as a server would, not only in the screen.
+        if (stars !in 1..5 || !tags.all { it in RATING_TAGS }) return false
+        var rated = false
+        _orders.update { state ->
+            rated = false
+            val orders = state.dataOrNull() ?: return@update state
+            val order = orders.firstOrNull { it.id == orderId }?.takeIf { it.canBeRated } ?: return@update state
+            rated = true
+            val updated = order.copy(rating = OrderRating(stars, tags, clock.now()))
+            LoadState.Success(orders.map { if (it.id == orderId) updated else it })
+        }
+        return rated
+    }
+
+    override fun advance(orderId: String): Boolean {
+        val order = order(orderId)?.takeIf { it.isActive && !it.canConfirm } ?: return false
+        val next = OrderStatusMachine.nextStatus(order.status, order.mode) ?: return false
+        return transition(orderId, next) is TransitionResult.Accepted
+    }
+
+    override fun autoComplete(orderId: String): Boolean {
+        if (order(orderId)?.canConfirm != true) return false
+        // The state machine rejects this if the customer confirmed first, so an order completes once.
+        return transition(orderId, OrderStatus.COMPLETED, CompletionReason.AUTO_COMPLETED) is TransitionResult.Accepted
+    }
+
+    private fun order(orderId: String): Order? = _orders.value.dataOrNull()?.firstOrNull { it.id == orderId }
+
+    private fun newDraft(cart: Cart, storeName: String): Order {
+        val known = _orders.value.dataOrNull() ?: (created.value + seedOrders(clock.now()))
         val number = (known.maxOfOrNull { it.number } ?: 0) + 1
-        val order = Order.draft(
+        return Order.draft(
             id = "order-$number",
             number = number,
             storeId = cart.storeId,
             storeName = storeName,
             mode = cart.mode,
             lines = cart.lines,
-            // Eat-In is paid at check-in, so there is no payment method yet.
             paymentMethodId = null,
             at = clock.now(),
         )
+    }
+
+    private fun add(order: Order) {
         created.update { listOf(order) + it }
         _orders.update { state -> if (state is LoadState.Success) LoadState.Success(listOf(order) + state.data) else state }
-        return order
+    }
+
+    /** The draft after a mock payment with the default method: PAID for pickup, QUEUED for in-store. Null if it isn't a draft. */
+    private fun paid(draft: Order): Order? {
+        if (draft.status != OrderStatus.DRAFT) return null
+        val next = OrderStatusMachine.nextStatus(draft.status, draft.mode) ?: return null
+        val accepted = OrderStatusMachine.transition(draft, next, clock.now()) as? TransitionResult.Accepted ?: return null
+        return accepted.order.copy(paymentMethodId = DEFAULT_PAYMENT_METHOD_ID)
+    }
+
+    /**
+     * The mock kitchen for one paid order. Ends when the order completes or is gone (reset). A change made
+     * during a wait, by a debug button or [Confirm], starts the wait again from the new status.
+     */
+    private fun drive(orderId: String) {
+        scope.launch {
+            while (true) {
+                val before = order(orderId)?.takeIf { it.isActive } ?: return@launch
+                delay(if (before.canConfirm) MockConfig.AUTO_COMPLETE_AFTER else MockConfig.ORDER_STEP_INTERVAL)
+                config.liveOrders.first { it }
+                val now = order(orderId) ?: return@launch
+                if (now.history.size != before.history.size) continue
+                if (now.canConfirm) autoComplete(orderId) else advance(orderId)
+            }
+        }
     }
 
     override fun checkIn(orderId: String, checkIn: CheckIn): Boolean {
@@ -392,48 +503,9 @@ class FakeOrderRepository(
             val orders = (state as? LoadState.Success)?.data ?: return@update state
             val updated = orders.firstOrNull { it.id == orderId }?.checkedIn(checkIn) ?: return@update state
             recorded = true
-            keepCreated(updated)
             LoadState.Success(orders.map { if (it.id == orderId) updated else it })
         }
         return recorded
-    }
-
-    override fun discardDraft(orderId: String): Order? {
-        var removed: Order? = null
-        _orders.update { state ->
-            removed = null
-            val orders = (state as? LoadState.Success)?.data ?: return@update state
-            val draft = orders.firstOrNull { it.id == orderId && it.status == OrderStatus.DRAFT } ?: return@update state
-            removed = draft
-            LoadState.Success(orders - draft)
-        }
-        removed?.let { draft -> created.update { list -> list.filterNot { it.id == draft.id } } }
-        return removed
-    }
-
-    override fun startCooking(orderId: String, paymentMethodId: String): TransitionResult? {
-        var result: TransitionResult? = null
-        _orders.update { state ->
-            result = null
-            val orders = (state as? LoadState.Success)?.data ?: return@update state
-            val order = orders.firstOrNull { it.id == orderId } ?: return@update state
-            val attempt = OrderStatusMachine.transition(order, OrderStatus.QUEUED, clock.now())
-            result = when (attempt) {
-                is TransitionResult.Accepted -> attempt.copy(order = attempt.order.copy(paymentMethodId = paymentMethodId))
-                is TransitionResult.Rejected -> attempt
-            }
-            when (val done = result) {
-                is TransitionResult.Accepted -> LoadState.Success(orders.map { if (it.id == orderId) done.order else it })
-                else -> state
-            }
-        }
-        (result as? TransitionResult.Accepted)?.let { keepCreated(it.order) }
-        return result
-    }
-
-    /** A reload keeps orders made in this session, so their later changes (check-in, cooking) are kept too. */
-    private fun keepCreated(order: Order) {
-        created.update { list -> list.map { if (it.id == order.id) order else it } }
     }
 
     override fun reset() {
@@ -447,6 +519,10 @@ class FakeOrderRepository(
         loadJob?.cancel()
         created.value = emptyList()
         _orders.value = LoadState.Success(emptyList())
+    }
+
+    private companion object {
+        val DEFAULT_PAYMENT_METHOD_ID = seedPaymentMethods.first { it.isDefault }.id
     }
 }
 
@@ -479,6 +555,10 @@ class FakeInboxRepository(
     private val _messages = MutableStateFlow<LoadState<List<InboxMessage>>>(LoadState.Loading)
     override val messages: StateFlow<LoadState<List<InboxMessage>>> = _messages.asStateFlow()
 
+    // Declared before init: reset() uses it, and Kotlin runs initializers in declaration order.
+    /** Messages added in this session. A reload keeps them, as a server would. */
+    private val added = MutableStateFlow<List<InboxMessage>>(emptyList())
+
     private var loadJob: Job? = null
 
     init {
@@ -492,9 +572,24 @@ class FakeInboxRepository(
         }
     }
 
+    override fun add(id: String, title: String, body: String, kind: InboxKind, orderId: String?) {
+        if (added.value.any { it.id == id } || _messages.value.dataOrNull()?.any { it.id == id } == true) return
+        val message = InboxMessage(id, title, body, receivedAt = clock.now(), isRead = false, orderId = orderId, kind = kind)
+        added.update { listOf(message) + it }
+        _messages.update { state -> if (state is LoadState.Success) LoadState.Success(listOf(message) + state.data) else state }
+    }
+
     override fun reset() {
         loadJob?.cancel()
-        loadJob = scope.simulateLoad(_messages, config) { seedInbox(clock.now()) }
+        added.value = emptyList()
+        loadJob = scope.simulateLoad(_messages, config) { added.value + seedInbox(clock.now()) }
+    }
+
+    /** Debug only: removes every message, as for a customer who has never ordered. */
+    fun clearAll() {
+        loadJob?.cancel()
+        added.value = emptyList()
+        _messages.value = LoadState.Success(emptyList())
     }
 }
 

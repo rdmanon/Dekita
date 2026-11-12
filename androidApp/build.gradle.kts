@@ -18,6 +18,8 @@ dependencies {
     implementation(project(":sharedLogic"))
 
     implementation(libs.androidx.activity.compose)
+    // NotificationCompat for ORDER-01's order notifications. Already in the catalog and pulled in by activity-compose.
+    implementation(libs.androidx.core.ktx)
     implementation(libs.compose.runtime)
     implementation(libs.compose.foundation)
     implementation(libs.compose.material3)

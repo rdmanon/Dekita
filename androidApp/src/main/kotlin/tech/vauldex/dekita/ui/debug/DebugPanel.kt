@@ -52,7 +52,6 @@ import tech.vauldex.dekita.data.mock.debugLabel
 import tech.vauldex.dekita.data.mock.defaultAvailabilityStoreId
 import tech.vauldex.dekita.di.AppContainer
 import tech.vauldex.dekita.domain.BusinessType
-import tech.vauldex.dekita.domain.FulfillmentMode
 import tech.vauldex.dekita.domain.CheckInQr
 import tech.vauldex.dekita.domain.Geofence
 import tech.vauldex.dekita.domain.Store
@@ -75,7 +74,6 @@ internal val debugSections: List<DebugSection> = listOf(
     DebugSection("Auth") { container -> AuthControls(container) },
     DebugSection("Cart") { container -> CartControls(container) },
     DebugSection("Check-in") { container -> CheckInControls(container) },
-    DebugSection("Seat check") { container -> SeatControls(container) },
 )
 
 @Composable
@@ -129,6 +127,7 @@ private val loadingDelayOptions = listOf(0.milliseconds, 800.milliseconds, 2.sec
 private fun MockDataControls(container: AppContainer) {
     val loadingDelay by container.mockConfig.loadingDelay.collectAsStateWithLifecycle()
     val liveQueue by container.mockConfig.liveQueue.collectAsStateWithLifecycle()
+    val liveOrders by container.mockConfig.liveOrders.collectAsStateWithLifecycle()
     Text("Loading delay", style = MaterialTheme.typography.bodyMedium)
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         loadingDelayOptions.forEach { option ->
@@ -143,6 +142,11 @@ private fun MockDataControls(container: AppContainer) {
         selected = liveQueue,
         onClick = { container.mockConfig.liveQueue.value = !liveQueue },
         label = { Text("Live queue updates") },
+    )
+    FilterChip(
+        selected = liveOrders,
+        onClick = { container.mockConfig.liveOrders.value = !liveOrders },
+        label = { Text("Live order status") },
     )
     Button(onClick = { container.resetMockData() }) { Text("Reset mock data") }
 }
@@ -363,31 +367,6 @@ private fun CheckInControls(container: AppContainer) {
     }
     OutlinedButton(onClick = simulator::scanOtherStoreQr) { Text("Simulate other-store QR") }
     OutlinedButton(onClick = simulator::scanInvalidQr) { Text("Simulate invalid QR") }
-}
-
-/** SEAT-01: "seats full" per Eat-In store, to try the seat check's fallbacks. */
-@Composable
-private fun SeatControls(container: AppContainer) {
-    val stores by container.storeRepository.stores.collectAsStateWithLifecycle()
-    Text(
-        "A store with full seats skips \"Have you found a seat?\" and offers Takeout, waiting or leaving.",
-        style = MaterialTheme.typography.bodyMedium,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-    )
-    stores.dataOrNull().orEmpty().filter { it.supports(FulfillmentMode.IN_STORE) }.forEach { store ->
-        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-            Text(
-                store.name,
-                style = MaterialTheme.typography.bodyMedium,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f),
-            )
-            TextButton(onClick = { container.storeFeedSimulator.setSeatsFull(store.id, !store.seatsFull) }) {
-                Text(if (store.seatsFull) "Free seats" else "Seats full")
-            }
-        }
-    }
 }
 
 private const val HOLD_MILLIS = 1_000L

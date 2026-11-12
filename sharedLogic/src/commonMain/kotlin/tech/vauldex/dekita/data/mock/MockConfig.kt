@@ -17,12 +17,27 @@ class MockConfig(loadingDelay: Duration = DEFAULT_LOADING_DELAY) {
     /** When false, the mock queue counts stop changing, so QA can check exact values. */
     val liveQueue = MutableStateFlow(true)
 
+    /**
+     * When false, orders paid in this session stop moving through their statuses and stop auto-completing,
+     * so QA can check one status. The ticket's debug buttons still move them.
+     */
+    val liveOrders = MutableStateFlow(true)
+
     /** When true, "Continue with Google" and "Continue with Apple" fail after the loading delay. */
     val forceSsoFailure = MutableStateFlow(false)
 
     companion object {
         val DEFAULT_LOADING_DELAY = 800.milliseconds
         val QUEUE_TICK_INTERVAL = 5.seconds
+
+        /** How long a live order stays in each status before the mock kitchen moves it on. */
+        val ORDER_STEP_INTERVAL = 15.seconds
+
+        /**
+         * How long a Ready or Served order waits for [Confirm] before it completes on its own.
+         * A short mock value: the real time is an open question for the PO.
+         */
+        val AUTO_COMPLETE_AFTER = 60.seconds
     }
 }
 

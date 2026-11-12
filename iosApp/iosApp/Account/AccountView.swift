@@ -2,7 +2,7 @@ import SwiftUI
 import SharedLogic
 
 /// Account tab. Not designed yet: guests get a sign-in card; signed-in users see their profile,
-/// payment methods and inbox, and can sign out.
+/// payment methods, and can sign out. The inbox is on the Orders tab (RCPT-01).
 struct AccountView: View {
     @EnvironmentObject private var flow: AuthFlow
     @StateObject private var model = AccountModel()
@@ -33,11 +33,6 @@ struct AccountView: View {
                                     Text("Default").font(.footnote.weight(.semibold)).foregroundStyle(Color.accentColor)
                                 }
                             }
-                        }
-                    }
-                    Section("Inbox") {
-                        ForEach(state.inbox, id: \.id) { message in
-                            InboxRow(message: message) { model.viewModel.markRead(messageId: message.id) }
                         }
                     }
                 }
@@ -73,31 +68,5 @@ struct AccountView: View {
         .listStyle(.insetGrouped)
         .navigationTitle("Account")
         .sheet(isPresented: $showDebugPanel) { DebugPanelView() }
-    }
-}
-
-private struct InboxRow: View {
-    let message: InboxMessage
-    let onOpen: () -> Void
-
-    var body: some View {
-        Button(action: onOpen) {
-            HStack(alignment: .top, spacing: 12) {
-                Circle()
-                    .fill(message.isRead ? Color.clear : Color.accentColor)
-                    .frame(width: 8, height: 8)
-                    .padding(.top, 7)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(message.title).font(.body.weight(.semibold)).foregroundStyle(.primary)
-                    Text(message.body).font(.subheadline).foregroundStyle(.secondary)
-                }
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .contentShape(Rectangle())
-        }
-        // A list tints button labels with the accent color; inbox text should read as normal text.
-        .buttonStyle(.plain)
-        .accessibilityElement(children: .combine)
-        .accessibilityValue(message.isRead ? "" : "Unread")
     }
 }

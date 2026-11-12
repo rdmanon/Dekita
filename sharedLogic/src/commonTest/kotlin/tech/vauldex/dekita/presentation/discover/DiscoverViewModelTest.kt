@@ -21,6 +21,7 @@ import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
+import tech.vauldex.dekita.data.mock.FakeAuthRepository
 import tech.vauldex.dekita.data.mock.FakeCartRepository
 import tech.vauldex.dekita.data.mock.FakeOrderRepository
 import tech.vauldex.dekita.data.mock.FakeStoreRepository
@@ -28,6 +29,7 @@ import tech.vauldex.dekita.data.mock.MockConfig
 import tech.vauldex.dekita.data.mock.SeedStoreIds
 import tech.vauldex.dekita.data.mock.seedStores
 import tech.vauldex.dekita.domain.FulfillmentMode
+import tech.vauldex.dekita.domain.SsoProvider
 import tech.vauldex.dekita.domain.StoreAvailability
 import tech.vauldex.dekita.domain.StoreBadge
 
@@ -52,7 +54,8 @@ class DiscoverViewModelTest {
             override fun now() = Instant.fromEpochSeconds(1_800_000_000)
         })
         val cart = FakeCartRepository()
-        val viewModel = DiscoverViewModel(stores, orders, cart)
+        val auth = FakeAuthRepository(MockConfig())
+        val viewModel = DiscoverViewModel(stores, orders, cart, auth)
     }
 
     /** Builds the view model, subscribes to it, and waits out the simulated loading delay. */
@@ -192,7 +195,31 @@ class DiscoverViewModelTest {
         val fixture = loadedFixture()
         fixture.viewModel.selectMode(FulfillmentMode.PICKUP)
 
-        val rebuilt = DiscoverViewModel(fixture.stores, fixture.orders, fixture.cart)
+        val rebuilt = DiscoverViewModel(fixture.stores, fixture.orders, fixture.cart, fixture.auth)
         assertEquals(FulfillmentMode.PICKUP, rebuilt.state.value.filters.mode)
+    }
+
+    // ORDER-01: the active-order banner
+
+    @Test
+    fun activeOrderBannerShowsTheLatestPaidOrderToSignedInCustomersOnly() = runTest(mainDispatcher) {
+        val fixture = loadedFixture()
+        assertNull(fixture.viewModel.state.value.activeOrder, "Guests see no order banners")
+        assertNull(fixture.viewModel.state.value.draftToResume)
+
+        fixture.auth.signInWith(SsoProvider.APPLE)
+        runCurrent()
+        // Seed #43 (ready, updated 5 minutes ago) is more recent than #42; the draft #44 isn't paid.
+        assertEquals("order-43", fixture.viewModel.state.value.activeOrder?.id)
+        assertEquals("order-44", fixture.viewModel.state.value.draftToResume?.id)
+
+        fixture.orders.advance("order-42")
+        runCurrent()
+        assertEquals("order-42", fixture.viewModel.state.value.activeOrder?.id, "The banner follows the latest update")
+
+        fixture.orders.autoComplete("order-42")
+        fixture.orders.autoComplete("order-43")
+        runCurrent()
+        assertNull(fixture.viewModel.state.value.activeOrder, "Completed orders leave the banner")
     }
 }

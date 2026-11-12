@@ -36,6 +36,7 @@ struct DebugPanelView: View {
                     }
                     .pickerStyle(.segmented)
                     Toggle("Live queue updates", isOn: Binding(get: { state.liveQueue }, set: { bridge.setLiveQueue(on: $0) }))
+                    Toggle("Live order status", isOn: Binding(get: { state.liveOrders }, set: { bridge.setLiveOrders(on: $0) }))
                     Button("Reset mock data") { bridge.resetMockData() }
                 }
 
@@ -69,7 +70,6 @@ struct DebugPanelView: View {
                 }
 
                 checkInSection(state: state, bridge: bridge)
-                seatSection(state: state, bridge: bridge)
             }
             .navigationTitle("Debug Panel")
             .navigationBarTitleDisplayMode(.inline)
@@ -159,29 +159,6 @@ struct DebugPanelView: View {
             Button(soldOut ? "Resume Selling" : "Stop Selling") { onSet(!soldOut) }
                 .buttonStyle(.borderless)
                 .font(.footnote)
-        }
-    }
-
-    /// SEAT-01: "seats full" per Eat-In store, to try the seat check's fallbacks.
-    private func seatSection(state: DebugState, bridge: DebugBridge) -> some View {
-        Section {
-            if let stores = state.stores {
-                ForEach(stores.filter { $0.supports(mode: .inStore) }, id: \.id) { store in
-                    HStack {
-                        Text(store.name).lineLimit(1)
-                        Spacer()
-                        Button(store.seatsFull ? "Free seats" : "Seats full") { bridge.toggleSeatsFull(store: store) }
-                            .buttonStyle(.borderless)
-                            .font(.footnote)
-                    }
-                }
-            } else {
-                Text("The store feed is not loaded.")
-            }
-        } header: {
-            Text("Seat check")
-        } footer: {
-            Text("A store with full seats skips \"Have you found a seat?\" and offers Takeout, waiting or leaving.")
         }
     }
 

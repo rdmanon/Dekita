@@ -39,6 +39,8 @@ data class Order internal constructor(
     val completionReason: CompletionReason?,
     /** Set when an in-store customer checks in on arrival. Null until then, and always for pickup. */
     val checkIn: CheckIn? = null,
+    /** The customer's rating once the order is completed (RCPT-01). Null until rated. */
+    val rating: OrderRating? = null,
 ) {
     val itemCount: Int get() = lines.sumOf { it.quantity }
 

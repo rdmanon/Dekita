@@ -1,13 +1,15 @@
 import SwiftUI
 import SharedLogic
 
-/// Orders tab: active tickets and history from the seed data. Guests see a sign-in card instead.
-/// The real Orders screen is a later ticket; this matches the content the Android tab shows.
-/// An in-store draft waiting for check-in can be resumed here, so leaving check-in never loses it.
+/// The Orders inbox (RCPT-01): active orders, then inbox messages, then receipts, each newest first.
+/// Guests see a sign-in card instead. An active order or a receipt opens its ticket; a rate prompt opens
+/// Rate. An in-store draft waiting for check-in can be resumed here, so leaving check-in never loses it.
 struct OrdersView: View {
     @EnvironmentObject private var flow: AuthFlow
     @StateObject private var model = OrdersModel()
     @Environment(\.openCheckIn) private var openCheckIn
+    @Environment(\.openOrderTicket) private var openOrderTicket
+    @Environment(\.openRating) private var openRating
 
     var body: some View {
         let state = model.state
@@ -16,10 +18,17 @@ struct OrdersView: View {
                 if !state.isSignedIn {
                     SignInPromptCard(
                         title: "Sign in to see your orders",
-                        message: "Your active orders and order history appear here once you sign in."
+                        message: "Your active orders, messages and receipts appear here once you sign in."
                     ) { flow.requestSignIn(from: .standard) }
                 } else if state.isLoading {
                     ProgressView("Loading orders…").frame(maxWidth: .infinity).padding(.top, 32)
+                } else if state.isEmpty {
+                    ContentUnavailableView(
+                        "No orders yet",
+                        systemImage: "receipt",
+                        description: Text("Your orders, receipts and messages will appear here.")
+                    )
+                    .padding(.top, 32)
                 } else {
                     Text("Active").font(.title3.weight(.bold))
                     if state.active.isEmpty {
@@ -29,25 +38,88 @@ struct OrdersView: View {
                         if order.awaitsCheckIn {
                             DraftCard(order: order) { openCheckIn(order.id) }
                         } else {
-                            ActiveOrderCard(order: order)
+                            Button { openOrderTicket(order.id) } label: { ActiveOrderCard(order: order) }
+                                .buttonStyle(.plain)
+                                .accessibilityHint("Opens the order ticket")
                         }
                     }
-                    Text("History").font(.title3.weight(.bold)).padding(.top, 8)
-                    VStack(spacing: 0) {
-                        ForEach(Array(state.history.enumerated()), id: \.element.id) { index, order in
-                            HistoryRow(order: order)
-                            if index < state.history.count - 1 {
-                                Divider().padding(.leading, 16)
+                    if !state.inbox.isEmpty {
+                        Text("Inbox").font(.title3.weight(.bold)).padding(.top, 8)
+                        VStack(spacing: 0) {
+                            ForEach(Array(state.inbox.enumerated()), id: \.element.message.id) { index, row in
+                                InboxRowView(row: row) { open(row) }
+                                if index < state.inbox.count - 1 {
+                                    Divider().padding(.leading, 36)
+                                }
                             }
                         }
+                        .background(Palette.card, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
                     }
-                    .background(Palette.card, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+                    if !state.receipts.isEmpty {
+                        Text("Receipts").font(.title3.weight(.bold)).padding(.top, 8)
+                        VStack(spacing: 0) {
+                            ForEach(Array(state.receipts.enumerated()), id: \.element.id) { index, order in
+                                Button { openOrderTicket(order.id) } label: { ReceiptRow(order: order) }
+                                    .buttonStyle(.plain)
+                                    .accessibilityHint("Opens the receipt")
+                                if index < state.receipts.count - 1 {
+                                    Divider().padding(.leading, 16)
+                                }
+                            }
+                        }
+                        .background(Palette.card, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+                    }
                 }
             }
             .padding(16)
         }
         .background(Palette.screen)
         .navigationTitle("Orders")
+    }
+
+    /// Marks the message read, then opens Rate for a rate prompt or the ticket for an order message.
+    private func open(_ row: InboxRow) {
+        model.viewModel.openMessage(messageId: row.message.id)
+        guard let orderId = row.message.orderId else { return }
+        if row.isRatePrompt { openRating(orderId) } else { openOrderTicket(orderId) }
+    }
+}
+
+/// An in-app message. Unread ones have a dot; a rate prompt shows "Rated" once its order is rated.
+private struct InboxRowView: View {
+    let row: InboxRow
+    let onOpen: () -> Void
+
+    var body: some View {
+        let message = row.message
+        Button(action: onOpen) {
+            HStack(alignment: .top, spacing: 12) {
+                Circle()
+                    .fill(message.isRead ? Color.clear : Color.accentColor)
+                    .frame(width: 8, height: 8)
+                    .padding(.top, 7)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(message.title).font(.body.weight(.semibold)).foregroundStyle(.primary)
+                    Text(message.body).font(.subheadline).foregroundStyle(.secondary)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                if row.isDone {
+                    let green = Palette.badge(.openForLunch)
+                    Text("Rated")
+                        .font(.caption.weight(.semibold))
+                        .padding(.horizontal, 8)
+                        .frame(minHeight: 22)
+                        .foregroundStyle(green.foreground)
+                        .background(green.background, in: Capsule())
+                }
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityElement(children: .combine)
+        .accessibilityValue(message.isRead ? "" : "Unread")
     }
 }
 
@@ -72,7 +144,7 @@ private struct ActiveOrderCard: View {
             Text("\(order.itemCount) items · \(order.total.formatted())")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
-            Text(order.status.label)
+            Text(order.currentStep?.label ?? order.status.label)
                 .font(.caption.weight(.semibold))
                 .padding(.horizontal, 8)
                 .frame(minHeight: 22)
@@ -120,7 +192,7 @@ private struct DraftCard: View {
     }
 }
 
-private struct HistoryRow: View {
+private struct ReceiptRow: View {
     let order: Order
 
     var body: some View {
@@ -136,7 +208,7 @@ private struct HistoryRow: View {
 
     private var detail: String {
         var parts = [order.mode.label, order.total.formatted()]
-        if let reason = order.completionReason?.label { parts.append(reason) }
+        if let detail = order.rating?.label ?? order.completionReason?.label { parts.append(detail) }
         return parts.joined(separator: " · ")
     }
 }

@@ -65,9 +65,10 @@ class LiveAvailabilityTest {
         val orders = FakeOrderRepository(scope, config, object : Clock {
             override fun now() = Instant.fromEpochSeconds(1_800_000_000)
         })
-        val discover = DiscoverViewModel(stores, orders, cart)
+        val auth = FakeAuthRepository(config)
+        val discover = DiscoverViewModel(stores, orders, cart, auth)
         val store = StoreDetailViewModel(SeedStoreIds.RAMEN_BAR, stores, menus, cart, menus)
-        val review = CartReviewViewModel(cart, stores, menus, orders, FakeAuthRepository(config))
+        val review = CartReviewViewModel(cart, stores, menus, orders, auth)
 
         fun badge(): StoreBadge? = discover.state.value.stores.firstOrNull { it.store.id == SeedStoreIds.RAMEN_BAR }?.store?.badge
 

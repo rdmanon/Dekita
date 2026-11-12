@@ -41,6 +41,9 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import tech.vauldex.dekita.R
+import tech.vauldex.dekita.presentation.label
+import tech.vauldex.dekita.ui.theme.DekitaTheme
+import tech.vauldex.dekita.domain.currentStep
 import tech.vauldex.dekita.domain.FulfillmentMode
 import tech.vauldex.dekita.domain.Order
 import tech.vauldex.dekita.ui.debug.DebugPanelAction
@@ -246,6 +249,42 @@ private fun ShortcutTile(
                     overflow = TextOverflow.Ellipsis,
                 )
             }
+        }
+    }
+}
+
+/** The latest paid order that isn't closed yet, with its live step. Tapping it opens the ticket (ORDER-01). */
+@Composable
+internal fun ActiveOrderBanner(order: Order, onOpen: () -> Unit, modifier: Modifier = Modifier) {
+    val colors = DekitaTheme.colors.orderNumber
+    Surface(
+        onClick = onOpen,
+        shape = MaterialTheme.shapes.large,
+        color = colors.container,
+        contentColor = colors.content,
+        modifier = modifier.fillMaxWidth(),
+    ) {
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
+        ) {
+            Icon(painterResource(R.drawable.ic_orders), contentDescription = null, modifier = Modifier.size(24.dp))
+            Column(verticalArrangement = Arrangement.spacedBy(2.dp), modifier = Modifier.weight(1f)) {
+                Text(
+                    "Order #${order.number} · ${order.currentStep?.label.orEmpty()}",
+                    style = MaterialTheme.typography.titleMedium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    order.storeName,
+                    style = MaterialTheme.typography.labelMedium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            Text("View", style = MaterialTheme.typography.labelLarge)
         }
     }
 }

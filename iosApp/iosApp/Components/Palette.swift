@@ -20,6 +20,9 @@ enum Palette {
         let foreground: Color
     }
 
+    /// The order number shown at the counter, as on Android: 14:1 in light, 9:1 in dark.
+    static let orderNumber = BadgeColors(background: Color(light: 0xFFDBCC, dark: 0x7A2E06), foreground: Color(light: 0x3A0B00, dark: 0xFFEDE6))
+
     static func badge(_ badge: StoreBadge) -> BadgeColors {
         switch badge {
         case .openForLunch:

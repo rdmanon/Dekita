@@ -9,6 +9,7 @@ import tech.vauldex.dekita.domain.CompletionReason
 import tech.vauldex.dekita.domain.FavoriteItem
 import tech.vauldex.dekita.domain.FulfillmentMode
 import tech.vauldex.dekita.domain.GeoPoint
+import tech.vauldex.dekita.domain.InboxKind
 import tech.vauldex.dekita.domain.InboxMessage
 import tech.vauldex.dekita.domain.Menu
 import tech.vauldex.dekita.domain.Order
@@ -34,6 +35,9 @@ interface StoreRepository {
     fun refresh()
 
     fun toggleFavorite(storeId: String)
+
+    /** Adds [item] to the favorite items, newest first, or removes it when it is already there. */
+    fun toggleFavoriteItem(item: FavoriteItem)
 }
 
 interface MenuRepository {
@@ -70,17 +74,42 @@ interface CartRepository {
     /** A quantity of 0 removes the line; removing the last line clears the cart. */
     fun updateQuantity(lineId: String, quantity: Int)
 
-    /** Replaces any cart with [cart]. SEAT-01: a draft switched to Takeout becomes the cart again. */
-    fun restore(cart: Cart)
-
     fun clear()
 }
 
 interface OrderRepository {
     val orders: StateFlow<LoadState<List<Order>>>
 
+    /**
+     * Each order right after its status changes, including payment. Not replayed, so a collector
+     * only sees changes made while it collects. Drives the order notifications.
+     */
+    val statusChanges: Flow<Order>
+
     /** Returns null when the orders are not loaded or there is no order with [orderId]. */
     fun transition(orderId: String, to: OrderStatus, reason: CompletionReason? = null): TransitionResult?
+
+    /**
+     * Pay now: charges the customer's default payment method and places [cart] as a paid order, PAID for
+     * pickup or QUEUED for in-store. Returns the new order, which also appears in [orders].
+     *
+     * shortcut: a mock payment that always succeeds. PAY-01 puts the payment sheet in front of this.
+     */
+    fun placeOrder(cart: Cart, storeName: String): Order
+
+    /**
+     * Pays an Eat-In draft at the store once the customer has checked in, moving it to QUEUED.
+     * Returns the paid order, or null when [orderId] is not a checked-in in-store draft.
+     *
+     * shortcut: a mock payment that always succeeds. PAY-01 replaces it.
+     */
+    fun payAtCheckIn(orderId: String): Order?
+
+    /**
+     * Rates a completed order once. Returns false, and changes nothing, when the order isn't completed,
+     * is already rated, or the stars or tags are invalid, so a second tap records nothing.
+     */
+    fun rate(orderId: String, stars: Int, tags: Set<String>): Boolean
 
     /**
      * Saves [cart] as a DRAFT order: an Eat-In order that is paid on arrival with [Start Cooking].
@@ -93,18 +122,6 @@ interface OrderRepository {
      * nothing, when the orders are not loaded or [orderId] is not an in-store draft.
      */
     fun checkIn(orderId: String, checkIn: CheckIn): Boolean
-
-    /**
-     * Removes a DRAFT order and returns it, so its lines can go back into the cart (SEAT-01's Switch to
-     * Takeout). Returns null, and changes nothing, when there is no such order or it is no longer a draft.
-     */
-    fun discardDraft(orderId: String): Order?
-
-    /**
-     * [Start Cooking] after the seat check (SEAT-01): pays a DRAFT Eat-In order with [paymentMethodId] and
-     * sends it to the kitchen (QUEUED). Returns null when the orders are not loaded or there is no such order.
-     */
-    fun startCooking(orderId: String, paymentMethodId: String): TransitionResult?
 }
 
 /** Where the customer is. GPS in production; the mockup never reads the real location. */
@@ -126,6 +143,9 @@ interface InboxRepository {
     val messages: StateFlow<LoadState<List<InboxMessage>>>
 
     fun markRead(messageId: String)
+
+    /** Adds a message stamped with the current time. Does nothing when a message with [id] already exists. */
+    fun add(id: String, title: String, body: String, kind: InboxKind, orderId: String?)
 }
 
 interface AuthRepository {
