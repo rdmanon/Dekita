@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -18,13 +19,17 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import tech.vauldex.dekita.R
 import tech.vauldex.dekita.domain.BusinessType
 import tech.vauldex.dekita.domain.Store
 import tech.vauldex.dekita.domain.StoreAvailability
 import tech.vauldex.dekita.domain.StoreBadge
 import tech.vauldex.dekita.presentation.headline
 import tech.vauldex.dekita.presentation.label
+import tech.vauldex.dekita.presentation.modesLabel
 import tech.vauldex.dekita.presentation.queueDetail
 import tech.vauldex.dekita.ui.theme.BadgeColors
 import tech.vauldex.dekita.ui.theme.DekitaTheme
@@ -47,7 +52,7 @@ fun BusinessTypeBadge(type: BusinessType, modifier: Modifier = Modifier) {
     when (type) {
         BusinessType.IN_STORE_ONLY -> StatusPill("In-store Only", colors.inStore, modifier)
         BusinessType.PICKUP_ONLY -> StatusPill("Pickup Only", colors.pickup, modifier)
-        BusinessType.BOTH -> StatusPill("In-store & Pickup", colors.bothModes, modifier)
+        BusinessType.BOTH -> StatusPill(type.modesLabel.orEmpty(), colors.bothModes, modifier)
     }
 }
 
@@ -101,8 +106,7 @@ fun SectionTitle(text: String, modifier: Modifier = Modifier) {
 }
 
 /** Corner shape for a row in a grouped list: round outer corners, tight inner ones. */
-fun groupedShape(index: Int, count: Int): Shape {
-    val outer = 20.dp
+fun groupedShape(index: Int, count: Int, outer: Dp = 20.dp): Shape {
     val inner = 4.dp
     return RoundedCornerShape(
         topStart = if (index == 0) outer else inner,
@@ -122,6 +126,17 @@ fun LiveQueueCounter(store: Store, modifier: Modifier = Modifier) {
             horizontalArrangement = Arrangement.spacedBy(16.dp),
             modifier = Modifier.fillMaxWidth().padding(16.dp),
         ) {
+            Box(
+                contentAlignment = Alignment.Center,
+                modifier = Modifier.size(40.dp).background(MaterialTheme.colorScheme.primaryContainer, CircleShape),
+            ) {
+                Icon(
+                    painterResource(R.drawable.ic_group),
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                    modifier = Modifier.size(22.dp),
+                )
+            }
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(queue.headline(), style = MaterialTheme.typography.titleMedium)

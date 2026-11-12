@@ -4,18 +4,30 @@ import SharedLogic
 /// The store's photo slot. The mockup loads no remote images, so each store shows a local illustration
 /// that fills the frame the caller gives it. Paused stores are dimmed. Hidden from VoiceOver.
 struct StoreArtView: View {
-    let store: Store
+    let artKey: String
+    var badge: StoreBadge? = nil
     var cornerRadius: CGFloat = 14
+
+    init(store: Store, cornerRadius: CGFloat = 14) {
+        self.init(artKey: store.artKey, badge: store.badge, cornerRadius: cornerRadius)
+    }
+
+    /// A dish's own art, or its store's when the item has none: pass `item.artKey ?? store.artKey`.
+    init(artKey: String, badge: StoreBadge? = nil, cornerRadius: CGFloat = 14) {
+        self.artKey = artKey
+        self.badge = badge
+        self.cornerRadius = cornerRadius
+    }
 
     var body: some View {
         Color(.tertiarySystemFill)
             .overlay {
-                Image("art-\(store.artKey)")
+                Image("art-\(artKey)")
                     .resizable()
                     .scaledToFill()
             }
             .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
-            .opacity(store.badge == StoreBadge.paused ? 0.55 : 1)
+            .opacity(badge == StoreBadge.paused ? 0.55 : 1)
             .accessibilityHidden(true)
     }
 }
@@ -23,6 +35,7 @@ struct StoreArtView: View {
 /// Open for Lunch, Pickup Only, In-store Only, Paused or Full. Fades when the live feed changes it.
 struct StatusBadgeView: View {
     let badge: StoreBadge
+    var minHeight: CGFloat = 22
 
     var body: some View {
         let colors = Palette.badge(badge)
@@ -30,7 +43,7 @@ struct StatusBadgeView: View {
             .font(.caption.weight(.semibold))
             .lineLimit(1)
             .padding(.horizontal, 8)
-            .frame(minHeight: 22)
+            .frame(minHeight: minHeight)
             .foregroundStyle(colors.foreground)
             .background(colors.background, in: Capsule())
             .animation(.easeInOut, value: badge)
@@ -51,7 +64,7 @@ struct StoreRowView: View {
                 .frame(width: 56, height: 56)
             VStack(alignment: .leading, spacing: 3) {
                 Text(store.name)
-                    .font(.body.weight(.semibold))
+                    .font(.callout.weight(.semibold))
                     .lineLimit(1)
                     .truncationMode(.tail)
                 Text(detail)
@@ -69,8 +82,8 @@ struct StoreRowView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             if !insideList {
                 Image(systemName: "chevron.right")
-                    .font(.footnote.weight(.semibold))
-                    .foregroundStyle(.tertiary)
+                    .font(.callout)
+                    .foregroundStyle(Color(light: 0x8E8E93, dark: 0x8E8E93))
                     .accessibilityHidden(true)
             }
         }
@@ -156,7 +169,7 @@ struct RecommendedCard: View {
             .padding(.horizontal, 10)
             .frame(height: 26)
             // A dark scrim in both modes, like text over a photo.
-            .background(Color.black.opacity(0.72), in: Capsule())
+            .background(Color(red: 28 / 255, green: 28 / 255, blue: 30 / 255).opacity(0.72), in: Capsule())
             .padding(10)
         }
     }
@@ -166,4 +179,11 @@ struct RecommendedCard: View {
         if let modes = store.businessType.modesLabel { parts.append(modes) }
         return parts.joined(separator: " · ")
     }
+}
+
+/// A row's parts side by side, or stacked at accessibility text sizes so the text isn't squeezed to a word per line.
+func rowLayout(_ typeSize: DynamicTypeSize) -> AnyLayout {
+    typeSize.isAccessibilitySize
+        ? AnyLayout(VStackLayout(alignment: .leading, spacing: 8))
+        : AnyLayout(HStackLayout(spacing: 12))
 }

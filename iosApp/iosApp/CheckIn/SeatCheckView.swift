@@ -196,7 +196,7 @@ private struct NoSeatContent: View {
                 enabled: state.canSwitchToTakeout
             ) { model.viewModel.switchToTakeout() }
             Divider().padding(.leading, 62)
-            option(title: LabelsKt.WAIT_IN_LINE, detail: LabelsKt.WAIT_IN_LINE_DETAIL, systemImage: "clock", enabled: true) {
+            option(title: LabelsKt.WAIT_IN_LINE, detail: Copy.titleCased(LabelsKt.WAIT_IN_LINE_DETAIL), systemImage: "clock", enabled: true) {
                 model.viewModel.waitInLine()
             }
             Divider().padding(.leading, 62)

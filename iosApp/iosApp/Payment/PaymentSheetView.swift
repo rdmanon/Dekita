@@ -4,7 +4,7 @@ import SharedLogic
 /// The payment sheet (PAY-01), laid out as the iOS Payment artboard: what is being paid for, the total, the
 /// methods in one grouped card with Add Card, and Pay. Pay shows a spinner and turns off while charging, and the
 /// sheet can't be swiped away then. PayPay, Rakuten Pay and Apple Pay open their mock approval screen over it.
-/// The sheet is only as tall as the form, as on Android, and grows when an error shows; on a short screen or at
+/// The sheet is only as tall as the form, as on Android, and draws the system's own glass, and grows when an error shows; on a short screen or at
 /// large text sizes the form scrolls instead.
 /// A decline replaces Pay with Retry, Use Another Method and Cancel (PAY-02); swiping down or Close dismisses the sheet
 /// onto the screen behind it, Cart Review or the seat check, with nothing changed.
@@ -41,7 +41,6 @@ struct PaymentSheetView: View {
         .scrollBounceBehavior(.basedOnSize)
         .presentationDetents([.height(formHeight)])
         .presentationDragIndicator(.visible)
-        .presentationBackground(Palette.screen)
         .interactiveDismissDisabled(!state.canDismiss)
         .paymentApproval(model: model)
         .sheet(isPresented: $showAddCard) {
@@ -63,7 +62,7 @@ struct PaymentSheetView: View {
                     .font(.subheadline.weight(.bold))
                     .foregroundStyle(.primary)
                     .frame(width: 36, height: 36)
-                    .background(Palette.card, in: Circle())
+                    .glassControl(in: Circle())
                     .frame(width: 44, height: 44)
                     .contentShape(Circle())
             }
@@ -106,7 +105,7 @@ struct PaymentSheetView: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .foregroundStyle(Palette.action)
+            .foregroundStyle(Palette.link)
         }
         .disabled(!state.canChangeMethod)
         .background(Palette.card, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
@@ -183,7 +182,7 @@ private struct PaymentMethodRow: View {
                 Spacer()
                 Image(systemName: "checkmark")
                     .font(.body.weight(.semibold))
-                    .foregroundStyle(Palette.action)
+                    .foregroundStyle(Palette.link)
                     .opacity(isSelected ? 1 : 0)
             }
             .padding(.horizontal, 16)

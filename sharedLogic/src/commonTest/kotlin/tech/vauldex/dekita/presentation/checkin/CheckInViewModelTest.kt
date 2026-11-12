@@ -95,10 +95,10 @@ class CheckInViewModelTest {
         val before = viewModel.state.value
         assertEquals("Test Ramen Bar · Eat-In", before.storeLine)
         assertEquals("2 items · ¥1,550", before.orderSummary)
-        assertEquals("3 ahead · ~8 min", before.queueLabel)
+        assertEquals("3 orders ahead · ~8 min wait", before.queueLabel)
         assertEquals("On your way", before.headline)
         assertFalse(before.canStartCooking)
-        assertEquals("Start Cooking turns on when you're within 50 m of the store.", before.startCookingHint)
+        assertEquals("Start cooking turns on when you're within 50 m of the store.", before.startCookingHint)
         assertFalse(viewModel.startCooking(), "Tapping a disabled button must do nothing")
         assertNull(fixture.orders.draft().checkIn)
 

@@ -125,14 +125,41 @@ class DiscoverViewModelTest {
     }
 
     @Test
-    fun tappingACategoryListsItsStoresNearestFirst() = runTest(mainDispatcher) {
+    fun tappingACategoryFiltersTheHomeSectionsInPlace() = runTest(mainDispatcher) {
         val fixture = loadedFixture()
         fixture.viewModel.toggleCategory("Curry")
         runCurrent()
 
         val state = fixture.viewModel.state.value
-        assertTrue(state.showsResults)
+        assertFalse(state.showsResults, "UI-01: a chip filters Recommended and Nearby, it doesn't switch to results")
         assertEquals(listOf("Sample Curry Stand"), state.stores.map { it.store.name })
+        assertTrue(state.recommended.all { it.store.category == "Curry" }, "Recommended is filtered too")
+        assertEquals(0, state.filters.sheetFilterCount, "The Filters button doesn't count the chip")
+    }
+
+    @Test
+    fun categoryChipsAreMultiSelect() = runTest(mainDispatcher) {
+        val fixture = loadedFixture()
+        fixture.viewModel.toggleCategory("Curry")
+        fixture.viewModel.toggleCategory("Ramen")
+        runCurrent()
+        val state = fixture.viewModel.state.value
+        assertEquals(setOf("Curry", "Ramen"), state.filters.categories, "DISC-01: chips add up")
+        assertEquals(listOf("Test Ramen Bar", "Sample Curry Stand"), state.stores.map { it.store.name })
+
+        fixture.viewModel.toggleCategory("Ramen")
+        fixture.viewModel.toggleCategory("Curry")
+        runCurrent()
+        assertTrue(fixture.viewModel.state.value.filters.categories.isEmpty(), "Tapping a selected chip turns it off")
+        assertEquals(seedStores.size, fixture.viewModel.state.value.stores.size)
+    }
+
+    @Test
+    fun searchStillShowsTheResultList() = runTest(mainDispatcher) {
+        val fixture = loadedFixture()
+        fixture.viewModel.setQuery("curry")
+        runCurrent()
+        assertTrue(fixture.viewModel.state.value.showsResults)
     }
 
     @Test

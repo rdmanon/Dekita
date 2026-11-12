@@ -31,7 +31,7 @@ struct OrderTicketFlow: View {
                 onRate: { openRating(afterConfirm: false) }
             )
             .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
+                ToolbarItem(placement: .topBarTrailing) {
                     Button { dismiss() } label: { Image(systemName: "xmark") }
                         .accessibilityLabel("Close")
                 }
@@ -67,7 +67,8 @@ struct RateOrderFlow: View {
     }
 }
 
-/// The number to show at the counter, the live stepper, and [Confirm]. Status changes arrive without a refresh.
+/// The status banner, the number to show at the counter, the live timeline, and Confirm Received. Status changes
+/// arrive without a refresh.
 struct OrderTicketView: View {
     @ObservedObject var model: OrderTicketModel
     let onConfirmed: () -> Void
@@ -80,14 +81,10 @@ struct OrderTicketView: View {
                 ProgressView("Loading your order…")
             } else if let order = state.order {
                 ScrollView {
-                    VStack(alignment: .leading, spacing: 16) {
+                    VStack(alignment: .leading, spacing: 14) {
+                        StatusBanner(state: state)
                         OrderNumberCard(state: state)
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(state.storeLine).font(.headline)
-                            if let table = state.tableLabel { Text(table).font(.headline) }
-                        }
-                        StepperRow(steps: state.steps)
-                        StatusMessage(state: state)
+                        StatusTimeline(steps: state.steps, cookingNote: state.cookingNote)
                         ItemsCard(order: order)
                         if state.isCompleted {
                             ReceiptCard(state: state, onRate: onRate)
@@ -109,7 +106,7 @@ struct OrderTicketView: View {
                                     .padding(.horizontal, 16)
                             }
                             BottomAction(action: { if model.viewModel.confirm() { onConfirmed() } }) {
-                                CapsuleLabel(title: "Confirm")
+                                CapsuleLabel(title: Copy.confirmReceived)
                             }
                             .disabled(!state.canConfirm)
                         }
@@ -123,96 +120,162 @@ struct OrderTicketView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Palette.screen)
-        .navigationTitle("Order ticket")
+        .navigationTitle("Order")
         .navigationBarTitleDisplayMode(.inline)
     }
 }
 
-/// High contrast at arm's length: at least 4.5:1 in light and dark.
+/// The in-app copy of the notification, first on the ticket. VoiceOver reads each new title.
+private struct StatusBanner: View {
+    let state: OrderTicketUiState
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: "bell")
+                .font(.system(size: 17, weight: .semibold))
+                .foregroundStyle(Palette.link)
+                .frame(width: 36, height: 36)
+                .background(Palette.tileIcon, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(state.bannerTitle).font(.subheadline.weight(.semibold))
+                if !state.bannerDetail.isEmpty {
+                    Text(state.bannerDetail).font(.footnote).foregroundStyle(.secondary)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .padding(14)
+        .background(Palette.card, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .accessibilityElement(children: .combine)
+        .onChange(of: state.bannerTitle) { _, title in
+            AccessibilityNotification.Announcement(title).post()
+        }
+    }
+}
+
+/// The number to show at the counter, on a card as in the artboard: dark on the card color, so it reads at arm's
+/// length in light and dark. Under it the store, mode and table, how it was paid, and what to tell the staff.
 private struct OrderNumberCard: View {
     let state: OrderTicketUiState
 
     var body: some View {
-        VStack(spacing: 2) {
-            Text("ORDER NUMBER").font(.caption.weight(.semibold)).tracking(1)
+        VStack(spacing: 6) {
+            Text("ORDER NUMBER").font(.caption.weight(.semibold)).tracking(1).foregroundStyle(.secondary)
             Text(state.numberLabel)
-                .font(.system(size: 88, weight: .bold, design: .rounded))
+                .font(.system(size: 96, weight: .heavy))
+                .tracking(-2)
                 .monospacedDigit()
                 .minimumScaleFactor(0.5)
                 .lineLimit(1)
+                .foregroundStyle(.primary)
+                .accessibilityLabel("\(state.order?.number ?? 0)")
+            Text(state.storeLine).font(.headline)
+            if let table = state.tableLabel {
+                Text(table).font(.headline)
+            }
+            Text(state.paidLine).font(.footnote).foregroundStyle(.secondary)
+            Line()
+                .stroke(Color(light: 0xD1D1D6, dark: 0x48484A), style: StrokeStyle(lineWidth: 1.5, dash: [5, 4]))
+                .frame(height: 1.5)
+                .padding(.top, 10)
+                .padding(.bottom, 4)
+            Text("Show this number to staff if asked.").font(.footnote).foregroundStyle(.secondary)
         }
-        .foregroundStyle(Palette.orderNumber.foreground)
+        .multilineTextAlignment(.center)
         .frame(maxWidth: .infinity)
-        .padding(.vertical, 20)
-        .padding(.horizontal, 16)
-        .background(Palette.orderNumber.background, in: RoundedRectangle(cornerRadius: 28, style: .continuous))
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel("Order number \(state.order?.number ?? 0)")
+        .padding(.top, 22)
+        .padding(.bottom, 18)
+        .padding(.horizontal, 20)
+        .background(Palette.card, in: RoundedRectangle(cornerRadius: 28, style: .continuous))
+        .accessibilityElement(children: .combine)
     }
 }
 
-/// Received → Cooking → Ready / Served. Each step reads as one item, for example "Cooking, step 2 of 3, current".
-private struct StepperRow: View {
+private struct Line: Shape {
+    func path(in rect: CGRect) -> Path {
+        Path { $0.move(to: CGPoint(x: rect.minX, y: rect.midY)); $0.addLine(to: CGPoint(x: rect.maxX, y: rect.midY)) }
+    }
+}
+
+/// Received → Cooking → Ready / Served, top to bottom: green checks with the time each was reached, the current
+/// step as a ring with the usual wait, the next ones grey. Each step reads as one item, for example
+/// "Cooking, step 2 of 3, current".
+private struct StatusTimeline: View {
     let steps: [TicketStep]
+    let cookingNote: String?
+    @Environment(\.dynamicTypeSize) private var typeSize
 
     var body: some View {
-        HStack(alignment: .top, spacing: 0) {
+        VStack(alignment: .leading, spacing: 0) {
             ForEach(Array(steps.enumerated()), id: \.offset) { index, step in
-                VStack(spacing: 6) {
-                    StepDot(state: step.state, number: index + 1)
-                    Text(step.label)
-                        .font(step.state == .current ? .subheadline.weight(.semibold) : .subheadline)
-                        .foregroundStyle(step.state == .todo ? .secondary : .primary)
+                let isLast = index == steps.count - 1
+                HStack(alignment: .top, spacing: 14) {
+                    VStack(spacing: 0) {
+                        StepDot(state: step.state)
+                        if !isLast {
+                            Rectangle()
+                                .fill(step.state == .done ? green : Color(light: 0xE5E5EA, dark: 0x3A3A3C))
+                                .frame(width: 2, height: 28)
+                        }
+                    }
+                    let layout = typeSize.isAccessibilitySize ? AnyLayout(VStackLayout(alignment: .leading, spacing: 2)) : AnyLayout(HStackLayout(alignment: .firstTextBaseline))
+                    layout {
+                        Text(step.label)
+                            .font(.callout.weight(step.state == .current ? .bold : (step.state == .done ? .semibold : .regular)))
+                            .foregroundStyle(step.state == .current ? Palette.link : (step.state == .todo ? Color.secondary : Color.primary))
+                        if typeSize.isAccessibilitySize == false { Spacer(minLength: 8) }
+                        if let note = note(for: step) {
+                            Text(note).font(.footnote).foregroundStyle(.secondary)
+                        }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.top, 1)
                 }
-                .frame(maxWidth: .infinity)
                 .accessibilityElement(children: .ignore)
-                .accessibilityLabel(step.spokenDescription(position: Int32(index + 1), count: Int32(steps.count)))
+                .accessibilityLabel(spoken(step, position: index + 1))
             }
         }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 18)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Palette.card, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+    }
+
+    /// The time a finished step was reached, in the device's time zone; the usual wait for the current one.
+    private func note(for step: TicketStep) -> String? {
+        if step.state == .current { return cookingNote }
+        guard let seconds = step.atEpochSeconds?.int64Value else { return nil }
+        return Date(timeIntervalSince1970: TimeInterval(seconds)).formatted(date: .omitted, time: .shortened)
+    }
+
+    private func spoken(_ step: TicketStep, position: Int) -> String {
+        let base = step.spokenDescription(position: Int32(position), count: Int32(steps.count))
+        guard let note = note(for: step) else { return base }
+        return "\(base), \(note)"
     }
 }
+
+private let green = Color(light: 0x248A3D, dark: 0x30D158)
 
 private struct StepDot: View {
     let state: StepState
-    let number: Int
 
     var body: some View {
         ZStack {
             switch state {
             case .done:
-                Circle().fill(Palette.action)
-                Image(systemName: "checkmark").font(.system(size: 14, weight: .bold)).foregroundStyle(.white)
+                Circle().fill(green)
+                Image(systemName: "checkmark").font(.system(size: 12, weight: .bold)).foregroundStyle(.white)
             case .current:
                 Circle().strokeBorder(Palette.action, lineWidth: 3)
-                Text("\(number)").font(.subheadline.weight(.bold)).foregroundStyle(Palette.action)
+                    .background(Circle().fill(Palette.action.opacity(0.14)).padding(-5))
+                Circle().fill(Palette.action).frame(width: 8, height: 8)
             default:
-                Circle().strokeBorder(Color.secondary.opacity(0.6), lineWidth: 1)
-                Text("\(number)").font(.subheadline).foregroundStyle(.secondary)
+                Circle().strokeBorder(Color(light: 0xAEAEB2, dark: 0x636366), lineWidth: 2)
             }
         }
-        .frame(width: 32, height: 32)
-    }
-}
-
-/// The in-app copy of the notification. Green once the order is ready or served; VoiceOver reads changes.
-private struct StatusMessage: View {
-    let state: OrderTicketUiState
-
-    var body: some View {
-        let green = Palette.badge(.openForLunch)
-        HStack(spacing: 12) {
-            Image(systemName: state.canConfirm || state.isCompleted ? "checkmark.circle.fill" : "info.circle")
-                .font(.title3)
-                .accessibilityHidden(true)
-            Text(state.message).font(.body)
-        }
-        .foregroundStyle(state.canConfirm ? green.foreground : Color.primary)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(16)
-        .background(state.canConfirm ? green.background : Palette.card, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
-        .onChange(of: state.message) { _, message in
-            AccessibilityNotification.Announcement(message).post()
-        }
+        .frame(width: 24, height: 24)
     }
 }
 

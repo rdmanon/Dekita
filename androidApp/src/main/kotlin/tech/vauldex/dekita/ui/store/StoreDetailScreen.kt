@@ -1,6 +1,27 @@
 package tech.vauldex.dekita.ui.store
 
+import android.content.Intent
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.wrapContentHeight
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.ui.graphics.RectangleShape
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.Role
+import tech.vauldex.dekita.presentation.modesLabel
+import tech.vauldex.dekita.presentation.shareText
+import tech.vauldex.dekita.presentation.store.MenuTab
+import tech.vauldex.dekita.ui.components.StoreStatusBadge
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -27,7 +48,6 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -46,24 +66,24 @@ import tech.vauldex.dekita.data.LoadState
 import tech.vauldex.dekita.domain.FulfillmentMode
 import tech.vauldex.dekita.domain.MenuItem
 import tech.vauldex.dekita.domain.Store
-import tech.vauldex.dekita.domain.StoreAvailability
 import tech.vauldex.dekita.presentation.NOT_ACCEPTING_ORDERS_MESSAGE
 import tech.vauldex.dekita.presentation.optionsSummary
 import tech.vauldex.dekita.presentation.store.AddResult
 import tech.vauldex.dekita.presentation.store.StoreDetailViewModel
-import tech.vauldex.dekita.ui.components.AvailabilityBadge
-import tech.vauldex.dekita.ui.components.BusinessTypeBadge
 import tech.vauldex.dekita.ui.components.LiveQueueCounter
-import tech.vauldex.dekita.ui.components.LoadingIndicator
-import tech.vauldex.dekita.ui.components.SectionTitle
 import tech.vauldex.dekita.ui.components.StatusPill
+import tech.vauldex.dekita.ui.components.LoadingIndicator
 import tech.vauldex.dekita.ui.components.StoreArt
 import tech.vauldex.dekita.ui.debug.DebugPanelAction
 import tech.vauldex.dekita.ui.debug.LocalOpenDebugPanel
 import tech.vauldex.dekita.ui.theme.DekitaTheme
 import tech.vauldex.dekita.ui.theme.Dimens
 
-/** Store header with the live queue, then the menu. Tapping an item opens its customize sheet. */
+/**
+ * The store screen, as the Android Menu artboard: a hero picture with floating Back / Favorite / Share buttons,
+ * the store header and live queue, an underline tab row (Popular first, then the categories) and one list of
+ * the tab's items. Tapping an item opens its customize sheet.
+ */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun StoreDetailScreen(viewModel: StoreDetailViewModel, onBack: () -> Unit, onViewCart: () -> Unit) {
@@ -71,6 +91,7 @@ fun StoreDetailScreen(viewModel: StoreDetailViewModel, onBack: () -> Unit, onVie
     val store = state.store
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
+    val context = LocalContext.current
     val isDebug = LocalOpenDebugPanel.current != null
     fun announceAdded(name: String) {
         scope.launch { snackbarHostState.showSnackbar("Added $name") }
@@ -78,71 +99,83 @@ fun StoreDetailScreen(viewModel: StoreDetailViewModel, onBack: () -> Unit, onVie
 
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) },
-        topBar = {
-            TopAppBar(
-                title = { Text(store?.name.orEmpty(), maxLines = 1, overflow = TextOverflow.Ellipsis) },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(painterResource(R.drawable.ic_arrow_back), contentDescription = "Back")
-                    }
-                },
-                actions = {
-                    DebugPanelAction()
-                    if (store != null) {
-                        IconToggleButton(checked = state.isFavorite, onCheckedChange = { viewModel.toggleFavorite() }) {
-                            Icon(
-                                painterResource(if (state.isFavorite) R.drawable.ic_favorite_filled else R.drawable.ic_favorite),
-                                contentDescription = if (state.isFavorite) "Remove from favorites" else "Add to favorites",
-                            )
-                        }
-                    }
-                },
-            )
-        },
+        // The hero runs under the status bar; the floating buttons add that inset themselves.
+        contentWindowInsets = WindowInsets.navigationBars,
         floatingActionButton = {
             // As on the Android menu artboard: an extended FAB once the cart has items.
             state.cart?.let { cart ->
                 ExtendedFloatingActionButton(
                     onClick = onViewCart,
-                    icon = { Icon(painterResource(R.drawable.ic_cart), contentDescription = null) },
-                    text = { Text("View cart · ${cart.itemCount} · ${cart.total.formatted()}") },
+                    icon = { Icon(painterResource(R.drawable.ic_shopping_bag), contentDescription = null) },
+                    text = { Text("View cart (${cart.itemCount}) · ${cart.total.formatted()}") },
                 )
             }
         },
     ) { padding ->
         if (store == null) {
-            LoadingIndicator("Loading store…", Modifier.padding(padding))
+            Box(Modifier.fillMaxSize().padding(padding)) {
+                LoadingIndicator("Loading store…", Modifier.align(Alignment.Center))
+                FloatingButtons(Modifier.align(Alignment.TopStart).fillMaxWidth(), onBack = onBack, favorite = null, onShare = null)
+            }
             return@Scaffold
         }
-        LazyColumn(
-            contentPadding = PaddingValues(
-                start = Dimens.ScreenPadding,
-                end = Dimens.ScreenPadding,
-                top = padding.calculateTopPadding(),
-                // Room under the last row for the cart button.
-                bottom = padding.calculateBottomPadding() + Dimens.ScreenPadding + if (state.cart != null) 88.dp else 0.dp,
-            ),
-            modifier = Modifier.fillMaxSize(),
-        ) {
-            item(key = "header") { StoreHeader(store) }
-            when (val menu = state.menu) {
-                LoadState.Loading -> item(key = "menu-loading") { LoadingIndicator("Loading menu…") }
-                is LoadState.Error -> item(key = "menu-error") { Text(menu.message) }
-                is LoadState.Success -> menu.data.categories.forEach { category ->
-                    stickyHeader(key = "category-${category.id}") {
-                        SectionTitle(category.name, Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface))
-                    }
-                    items(menu.data.itemsIn(category.id), key = { it.id }) { item ->
-                        MenuItemRow(item, canOrder = state.canOrder) { viewModel.openItem(item.id) }
+        Box(Modifier.fillMaxSize()) {
+            LazyColumn(
+                contentPadding = PaddingValues(
+                    // Room under the last row for the cart button.
+                    bottom = padding.calculateBottomPadding() + Dimens.ScreenPadding + if (state.cart != null) 88.dp else 0.dp,
+                ),
+                modifier = Modifier.fillMaxSize(),
+            ) {
+                item(key = "hero") { StoreHero(store) }
+                item(key = "header") { StoreHeader(store, Modifier.padding(horizontal = Dimens.ScreenPadding)) }
+                when (val menu = state.menu) {
+                    LoadState.Loading -> item(key = "menu-loading") { LoadingIndicator("Loading menu…") }
+                    is LoadState.Error -> item(key = "menu-error") { Text(menu.message, Modifier.padding(Dimens.ScreenPadding)) }
+                    is LoadState.Success -> {
+                        if (state.tabs.isNotEmpty()) stickyHeader(key = "tabs") {
+                            MenuTabs(state.tabs, state.currentTab?.id, onSelect = viewModel::selectTab)
+                        }
+                        items(state.visibleItems, key = { it.id }) { item ->
+                            MenuItemRow(
+                                item,
+                                artKey = item.artKey ?: store.artKey,
+                                canOrder = state.canOrder,
+                                modifier = Modifier.padding(horizontal = Dimens.ScreenPadding),
+                            ) { viewModel.openItem(item.id) }
+                        }
+                        state.emptyTabMessage?.let { message ->
+                            item(key = "empty-tab") {
+                                Text(
+                                    message,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.padding(horizontal = Dimens.ScreenPadding, vertical = 16.dp),
+                                )
+                            }
+                        }
                     }
                 }
             }
+            FloatingButtons(
+                Modifier.align(Alignment.TopStart).fillMaxWidth(),
+                onBack = onBack,
+                favorite = FavoriteState(state.isFavorite, viewModel::toggleFavorite),
+                onShare = {
+                    val send = Intent(Intent.ACTION_SEND).apply {
+                        type = "text/plain"
+                        putExtra(Intent.EXTRA_TEXT, store.shareText())
+                    }
+                    context.startActivity(Intent.createChooser(send, null))
+                },
+            )
         }
     }
 
     state.sheet?.let { sheet ->
         ItemSheet(
             sheet = sheet,
+            storeArtKey = store?.artKey,
             onToggle = viewModel::toggleOption,
             onQuantity = viewModel::setQuantity,
             onAdd = {
@@ -170,31 +203,68 @@ fun StoreDetailScreen(viewModel: StoreDetailViewModel, onBack: () -> Unit, onVie
     }
 }
 
+private class FavoriteState(val isFavorite: Boolean, val onToggle: () -> Unit)
+
+/** The 248 dp picture; the page's rounded top edge overlaps its bottom 28 dp. */
 @Composable
-private fun StoreHeader(store: Store) {
-    Column(verticalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.padding(top = 8.dp)) {
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-            StoreArt(store, Modifier.size(72.dp))
-            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text(
-                    store.name,
-                    style = MaterialTheme.typography.headlineSmall,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                Text(
-                    "${store.category} · ${store.walkMinutes} min walk",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+private fun StoreHero(store: Store) {
+    Box(Modifier.fillMaxWidth().height(276.dp)) {
+        StoreArt(store, Modifier.fillMaxSize(), shape = RectangleShape)
+        Box(
+            Modifier
+                .align(Alignment.BottomCenter)
+                .fillMaxWidth()
+                .height(28.dp)
+                .background(MaterialTheme.colorScheme.surface, RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)),
+        )
+    }
+}
+
+/** Back, then Favorite and Share, as 48 dp circles over the picture. Favorite and Share are null while the store loads. */
+@Composable
+private fun FloatingButtons(modifier: Modifier, onBack: () -> Unit, favorite: FavoriteState?, onShare: (() -> Unit)?) {
+    val container = MaterialTheme.colorScheme.surface.copy(alpha = 0.92f)
+    val circle = Modifier.size(48.dp).background(container, CircleShape)
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        modifier = modifier.statusBarsPadding().padding(start = 12.dp, end = 12.dp, top = 8.dp),
+    ) {
+        IconButton(onClick = onBack, modifier = circle) {
+            Icon(painterResource(R.drawable.ic_arrow_back), contentDescription = "Back")
+        }
+        Spacer(Modifier.weight(1f))
+        if (LocalOpenDebugPanel.current != null) Box(circle) { DebugPanelAction() }
+        if (favorite != null) {
+            IconToggleButton(checked = favorite.isFavorite, onCheckedChange = { favorite.onToggle() }, modifier = circle) {
+                Icon(
+                    painterResource(if (favorite.isFavorite) R.drawable.ic_favorite_filled else R.drawable.ic_favorite),
+                    contentDescription = if (favorite.isFavorite) "Remove store from favorites" else "Add store to favorites",
+                    tint = if (favorite.isFavorite) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
                 )
             }
         }
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            BusinessTypeBadge(store.businessType)
-            AvailabilityBadge(store.availability)
-            store.openLabel?.takeIf { store.availability == StoreAvailability.OPEN }?.let {
-                StatusPill(it, DekitaTheme.colors.open)
+        if (onShare != null) {
+            IconButton(onClick = onShare, modifier = circle) {
+                Icon(painterResource(R.drawable.ic_share), contentDescription = "Share store", modifier = Modifier.size(22.dp))
             }
+        }
+    }
+}
+
+@Composable
+private fun StoreHeader(store: Store, modifier: Modifier = Modifier) {
+    Column(verticalArrangement = Arrangement.spacedBy(16.dp), modifier = modifier.padding(bottom = 8.dp)) {
+        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text(store.name, style = MaterialTheme.typography.headlineSmall, modifier = Modifier.weight(1f))
+                StoreStatusBadge(store.badge)
+            }
+            Text(
+                listOfNotNull("${store.category} · ${store.walkMinutes} min walk", store.businessType.modesLabel).joinToString(" · "),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
         LiveQueueCounter(store)
         if (!store.isAcceptingOrders) {
@@ -213,21 +283,63 @@ private fun StoreHeader(store: Store) {
     }
 }
 
+/** Underline tabs: the selected one is primary with a 3 dp indicator the width of its label. */
+@Composable
+private fun MenuTabs(tabs: List<MenuTab>, selectedId: String?, onSelect: (String) -> Unit) {
+    Box(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface)) {
+        Row(
+            modifier = Modifier
+                .horizontalScroll(rememberScrollState())
+                .selectableGroup()
+                .padding(horizontal = 4.dp),
+        ) {
+            tabs.forEach { tab ->
+                val selected = tab.id == selectedId
+                Box(
+                    modifier = Modifier
+                        .heightIn(min = 48.dp)
+                        .selectable(selected = selected, role = Role.Tab, onClick = { onSelect(tab.id) })
+                        .padding(horizontal = 16.dp),
+                ) {
+                    Text(
+                        tab.name,
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = FontWeight.Medium,
+                        color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.align(Alignment.Center),
+                    )
+                    if (selected) {
+                        Box(
+                            Modifier
+                                .matchParentSize()
+                                .wrapContentHeight(Alignment.Bottom)
+                                .height(3.dp)
+                                .background(MaterialTheme.colorScheme.primary, RoundedCornerShape(topStart = 3.dp, topEnd = 3.dp)),
+                        )
+                    }
+                }
+            }
+        }
+        HorizontalDivider(Modifier.align(Alignment.BottomCenter))
+    }
+}
+
 /**
  * A menu row. Orderable items end with the Android-Menu artboard's tonal add button, which turns off with the
  * rest of the store's ordering while it isn't accepting orders. The row still opens the sheet so the menu
  * can be read.
  */
 @Composable
-private fun MenuItemRow(item: MenuItem, canOrder: Boolean, onClick: () -> Unit) {
+private fun MenuItemRow(item: MenuItem, artKey: String?, canOrder: Boolean, modifier: Modifier = Modifier, onClick: () -> Unit) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(16.dp),
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .clickable(enabled = !item.isSoldOut, onClick = onClick)
             .padding(vertical = 8.dp),
     ) {
+        StoreArt(artKey, Modifier.size(72.dp).alpha(if (item.isSoldOut) 0.45f else 1f), shape = RoundedCornerShape(16.dp))
         Column(
             verticalArrangement = Arrangement.spacedBy(2.dp),
             modifier = Modifier.weight(1f).alpha(if (item.isSoldOut) 0.45f else 1f),
@@ -262,12 +374,12 @@ private fun AddAffordance(enabled: Boolean) {
         modifier = Modifier
             .size(40.dp)
             .alpha(if (enabled) 1f else 0.38f)
-            .background(MaterialTheme.colorScheme.primaryContainer, CircleShape),
+            .background(MaterialTheme.colorScheme.secondaryContainer, CircleShape),
     ) {
         Icon(
             painterResource(R.drawable.ic_add),
             contentDescription = null,
-            tint = MaterialTheme.colorScheme.onPrimaryContainer,
+            tint = MaterialTheme.colorScheme.onSecondaryContainer,
             modifier = Modifier.size(22.dp),
         )
     }

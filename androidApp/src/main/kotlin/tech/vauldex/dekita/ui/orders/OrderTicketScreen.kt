@@ -19,10 +19,13 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearWavyProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
@@ -38,6 +41,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.LiveRegionMode
@@ -46,6 +50,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
@@ -54,6 +59,7 @@ import java.text.DateFormat
 import java.util.Date
 import tech.vauldex.dekita.R
 import tech.vauldex.dekita.domain.Order
+import tech.vauldex.dekita.domain.OrderStep
 import tech.vauldex.dekita.presentation.optionsLabel
 import tech.vauldex.dekita.presentation.orders.OrderTicketEvent
 import tech.vauldex.dekita.presentation.orders.OrderTicketUiState
@@ -95,10 +101,10 @@ fun OrderTicketScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Order ticket") },
+                title = { Text("Order") },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(painterResource(R.drawable.ic_arrow_back), contentDescription = "Back")
+                        Icon(painterResource(R.drawable.ic_close), contentDescription = "Close")
                     }
                 },
             )
@@ -116,7 +122,7 @@ fun OrderTicketScreen(
                                 modifier = Modifier.fillMaxWidth(),
                             )
                         }
-                        PrimaryButton("Confirm", onClick = { if (viewModel.confirm()) onConfirmed() }, enabled = state.canConfirm)
+                        PrimaryButton("Confirm received", onClick = { if (viewModel.confirm()) onConfirmed() }, enabled = state.canConfirm)
                     }
                 }
             }
@@ -140,13 +146,9 @@ fun OrderTicketScreen(
                     .verticalScroll(rememberScrollState())
                     .padding(Dimens.ScreenPadding),
             ) {
+                StatusBanner(state)
                 OrderNumberCard(state)
-                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text(state.storeLine, style = MaterialTheme.typography.titleMedium)
-                    state.tableLabel?.let { Text(it, style = MaterialTheme.typography.titleMedium) }
-                }
-                Stepper(state.steps)
-                StatusMessage(state)
+                StatusCard(state)
                 ItemsCard(order)
                 if (state.isCompleted) Receipt(state, onRate = onOpenRating)
                 if (isDebug && !state.isCompleted) {
@@ -174,92 +176,152 @@ private fun RequestNotificationPermission() {
     }
 }
 
+/** The in-app copy of the notification, first on the page. Read out when it changes. */
+@Composable
+private fun StatusBanner(state: OrderTicketUiState) {
+    Surface(
+        color = MaterialTheme.colorScheme.surfaceContainer,
+        shape = MaterialTheme.shapes.large,
+        modifier = Modifier.fillMaxWidth().semantics { liveRegion = LiveRegionMode.Polite },
+    ) {
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.padding(16.dp),
+        ) {
+            Box(
+                contentAlignment = Alignment.Center,
+                modifier = Modifier.size(40.dp).background(MaterialTheme.colorScheme.primaryContainer, CircleShape),
+            ) {
+                Icon(
+                    painterResource(R.drawable.ic_notifications),
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                    modifier = Modifier.size(22.dp),
+                )
+            }
+            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(state.bannerTitle, style = MaterialTheme.typography.titleMedium)
+                Text(state.bannerDetail, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+    }
+}
+
 /** High contrast at arm's length: the theme's order-number pair is at least 4.5:1 in light and dark. */
 @Composable
 private fun OrderNumberCard(state: OrderTicketUiState) {
     val colors = DekitaTheme.colors.orderNumber
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(4.dp),
         modifier = Modifier
             .fillMaxWidth()
             .background(colors.container, MaterialTheme.shapes.extraLarge)
-            .padding(vertical = 20.dp, horizontal = 16.dp)
-            .clearAndSetSemantics { contentDescription = "Order number ${state.order?.number}" },
+            .padding(24.dp)
+            .clearAndSetSemantics {
+                contentDescription = listOfNotNull(
+                    "Order number ${state.order?.number}", state.storeLine, state.tableLabel, state.paidLine,
+                ).joinToString(". ")
+            },
     ) {
         Text("Order number", style = MaterialTheme.typography.labelLarge, color = colors.content)
         Text(state.numberLabel, style = DekitaTheme.textStyles.orderNumber, color = colors.content)
+        Text(state.storeLine, style = MaterialTheme.typography.titleMedium, color = colors.content, textAlign = TextAlign.Center)
+        state.tableLabel?.let { Text(it, style = MaterialTheme.typography.titleMedium, color = colors.content) }
+        Text(state.paidLine, style = MaterialTheme.typography.bodyMedium, color = colors.content, textAlign = TextAlign.Center)
+        Text(
+            "Show this number to staff if asked.",
+            style = MaterialTheme.typography.labelMedium,
+            color = colors.content,
+            modifier = Modifier.padding(top = 8.dp),
+        )
     }
 }
 
-/** Received → Cooking → Ready / Served. Each step reads as one item, for example "Cooking, step 2 of 3, current". */
+/**
+ * The status card: the current step as a headline, a wavy progress bar, then Received / Cooking / Ready or
+ * Served as a three-column grid with the time each was reached.
+ */
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
-private fun Stepper(steps: List<TicketStep>) {
-    Row(modifier = Modifier.fillMaxWidth()) {
-        steps.forEachIndexed { index, step ->
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(6.dp),
-                modifier = Modifier
-                    .weight(1f)
-                    .clearAndSetSemantics { contentDescription = step.spokenDescription(index + 1, steps.size) },
-            ) {
-                StepDot(step.state, index + 1)
+private fun StatusCard(state: OrderTicketUiState) {
+    val steps = state.steps
+    val current = steps.firstOrNull { it.state == StepState.CURRENT } ?: steps.lastOrNull()
+    val currentIndex = steps.indexOf(current).coerceAtLeast(0)
+    val progress = if (steps.isEmpty()) 0f else if (state.isCompleted) 1f else (currentIndex + 1f) / steps.size
+    val note = state.cookingNote ?: if (current?.step == OrderStep.SERVED) "Enjoy your meal" else null
+    Surface(color = MaterialTheme.colorScheme.surfaceContainer, shape = RoundedCornerShape(24.dp), modifier = Modifier.fillMaxWidth()) {
+        Column(verticalArrangement = Arrangement.spacedBy(14.dp), modifier = Modifier.padding(20.dp)) {
+            Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text(
-                    step.label,
-                    style = if (step.state == StepState.CURRENT) MaterialTheme.typography.labelLarge else MaterialTheme.typography.labelMedium,
-                    color = if (step.state == StepState.TODO) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface,
+                    current?.label.orEmpty(),
+                    style = MaterialTheme.typography.headlineSmall,
+                    modifier = Modifier.weight(1f).semantics { heading() },
                 )
+                note?.let { Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+            }
+            // The grid below says the same in words, so the bar is hidden from screen readers.
+            LinearWavyProgressIndicator(
+                progress = { progress },
+                trackColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+                modifier = Modifier.fillMaxWidth().clearAndSetSemantics {},
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                steps.forEachIndexed { index, step ->
+                    StepColumn(
+                        step,
+                        position = index + 1,
+                        count = steps.size,
+                        align = when (index) {
+                            0 -> Alignment.Start
+                            steps.lastIndex -> Alignment.End
+                            else -> Alignment.CenterHorizontally
+                        },
+                        modifier = Modifier.weight(1f),
+                    )
+                }
             }
         }
     }
 }
 
+/** One grid cell, read as one item, for example "Cooking, step 2 of 3, current, 12:06". */
 @Composable
-private fun StepDot(state: StepState, number: Int) {
-    val primary = MaterialTheme.colorScheme.primary
-    val modifier = Modifier.size(32.dp)
-    when (state) {
-        StepState.DONE -> Box(contentAlignment = Alignment.Center, modifier = modifier.background(primary, CircleShape)) {
-            Icon(painterResource(R.drawable.ic_check), contentDescription = null, tint = MaterialTheme.colorScheme.onPrimary, modifier = Modifier.size(18.dp))
-        }
-        StepState.CURRENT -> Box(
-            contentAlignment = Alignment.Center,
-            modifier = modifier.border(BorderStroke(3.dp, primary), CircleShape),
-        ) {
-            Text("$number", style = MaterialTheme.typography.labelLarge, color = primary)
-        }
-        StepState.TODO -> Box(
-            contentAlignment = Alignment.Center,
-            modifier = modifier.border(BorderStroke(1.dp, MaterialTheme.colorScheme.outline), CircleShape),
-        ) {
-            Text("$number", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
+private fun StepColumn(step: TicketStep, position: Int, count: Int, align: Alignment.Horizontal, modifier: Modifier) {
+    // The device's own time zone, like the receipt's paid-on time.
+    val time = step.atEpochSeconds?.let { DateFormat.getTimeInstance(DateFormat.SHORT).format(Date(it * 1000)) }
+        ?: if (step.state == StepState.TODO) "Soon" else if (step.state == StepState.CURRENT) "Now" else null
+    Column(
+        horizontalAlignment = align,
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+        modifier = modifier.clearAndSetSemantics {
+            contentDescription = listOfNotNull(step.spokenDescription(position, count), time).joinToString(", ")
+        },
+    ) {
+        StepMarker(step.state)
+        Text(
+            step.label,
+            style = MaterialTheme.typography.labelMedium,
+            fontWeight = if (step.state == StepState.CURRENT) FontWeight.Bold else FontWeight.Medium,
+            color = if (step.state == StepState.CURRENT) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+        )
+        time?.let { Text(it, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) }
     }
 }
 
-/** The in-app copy of the notification. Green once the order is ready or served. Read out when it changes. */
 @Composable
-private fun StatusMessage(state: OrderTicketUiState) {
-    val green = state.canConfirm
-    val colors = DekitaTheme.colors.open
-    Surface(
-        color = if (green) colors.container else MaterialTheme.colorScheme.surfaceContainer,
-        contentColor = if (green) colors.content else MaterialTheme.colorScheme.onSurface,
-        shape = MaterialTheme.shapes.large,
-        modifier = Modifier.fillMaxWidth().semantics { liveRegion = LiveRegionMode.Polite },
-    ) {
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.padding(16.dp),
-        ) {
-            Icon(
-                painterResource(if (green || state.isCompleted) R.drawable.ic_check_circle else R.drawable.ic_info),
-                contentDescription = null,
-                modifier = Modifier.size(24.dp),
-            )
-            Text(state.message, style = MaterialTheme.typography.bodyLarge)
+private fun StepMarker(state: StepState) {
+    val primary = MaterialTheme.colorScheme.primary
+    val modifier = Modifier.size(24.dp)
+    when (state) {
+        StepState.DONE -> Box(contentAlignment = Alignment.Center, modifier = modifier.background(DekitaTheme.colors.liveDot, CircleShape)) {
+            Icon(painterResource(R.drawable.ic_check), contentDescription = null, tint = Color.White, modifier = Modifier.size(14.dp))
         }
+        StepState.CURRENT -> Box(contentAlignment = Alignment.Center, modifier = modifier.border(BorderStroke(3.dp, primary), CircleShape)) {
+            Box(Modifier.size(8.dp).background(primary, CircleShape))
+        }
+        StepState.TODO -> Box(modifier.border(BorderStroke(2.dp, MaterialTheme.colorScheme.outline), CircleShape))
     }
 }
 

@@ -7,6 +7,7 @@ import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlinx.coroutines.Dispatchers
@@ -23,6 +24,7 @@ import tech.vauldex.dekita.data.mock.FakeAuthRepository
 import tech.vauldex.dekita.data.mock.FakeInboxRepository
 import tech.vauldex.dekita.data.mock.FakeOrderRepository
 import tech.vauldex.dekita.data.mock.FakePaymentRepository
+import tech.vauldex.dekita.data.mock.FakeStoreRepository
 import tech.vauldex.dekita.data.mock.MockConfig
 import tech.vauldex.dekita.data.mock.SeedStoreIds
 import tech.vauldex.dekita.data.mock.seedItem
@@ -35,7 +37,7 @@ import tech.vauldex.dekita.domain.FulfillmentMode
 import tech.vauldex.dekita.domain.InboxKind
 import tech.vauldex.dekita.domain.OrderStatus
 import tech.vauldex.dekita.domain.SsoProvider
-import tech.vauldex.dekita.presentation.ORDER_PLACED_MESSAGE
+import tech.vauldex.dekita.domain.paidAt
 import tech.vauldex.dekita.presentation.collectEvents
 
 /** ORDER-01: the ticket's live stepper, [Confirm] and auto-complete. */
@@ -63,6 +65,7 @@ class OrderTicketViewModelTest {
         val auth: FakeAuthRepository,
         val payments: FakePaymentRepository,
         val inbox: FakeInboxRepository,
+        val stores: FakeStoreRepository,
     )
 
     /** Loaded orders and a signed-in customer, unless [signIn] is false. */
@@ -72,6 +75,7 @@ class OrderTicketViewModelTest {
             FakeAuthRepository(MockConfig()),
             FakePaymentRepository(backgroundScope, MockConfig()),
             FakeInboxRepository(backgroundScope, MockConfig(), fixedClock),
+            FakeStoreRepository(backgroundScope, MockConfig()),
         )
         advanceTimeBy(MockConfig.DEFAULT_LOADING_DELAY)
         runCurrent()
@@ -81,7 +85,7 @@ class OrderTicketViewModelTest {
     }
 
     private fun TestScope.ticket(f: Fixture, orderId: String) =
-        OrderTicketViewModel(orderId, f.orders, f.auth, f.payments, f.inbox, f.orders).also { viewModel ->
+        OrderTicketViewModel(orderId, f.orders, f.auth, f.payments, f.inbox, f.orders, f.stores).also { viewModel ->
             backgroundScope.launch { viewModel.state.collect {} }
             runCurrent()
         }
@@ -105,7 +109,16 @@ class OrderTicketViewModelTest {
         assertEquals("Test Mart · Pickup", state.storeLine)
         assertEquals(listOf("Received", "Cooking", "Ready"), state.steps.map { it.label })
         assertEquals(listOf(StepState.CURRENT, StepState.TODO, StepState.TODO), state.stepStates)
-        assertEquals(ORDER_PLACED_MESSAGE, state.message)
+        assertEquals("Your order will be ready shortly.", state.bannerTitle)
+        assertEquals("We'll let you know when it's ready for pickup.", state.bannerDetail)
+        assertEquals("Confirm after you pick up your order.", state.confirmHint)
+        val method = assertNotNull(state.paymentLabel)
+        assertEquals("Paid ${order.total.formatted()} with $method", state.paidLine)
+        assertEquals("Paid ${order.total.formatted()}", state.copy(paymentLabel = null).paidLine, "No method name to show")
+        assertNull(state.cookingNote, "No note until cooking starts")
+        // Received has the payment's time; the steps not reached yet have none.
+        assertEquals(order.paidAt?.epochSeconds, state.steps[0].atEpochSeconds)
+        assertEquals(listOf(null, null), state.steps.drop(1).map { it.atEpochSeconds })
         assertFalse(state.canConfirm)
         assertFalse(ticket.confirm(), "Confirm is off before the order is ready")
 
@@ -113,11 +126,16 @@ class OrderTicketViewModelTest {
         advanceTimeBy(MockConfig.ORDER_STEP_INTERVAL)
         runCurrent()
         assertEquals(listOf(StepState.DONE, StepState.CURRENT, StepState.TODO), ticket.state.value.stepStates)
+        assertEquals("Usually 1–2 min", ticket.state.value.cookingNote, "Test Mart's usual cooking time")
+        assertNotNull(ticket.state.value.steps[1].atEpochSeconds)
         advanceTimeBy(MockConfig.ORDER_STEP_INTERVAL)
         runCurrent()
         state = ticket.state.value
         assertEquals(listOf(StepState.DONE, StepState.DONE, StepState.CURRENT), state.stepStates)
-        assertEquals("Your order #${order.number} is ready for pickup", state.message)
+        assertEquals("Your order is ready for pickup.", state.bannerTitle)
+        assertEquals("Pick it up at the Test Mart counter.", state.bannerDetail)
+        assertEquals("Got your order? Confirm to close it.", state.confirmHint)
+        assertNull(state.cookingNote)
         assertTrue(state.canConfirm)
 
         assertTrue(ticket.confirm())
@@ -127,7 +145,8 @@ class OrderTicketViewModelTest {
         assertTrue(state.isCompleted)
         assertEquals(CompletionReason.CUSTOMER_CONFIRMED, state.order?.completionReason)
         assertEquals(List(3) { StepState.DONE }, state.stepStates)
-        assertEquals("Completed · Confirmed by you", state.message)
+        assertEquals("Completed", state.bannerTitle)
+        assertEquals("Confirmed by you", state.bannerDetail)
         assertNull(state.confirmHint)
     }
 
@@ -140,14 +159,20 @@ class OrderTicketViewModelTest {
 
         assertEquals(listOf("Received", "Cooking", "Served"), ticket.state.value.steps.map { it.label })
         assertEquals("Table 5", ticket.state.value.tableLabel)
-        assertEquals("The kitchen has your order. You'll be served shortly.", ticket.state.value.message)
+        assertEquals("Your order will be ready shortly.", ticket.state.value.bannerTitle)
+        assertEquals("We'll let you know when it's served.", ticket.state.value.bannerDetail)
+        assertEquals("Confirm after your order is served.", ticket.state.value.confirmHint)
 
         ticket.debugAdvance()
+        runCurrent()
+        assertEquals("Usually 6–8 min", ticket.state.value.cookingNote, "Test Ramen Bar's usual cooking time")
         ticket.debugAdvance()
         runCurrent()
 
         assertEquals(OrderStatus.SERVED, ticket.state.value.order?.status)
-        assertEquals("Served at table 5. Enjoy!", ticket.state.value.message)
+        assertEquals("Your order has been served.", ticket.state.value.bannerTitle)
+        assertEquals("Served at table 5. Enjoy!", ticket.state.value.bannerDetail)
+        assertTrue(ticket.state.value.steps.all { it.atEpochSeconds != null }, "Every step reached has its time")
         assertTrue(ticket.state.value.canConfirm)
     }
 
@@ -161,7 +186,8 @@ class OrderTicketViewModelTest {
         runCurrent()
 
         assertTrue(ticket.state.value.isCompleted)
-        assertEquals("Completed · Auto-completed", ticket.state.value.message)
+        assertEquals("Completed", ticket.state.value.bannerTitle)
+        assertEquals("Auto-completed", ticket.state.value.bannerDetail)
         assertFalse(ticket.confirm())
     }
 
@@ -220,5 +246,11 @@ class OrderTicketViewModelTest {
         val skippedEvents = collectEvents(skipped.events)
         runCurrent()
         assertTrue(skippedEvents.isEmpty())
+    }
+
+    @Test
+    fun usuallyLabelShowsARangeOrOneNumber() {
+        assertEquals("Usually 6–8 min", usuallyLabel(6..8))
+        assertEquals("Usually 6 min", usuallyLabel(6..6))
     }
 }

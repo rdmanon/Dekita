@@ -34,20 +34,27 @@ fun StoreArt(
     store: Store,
     modifier: Modifier = Modifier,
     shape: Shape = RoundedCornerShape(12.dp),
+) = StoreArt(
+    artKey = store.artKey,
+    modifier = modifier.alpha(if (store.availability == StoreAvailability.PAUSED) 0.55f else 1f),
+    shape = shape,
+)
+
+/** The same picture by key, for a menu item: pass `item.artKey ?: store.artKey`. */
+@Composable
+fun StoreArt(
+    artKey: String?,
+    modifier: Modifier = Modifier,
+    shape: Shape = RoundedCornerShape(12.dp),
 ) {
-    Canvas(
-        modifier
-            .clip(shape)
-            .alpha(if (store.availability == StoreAvailability.PAUSED) 0.55f else 1f)
-            .clearAndSetSemantics {},
-    ) {
+    Canvas(modifier.clip(shape).clearAndSetSemantics {}) {
         // Cover: scale the 100 x 100 picture to the longer side and centre it.
         val scale = max(size.width, size.height) / 100f
         withTransform({
             translate((size.width - 100f * scale) / 2f, (size.height - 100f * scale) / 2f)
             scale(scale, scale, pivot = Offset.Zero)
         }) {
-            when (store.artKey) {
+            when (artKey) {
                 "ramen" -> drawRamen()
                 "convenience" -> drawMart()
                 "curry" -> drawCurry()
@@ -57,6 +64,8 @@ fun StoreArt(
                 "udon" -> drawUdon()
                 "teishoku" -> drawTeishoku()
                 "hair" -> drawHairSalon()
+                "gyoza" -> drawGyoza()
+                "edamame" -> drawEdamame()
                 else -> rect(0f, 0f, 100f, 100f, 0f, Color(0xFFE8C9A1))
             }
         }
@@ -204,4 +213,33 @@ private fun DrawScope.drawHairSalon() {
     line(HairSalonPaths.blades, Color(0xFF3B3B3B), 4f)
     ring(38f, 68f, 8f, Color(0xFF5B1F8C), 4f)
     ring(62f, 68f, 8f, Color(0xFF5B1F8C), 4f)
+}
+
+private object GyozaPaths {
+    val a = svg("M24,50c4,-14 22,-16 30,-3 -10,7 -22,7 -30,3z")
+    val b = svg("M46,66c4,-14 22,-16 30,-3 -10,7 -22,7 -30,3z")
+    val c = svg("M48,38c4,-14 22,-16 30,-3 -10,7 -22,7 -30,3z")
+}
+
+private fun DrawScope.drawGyoza() {
+    background(Color(0xFFEFE3CF))
+    circle(50f, 50f, 38f, Color(0xFFFBFAF7))
+    drawPath(GyozaPaths.a, Color(0xFFE7B865))
+    drawPath(GyozaPaths.b, Color(0xFFDDA54A))
+    drawPath(GyozaPaths.c, Color(0xFFE7B865))
+    circle(34f, 70f, 8f, Color(0xFF5A3A1E))
+}
+
+private object EdamamePaths {
+    val a = svg("M32,50c6,-9 20,-12 32,-6")
+    val b = svg("M38,64c8,-5 19,-5 27,1")
+    val c = svg("M36,37c8,-4 17,-2 23,4")
+}
+
+private fun DrawScope.drawEdamame() {
+    background(Color(0xFFE6EFD9))
+    circle(50f, 50f, 36f, Color(0xFFF7F5EE))
+    line(EdamamePaths.a, Color(0xFF6E9E3A), 9f)
+    line(EdamamePaths.b, Color(0xFF7FB045), 9f)
+    line(EdamamePaths.c, Color(0xFF7FB045), 9f)
 }

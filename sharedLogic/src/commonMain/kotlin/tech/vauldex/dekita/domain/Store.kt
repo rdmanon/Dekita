@@ -53,6 +53,8 @@ data class Store(
      * instead of cooking. The kitchen can still take orders, so this is separate from [StoreAvailability.FULL].
      */
     val seatsFull: Boolean = false,
+    /** UI-01: how long the kitchen usually takes once cooking starts, in minutes. Null when it doesn't cook. */
+    val prepMinutes: IntRange? = null,
 ) {
     val isAcceptingOrders: Boolean get() = availability == StoreAvailability.OPEN
 

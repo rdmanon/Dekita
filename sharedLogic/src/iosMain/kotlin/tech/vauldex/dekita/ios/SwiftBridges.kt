@@ -205,6 +205,7 @@ class OrderTicketBridge(orderId: String) : ScreenBridge() {
             container.paymentRepository,
             container.inboxRepository,
             container.orderSimulator,
+            container.storeRepository,
         )
     }
 

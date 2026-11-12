@@ -16,7 +16,8 @@ import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
+import androidx.compose.material3.FilledTonalIconButton
+import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.RadioButton
@@ -100,9 +101,14 @@ internal fun PaymentSheet(viewModel: PaymentViewModel, onDismiss: () -> Unit) {
                     fontWeight = FontWeight.Bold,
                     modifier = Modifier.weight(1f).semantics { heading() },
                 )
-                IconButton(onClick = close, enabled = state.canDismiss) {
-                    Icon(painterResource(R.drawable.ic_close), contentDescription = "Close")
-                }
+                FilledTonalIconButton(
+                    onClick = close,
+                    enabled = state.canDismiss,
+                    colors = IconButtonDefaults.filledTonalIconButtonColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                        contentColor = MaterialTheme.colorScheme.onSurface,
+                    ),
+                ) { Icon(painterResource(R.drawable.ic_close), contentDescription = "Close", modifier = Modifier.size(22.dp)) }
             }
             when {
                 state.isLoading -> LoadingIndicator("Loading payment methods…")
@@ -169,21 +175,24 @@ private fun ColumnScope.PaymentSheetContent(
         )
     }
 
-    Column(verticalArrangement = Arrangement.spacedBy(2.dp), modifier = Modifier.selectableGroup()) {
-        state.methods.forEachIndexed { index, method ->
-            MethodRow(
-                method = method,
-                isSelected = method.id == state.selectedMethod?.id,
-                enabled = state.canChangeMethod,
-                index = index,
-                count = state.methods.size,
-                onSelect = { onSelect(method.id) },
-            )
+    // 10 dp between the list and Add card, as on the artboard.
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Column(verticalArrangement = Arrangement.spacedBy(2.dp), modifier = Modifier.selectableGroup()) {
+            state.methods.forEachIndexed { index, method ->
+                MethodRow(
+                    method = method,
+                    isSelected = method.id == state.selectedMethod?.id,
+                    enabled = state.canChangeMethod,
+                    index = index,
+                    count = state.methods.size,
+                    onSelect = { onSelect(method.id) },
+                )
+            }
         }
-    }
-    TextButton(onClick = onAddCard, enabled = state.canChangeMethod) {
-        Icon(painterResource(R.drawable.ic_add), contentDescription = null, modifier = Modifier.size(18.dp))
-        Text("Add card", modifier = Modifier.padding(start = 8.dp))
+        TextButton(onClick = onAddCard, enabled = state.canChangeMethod) {
+            Icon(painterResource(R.drawable.ic_add), contentDescription = null, modifier = Modifier.size(18.dp))
+            Text("Add card", modifier = Modifier.padding(start = 8.dp))
+        }
     }
 
     val error = state.errorMessage
@@ -258,7 +267,7 @@ private fun MethodRow(
         modifier = Modifier
             .fillMaxWidth()
             .heightIn(min = 56.dp)
-            .clip(groupedShape(index, count))
+            .clip(groupedShape(index, count, outer = 16.dp))
             .background(MaterialTheme.colorScheme.surfaceContainerLowest)
             .selectable(selected = isSelected, enabled = enabled, role = Role.RadioButton, onClick = onSelect)
             .padding(horizontal = Dimens.ScreenPadding),

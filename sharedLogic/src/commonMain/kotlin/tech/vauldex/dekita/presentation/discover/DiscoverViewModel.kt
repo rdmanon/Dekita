@@ -40,8 +40,8 @@ data class DiscoverUiState(
     /** The paid order updated most recently and not closed yet, for the banner that opens its ticket. Null for guests. */
     val activeOrder: Order? = null,
 ) {
-    /** When a filter other than the mode is on, Discover shows only the result list. */
-    val showsResults: Boolean get() = filters.isRefined
+    /** A search or a Filters-sheet filter shows only the result list. The mode and the category chip don't. */
+    val showsResults: Boolean get() = filters.showsResults
 
     val hasNoMatches: Boolean get() = !isLoading && error == null && stores.isEmpty()
 }
@@ -94,6 +94,7 @@ class DiscoverViewModel(
     /** Picking the selected limit again turns the filter off. */
     fun selectWalkLimit(limit: WalkLimit?) = filters.update { it.copy(walkLimit = limit.takeUnless { l -> l == it.walkLimit }) }
 
+    /** Multi-select (DISC-01): each chip turns its category on or off. */
     fun toggleCategory(category: String) = filters.update { it.copy(categories = it.categories.toggle(category)) }
 
     fun toggleStatus(status: StoreAvailability) = filters.update { it.copy(statuses = it.statuses.toggle(status)) }

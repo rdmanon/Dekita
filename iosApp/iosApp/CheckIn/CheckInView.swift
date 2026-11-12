@@ -3,13 +3,15 @@ import MapKit
 import SharedLogic
 
 /// "On your way": the in-store draft, how far the store is, its live queue and Start Cooking, which stays
-/// off until the customer is in range. "Scan QR" is the fallback when GPS fails. The panel is a
-/// bottom sheet on material, edge to edge as on Android; its rows stay opaque so the text stays readable.
+/// off until the customer is in range. "Scan QR" is the fallback when GPS fails. The panel is a system sheet
+/// over the map (glass on iOS 26): it can't be swiped away, and the map stays usable behind it.
 struct CheckInView: View {
     @ObservedObject var model: CheckInModel
     let onBack: () -> Void
     let onScanQr: () -> Void
     let onCheckedIn: () -> Void
+    /// The sheet belongs to this screen: it goes away when the scanner or seat check is pushed, and returns on Back.
+    @State private var panelShown = false
 
     var body: some View {
         let state = model.state
@@ -24,16 +26,20 @@ struct CheckInView: View {
                 } else {
                     Palette.screen.ignoresSafeArea()
                 }
-                CheckInPanel(
-                    state: state,
-                    onStartCooking: { if model.viewModel.startCooking() { onCheckedIn() } },
-                    onScanQr: onScanQr
-                )
             } else {
                 NothingToCheckIn(onBack: onBack)
             }
         }
         .background(Palette.screen)
+        .onAppear { panelShown = true }
+        .onDisappear { panelShown = false }
+        .sheet(isPresented: Binding(get: { panelShown && state.draft != nil && !state.isLoading }, set: { panelShown = $0 })) {
+            CheckInPanel(
+                state: model.state,
+                onStartCooking: { if model.viewModel.startCooking() { onCheckedIn() } },
+                onScanQr: onScanQr
+            )
+        }
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(.hidden, for: .navigationBar)
         .toolbar {
@@ -61,54 +67,59 @@ private struct CheckInPanel: View {
     let state: CheckInUiState
     let onStartCooking: () -> Void
     let onScanQr: () -> Void
+    @ScaledMetric(relativeTo: .title2) private var headlineSize: CGFloat = 24
+    /// The content's height, so the sheet opens exactly that tall and leaves the map usable above it.
+    @State private var contentHeight: CGFloat = 420
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            VStack(alignment: .leading, spacing: 4) {
-                HStack(spacing: 12) {
-                    Text(state.headline)
-                        .font(.title2.weight(.bold))
-                        .accessibilityAddTraits(.isHeader)
-                    Spacer(minLength: 0)
-                    ArrivalBadge(state: state)
+        ScrollView {
+            VStack(alignment: .leading, spacing: 14) {
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack(spacing: 12) {
+                        Text(state.headline)
+                            .font(.system(size: headlineSize, weight: .bold))
+                            .accessibilityAddTraits(.isHeader)
+                        Spacer(minLength: 0)
+                        ArrivalBadge(state: state)
+                    }
+                    Text(state.storeLine)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
                 }
-                Text(state.storeLine)
-                    .font(.subheadline)
+
+                SummaryCard(rows: rows)
+
+                Button(action: onStartCooking) { CapsuleLabel(title: Copy.startCooking) }
+                    .buttonStyle(CapsuleButtonStyle())
+                    .disabled(!state.canStartCooking)
+                    .accessibilityHint(Copy.titleCased(state.startCookingHint))
+
+                Text(Copy.titleCased(state.startCookingHint))
+                    .font(.footnote)
                     .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .frame(maxWidth: .infinity)
+                    .padding(.top, -4)
+                    .accessibilityHidden(true)
+
+                Button(action: onScanQr) {
+                    Label("Can't check in? Scan the store QR", systemImage: "qrcode")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(Palette.link)
+                        .frame(maxWidth: .infinity, minHeight: 44)
+                }
             }
-
-            SummaryCard(rows: rows)
-
-            Button(action: onStartCooking) {
-                Text("Start Cooking")
-                    .font(.headline)
-                    .frame(maxWidth: .infinity, minHeight: 50)
-            }
-            .buttonStyle(.borderedProminent)
-            .buttonBorderShape(.capsule)
-            .disabled(!state.canStartCooking)
-            .accessibilityHint(state.startCookingHint)
-
-            Text(state.startCookingHint)
-                .font(.footnote)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-                .frame(maxWidth: .infinity)
-                .accessibilityHidden(true)
-
-            Button(action: onScanQr) {
-                Label("Can't check in? Scan the store QR", systemImage: "qrcode")
-                    .font(.subheadline.weight(.semibold))
-                    .frame(maxWidth: .infinity, minHeight: 44)
-            }
+            .padding(.horizontal, 20)
+            .padding(.top, 22)
+            .padding(.bottom, 16)
+            .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { contentHeight = $0 }
         }
-        .padding(20)
-        // Full width and down to the screen's bottom edge, as on Android; the content stays above the home indicator.
-        .background {
-            UnevenRoundedRectangle(topLeadingRadius: 32, topTrailingRadius: 32, style: .continuous)
-                .fill(.regularMaterial)
-                .ignoresSafeArea(edges: .bottom)
-        }
+        .scrollBounceBehavior(.basedOnSize)
+        .presentationDetents([.height(contentHeight), .large])
+        .presentationBackgroundInteraction(.enabled(upThrough: .height(contentHeight)))
+        .presentationDragIndicator(.visible)
+        // Check-in is the screen's whole point, so the panel stays until the customer goes Back or scans.
+        .interactiveDismissDisabled()
     }
 
     private var rows: [(String, String)] {
@@ -202,21 +213,35 @@ private struct ArrivalMapView: View {
     var body: some View {
         Map(position: $position, interactionModes: [.pan, .zoom]) {
             MapCircle(center: store.coordinate, radius: CLLocationDistance(Geofence.shared.RADIUS_METERS))
-                .foregroundStyle(Color.accentColor.opacity(0.12))
-                .stroke(Color.accentColor.opacity(0.6), style: StrokeStyle(lineWidth: 2, dash: [6, 6]))
+                .foregroundStyle(Palette.action.opacity(0.08))
+                .stroke(Palette.action.opacity(0.45), style: StrokeStyle(lineWidth: 2, dash: [6, 6]))
             Annotation(storeName, coordinate: store.coordinate) {
                 Image(systemName: "fork.knife")
-                    .font(.system(size: 18, weight: .semibold))
+                    .font(.system(size: 20, weight: .semibold))
                     .foregroundStyle(.white)
-                    .frame(width: 44, height: 44)
-                    .background(Color.accentColor, in: Circle())
+                    .frame(width: 48, height: 48)
+                    .background(Palette.action, in: Circle())
                     .overlay(Circle().strokeBorder(.white, lineWidth: 3))
-                    .shadow(color: .black.opacity(0.25), radius: 6, y: 3)
+                    .shadow(color: .black.opacity(0.25), radius: 8, y: 6)
+                    // The artboard's white name pill sits above the pin.
+                    .overlay(alignment: .top) {
+                        Text(storeName)
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.black)
+                            .lineLimit(1)
+                            .fixedSize()
+                            .padding(.horizontal, 10)
+                            .frame(height: 26)
+                            .background(.white, in: Capsule())
+                            .shadow(color: .black.opacity(0.15), radius: 4, y: 2)
+                            .offset(y: -32)
+                    }
             }
+            .annotationTitles(.hidden)
             if let customer {
                 Annotation("You", coordinate: customer.coordinate) {
                     ZStack {
-                        Circle().fill(you.opacity(0.16)).frame(width: 44, height: 44)
+                        Circle().fill(you.opacity(0.16)).frame(width: 48, height: 48)
                         Circle().fill(.white).frame(width: 22, height: 22)
                         Circle().fill(you).frame(width: 16, height: 16)
                     }

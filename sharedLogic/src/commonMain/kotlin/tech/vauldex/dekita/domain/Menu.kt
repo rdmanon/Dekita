@@ -25,6 +25,10 @@ data class MenuItem(
     /** Items can be limited to one mode even when the store offers both. */
     val availableModes: Set<FulfillmentMode> = FulfillmentMode.entries.toSet(),
     val modifierGroups: List<ModifierGroup> = emptyList(),
+    /** UI-01: a dish illustration. Null shows the store's art instead. */
+    val artKey: String? = null,
+    /** UI-01: listed under the store's Popular tab. */
+    val isPopular: Boolean = false,
 ) {
     /** True when this version of the item has [option] sold out, or no longer offers it. */
     fun hasSoldOut(option: ModifierOption): Boolean =
