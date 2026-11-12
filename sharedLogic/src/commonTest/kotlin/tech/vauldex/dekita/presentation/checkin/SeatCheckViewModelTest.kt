@@ -204,6 +204,8 @@ class SeatCheckViewModelTest {
         val events = collectEvents(seat.events)
 
         seat.answerSeat(hasSeat = false)
+        // state is a stateIn of the sources, so it catches up on the next dispatch.
+        runCurrent()
         assertEquals(SeatCheckStep.NO_SEAT, seat.state.value.step)
         assertFalse(seat.state.value.isStoreFull)
 
@@ -305,6 +307,7 @@ class SeatCheckViewModelTest {
         runCurrent()
         assertTrue(seat.state.value.isUnavailable)
         seat.answerSeat(hasSeat = true)
+        runCurrent()
         assertFalse(seat.state.value.canPay)
     }
 
