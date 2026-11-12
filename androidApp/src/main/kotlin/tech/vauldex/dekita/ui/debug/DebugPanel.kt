@@ -38,6 +38,7 @@ import kotlin.time.Duration.Companion.seconds
 import tech.vauldex.dekita.data.dataOrNull
 import tech.vauldex.dekita.data.mock.SeedAuth
 import tech.vauldex.dekita.di.AppContainer
+import tech.vauldex.dekita.domain.FulfillmentMode
 import tech.vauldex.dekita.domain.CheckInQr
 import tech.vauldex.dekita.domain.Geofence
 import tech.vauldex.dekita.domain.StoreAvailability
@@ -57,6 +58,7 @@ internal val debugSections: List<DebugSection> = listOf(
     DebugSection("Auth") { container -> AuthControls(container) },
     DebugSection("Cart") { container -> CartControls(container) },
     DebugSection("Check-in") { container -> CheckInControls(container) },
+    DebugSection("Seat check") { container -> SeatControls(container) },
 )
 
 @Composable
@@ -278,6 +280,31 @@ private fun CheckInControls(container: AppContainer) {
     }
     OutlinedButton(onClick = simulator::scanOtherStoreQr) { Text("Simulate other-store QR") }
     OutlinedButton(onClick = simulator::scanInvalidQr) { Text("Simulate invalid QR") }
+}
+
+/** SEAT-01: "seats full" per Eat-In store, to try the seat check's fallbacks. */
+@Composable
+private fun SeatControls(container: AppContainer) {
+    val stores by container.storeRepository.stores.collectAsStateWithLifecycle()
+    Text(
+        "A store with full seats skips \"Have you found a seat?\" and offers Takeout, waiting or leaving.",
+        style = MaterialTheme.typography.bodyMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+    stores.dataOrNull().orEmpty().filter { it.supports(FulfillmentMode.IN_STORE) }.forEach { store ->
+        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+            Text(
+                store.name,
+                style = MaterialTheme.typography.bodyMedium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f),
+            )
+            TextButton(onClick = { container.storeFeedSimulator.setSeatsFull(store.id, !store.seatsFull) }) {
+                Text(if (store.seatsFull) "Free seats" else "Seats full")
+            }
+        }
+    }
 }
 
 private const val HOLD_MILLIS = 1_000L

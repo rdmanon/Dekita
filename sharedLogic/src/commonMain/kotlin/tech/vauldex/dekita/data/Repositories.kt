@@ -70,6 +70,9 @@ interface CartRepository {
     /** A quantity of 0 removes the line; removing the last line clears the cart. */
     fun updateQuantity(lineId: String, quantity: Int)
 
+    /** Replaces any cart with [cart]. SEAT-01: a draft switched to Takeout becomes the cart again. */
+    fun restore(cart: Cart)
+
     fun clear()
 }
 
@@ -90,6 +93,18 @@ interface OrderRepository {
      * nothing, when the orders are not loaded or [orderId] is not an in-store draft.
      */
     fun checkIn(orderId: String, checkIn: CheckIn): Boolean
+
+    /**
+     * Removes a DRAFT order and returns it, so its lines can go back into the cart (SEAT-01's Switch to
+     * Takeout). Returns null, and changes nothing, when there is no such order or it is no longer a draft.
+     */
+    fun discardDraft(orderId: String): Order?
+
+    /**
+     * [Start Cooking] after the seat check (SEAT-01): pays a DRAFT Eat-In order with [paymentMethodId] and
+     * sends it to the kitchen (QUEUED). Returns null when the orders are not loaded or there is no such order.
+     */
+    fun startCooking(orderId: String, paymentMethodId: String): TransitionResult?
 }
 
 /** Where the customer is. GPS in production; the mockup never reads the real location. */

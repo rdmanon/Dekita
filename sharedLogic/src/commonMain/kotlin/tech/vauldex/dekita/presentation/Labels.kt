@@ -11,6 +11,7 @@ import tech.vauldex.dekita.domain.MenuItem
 import tech.vauldex.dekita.domain.ModifierGroup
 import tech.vauldex.dekita.domain.ModifierOption
 import tech.vauldex.dekita.domain.Money
+import tech.vauldex.dekita.domain.Order
 import tech.vauldex.dekita.domain.OrderStatus
 import tech.vauldex.dekita.domain.QueueStatus
 import tech.vauldex.dekita.domain.Store
@@ -180,3 +181,34 @@ fun CheckoutBlock.message(storeName: String): String = when (this) {
 /** A cart line's choices, as "Medium · Extra Egg". Empty when there are none. */
 val CartLine.optionsLabel: String
     get() = selectedOptions.joinToString(" · ") { it.name }
+
+// SEAT-01: the seat check after check-in, its fallbacks and 1-tap payment.
+
+/** "2 items · ¥1,550" for an order. */
+val Order.itemsLabel: String
+    get() = "${if (itemCount == 1) "1 item" else "$itemCount items"} · ${total.formatted()}"
+
+const val SEAT_QUESTION = "Have you found a seat?"
+
+const val SEAT_QUESTION_DETAIL = "Cooking starts when you pay, so make sure you have a seat first."
+
+/** The fallbacks' title: the store is full, or the customer said they have no seat yet. */
+fun noSeatTitle(storeName: String, storeIsFull: Boolean): String =
+    if (storeIsFull) "$storeName is full right now" else "No seat yet?"
+
+const val NO_SEAT_DETAIL = "Your order is saved. Nothing is cooked or charged until you start cooking."
+
+const val SWITCH_TO_TAKEOUT = "Switch to Takeout"
+const val SWITCH_TO_TAKEOUT_DETAIL = "Pay now and take your food with you."
+const val WAIT_IN_LINE = "Wait in line"
+const val WAIT_IN_LINE_DETAIL = "Stay on check-in and tap Start Cooking again once you have a seat."
+const val CANCEL_EXIT = "Cancel / Exit"
+const val CANCEL_EXIT_DETAIL = "Back to Discover. Your order stays in Orders as a draft."
+
+/** The payment sheet's button, for example "Pay ¥1,550". */
+fun payButtonLabel(total: Money): String = "Pay ${total.formatted()}"
+
+/** Shown after paying at the seat check. */
+fun sentToKitchenTitle(orderNumber: Int): String = "Order #$orderNumber sent to the kitchen"
+
+const val SENT_TO_KITCHEN_DETAIL = "Cooking starts now. Follow your order in the Orders tab."

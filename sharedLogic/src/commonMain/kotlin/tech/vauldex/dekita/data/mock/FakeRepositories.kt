@@ -59,6 +59,9 @@ interface StoreFeedSimulator {
 
     /** Moves a store's queue by [delta] orders, as orders come in or are served. Never below zero. */
     fun adjustQueue(storeId: String, delta: Int)
+
+    /** SEAT-01: marks every seat taken, or free again. See [Store.seatsFull]. */
+    fun setSeatsFull(storeId: String, full: Boolean)
 }
 
 class FakeStoreRepository(
@@ -129,6 +132,11 @@ class FakeStoreRepository(
                 }
             }
         }
+        _stores.update { state -> if (state is LoadState.Success) LoadState.Success(updated) else state }
+    }
+
+    override fun setSeatsFull(storeId: String, full: Boolean) {
+        val updated = feed.updateAndGet { stores -> stores.map { if (it.id == storeId) it.copy(seatsFull = full) else it } }
         _stores.update { state -> if (state is LoadState.Success) LoadState.Success(updated) else state }
     }
 
@@ -272,6 +280,10 @@ class FakeCartRepository : CartRepository, Resettable {
         }
     }
 
+    override fun restore(cart: Cart) {
+        _cart.value = cart.takeUnless { it.isEmpty }
+    }
+
     override fun clear() {
         _cart.value = null
     }
@@ -314,6 +326,7 @@ class FakeOrderRepository(
                 is TransitionResult.Rejected -> state
             }
         }
+        (result as? TransitionResult.Accepted)?.let { keepCreated(it.order) }
         return result
     }
 
@@ -343,9 +356,48 @@ class FakeOrderRepository(
             val orders = (state as? LoadState.Success)?.data ?: return@update state
             val updated = orders.firstOrNull { it.id == orderId }?.checkedIn(checkIn) ?: return@update state
             recorded = true
+            keepCreated(updated)
             LoadState.Success(orders.map { if (it.id == orderId) updated else it })
         }
         return recorded
+    }
+
+    override fun discardDraft(orderId: String): Order? {
+        var removed: Order? = null
+        _orders.update { state ->
+            removed = null
+            val orders = (state as? LoadState.Success)?.data ?: return@update state
+            val draft = orders.firstOrNull { it.id == orderId && it.status == OrderStatus.DRAFT } ?: return@update state
+            removed = draft
+            LoadState.Success(orders - draft)
+        }
+        removed?.let { draft -> created.update { list -> list.filterNot { it.id == draft.id } } }
+        return removed
+    }
+
+    override fun startCooking(orderId: String, paymentMethodId: String): TransitionResult? {
+        var result: TransitionResult? = null
+        _orders.update { state ->
+            result = null
+            val orders = (state as? LoadState.Success)?.data ?: return@update state
+            val order = orders.firstOrNull { it.id == orderId } ?: return@update state
+            val attempt = OrderStatusMachine.transition(order, OrderStatus.QUEUED, clock.now())
+            result = when (attempt) {
+                is TransitionResult.Accepted -> attempt.copy(order = attempt.order.copy(paymentMethodId = paymentMethodId))
+                is TransitionResult.Rejected -> attempt
+            }
+            when (val done = result) {
+                is TransitionResult.Accepted -> LoadState.Success(orders.map { if (it.id == orderId) done.order else it })
+                else -> state
+            }
+        }
+        (result as? TransitionResult.Accepted)?.let { keepCreated(it.order) }
+        return result
+    }
+
+    /** A reload keeps orders made in this session, so their later changes (check-in, cooking) are kept too. */
+    private fun keepCreated(order: Order) {
+        created.update { list -> list.map { if (it.id == order.id) order else it } }
     }
 
     override fun reset() {
