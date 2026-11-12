@@ -1,6 +1,7 @@
 package tech.vauldex.dekita.presentation
 
 import tech.vauldex.dekita.domain.BusinessType
+import tech.vauldex.dekita.domain.CardFormError
 import tech.vauldex.dekita.domain.CartLine
 import tech.vauldex.dekita.domain.CheckoutAction
 import tech.vauldex.dekita.domain.CheckIn
@@ -16,10 +17,12 @@ import tech.vauldex.dekita.domain.OrderRating
 import tech.vauldex.dekita.domain.OrderStatus
 import tech.vauldex.dekita.domain.RATING_TAGS
 import tech.vauldex.dekita.domain.OrderStep
+import tech.vauldex.dekita.domain.PaymentType
 import tech.vauldex.dekita.domain.QueueStatus
 import tech.vauldex.dekita.domain.Store
 import tech.vauldex.dekita.domain.StoreAvailability
 import tech.vauldex.dekita.domain.StoreBadge
+import tech.vauldex.dekita.domain.letsCustomerChooseMode
 import tech.vauldex.dekita.presentation.cart.CheckoutBlock
 import tech.vauldex.dekita.presentation.discover.WalkLimit
 
@@ -240,3 +243,29 @@ const val CANCEL_EXIT_DETAIL = "Back to Discover. Your order stays in Orders as 
 
 /** The payment sheet's button, for example "Pay ¥1,550". */
 fun payButtonLabel(total: Money): String = "Pay ${total.formatted()}"
+
+/** The order's mode as the customer chose it: "Eat-In" or "Takeout" at a store with both, else "In-store" or "Pickup". */
+fun FulfillmentMode.orderLabel(businessType: BusinessType?): String =
+    if (businessType?.letsCustomerChooseMode == true) choiceLabel else label
+
+/** "1 item", "2 items". */
+fun itemCountLabel(count: Int): String = if (count == 1) "1 item" else "$count items"
+
+/** The provider's name, for the mock approval screens and the ticket's "Paid with" line. */
+val PaymentType.providerName: String
+    get() = when (this) {
+        PaymentType.APPLE_PAY -> "Apple Pay"
+        PaymentType.GOOGLE_PAY -> "Google Pay"
+        PaymentType.CARD -> "Card"
+        PaymentType.PAYPAY -> "PayPay"
+        PaymentType.RAKUTEN_PAY -> "Rakuten Pay"
+    }
+
+/** The demo add-card form's message for each problem. */
+val CardFormError.message: String
+    get() = when (this) {
+        CardFormError.NUMBER -> "Enter a card number of 13 to 19 digits."
+        CardFormError.EXPIRY -> "Enter the expiry as MM/YY."
+        CardFormError.CVC -> "Enter the 3 or 4 digit security code."
+        CardFormError.NOT_A_TEST_CARD -> "This demo only takes published test card numbers, such as 4242 4242 4242 4242."
+    }

@@ -92,22 +92,8 @@ interface OrderRepository {
     /** Returns null when the orders are not loaded or there is no order with [orderId]. */
     fun transition(orderId: String, to: OrderStatus, reason: CompletionReason? = null): TransitionResult?
 
-    /**
-     * Pay now: charges the customer's default payment method and places [cart] as a paid order, PAID for
-     * pickup or QUEUED for in-store. Returns the new order, which also appears in [orders].
-     *
-     * shortcut: a mock payment that always succeeds. PAY-01 puts the payment sheet in front of this.
-     */
-    fun placeOrder(cart: Cart, storeName: String): Order
-
-    /**
-     * Pays an Eat-In draft at the store once the customer has checked in, moving it to QUEUED.
-     * [paymentMethodId] is the method picked on the seat check's payment sheet (SEAT-01); null uses the
-     * default one. Returns the paid order, or null when [orderId] is not a checked-in in-store draft.
-     *
-     * shortcut: a mock payment that always succeeds. PAY-01 replaces it.
-     */
-    fun payAtCheckIn(orderId: String, paymentMethodId: String? = null): Order?
+    // Paid orders are made only by PaymentService (PAY-01), once a charge goes through, so they aren't on this
+    // interface: a screen can't create a paid order without paying. The fake's placeOrder and payAtCheckIn do it.
 
     /**
      * Removes a DRAFT order and returns it, so its lines can go back into the cart (SEAT-01's Switch to
@@ -147,6 +133,47 @@ interface QrScanner {
 
 interface PaymentRepository {
     val methods: StateFlow<LoadState<List<PaymentMethod>>>
+
+    /**
+     * The demo add-card form's save (PAY-01). Accepts only a payment provider's published test number and
+     * keeps just its brand and last four digits, in memory. Returns null for any other number.
+     * Production never sees a card number: the provider's SDK or hosted fields return a saved method instead.
+     */
+    fun addTestCard(cardNumber: String): PaymentMethod?
+}
+
+/** What a payment is for. [checkoutId] is one payment sheet's idempotency key. */
+sealed interface PaymentRequest {
+    val checkoutId: String
+
+    /** In-store-only, Pickup-only and Takeout orders: the cart is charged, then becomes a PAID or QUEUED order. */
+    data class PayNow(override val checkoutId: String, val cart: Cart, val storeName: String) : PaymentRequest
+
+    /** Eat-In: the checked-in DRAFT is charged after the seat check (SEAT-01) and moves to QUEUED. */
+    data class PayDraft(override val checkoutId: String, val orderId: String) : PaymentRequest
+}
+
+sealed interface PaymentResult {
+    /** The charge went through and [order] is PAID (pickup) or QUEUED (in store), with its order number. */
+    data class Paid(val order: Order) : PaymentResult
+
+    /** The method was declined. Nothing was charged and no order was made. */
+    data object Declined : PaymentResult
+
+    /** The draft is gone or isn't checked in, so there is nothing to charge. */
+    data object OrderUnavailable : PaymentResult
+}
+
+/**
+ * Charges a saved method. The mockup's fake simulates it; production goes through the backend to the payment
+ * provider, and the order is only created once the provider confirms the payment.
+ */
+interface PaymentService {
+    /**
+     * Charges [methodId] for [request]. Idempotent on [PaymentRequest.checkoutId]: once a checkout is paid, calling
+     * again returns the same order, so a double tap can't make a second order or order number.
+     */
+    suspend fun pay(request: PaymentRequest, methodId: String): PaymentResult
 }
 
 interface InboxRepository {

@@ -123,20 +123,10 @@ class CartReviewViewModelTest {
 
         f.review.checkout()
         runCurrent()
-        // ORDER-01: Pay now places a paid order with a mock payment, empties the cart and opens the ticket.
-        val placed = events.last() as CartReviewEvent.OrderPlaced
-        assertEquals(CartReviewEvent.RequireSignIn, events.first())
-        assertEquals(2, events.size)
-        val order = f.orders.orders.value.dataOrNull()?.first { it.id == placed.orderId }
-        assertEquals(OrderStatus.PAID, order?.status)
-        assertEquals(FulfillmentMode.PICKUP, order?.mode)
-        assertEquals(sample.lines, order?.lines)
-        assertTrue(f.review.state.value.isEmpty)
-
-        // A second tap finds an empty cart and places nothing.
-        f.review.checkout()
-        runCurrent()
-        assertEquals(2, events.size)
+        // PAY-01: Pay now opens the payment sheet. Nothing is placed or emptied until the charge goes through.
+        assertEquals(listOf(CartReviewEvent.RequireSignIn, CartReviewEvent.OpenPayment), events)
+        assertEquals(sample.lines, f.review.state.value.cart?.lines)
+        assertEquals(FulfillmentMode.PICKUP, f.review.state.value.mode)
     }
 
     @Test

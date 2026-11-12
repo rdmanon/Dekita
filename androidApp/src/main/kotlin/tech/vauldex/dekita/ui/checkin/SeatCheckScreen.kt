@@ -12,8 +12,6 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.selection.selectable
-import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
@@ -22,15 +20,12 @@ import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -39,7 +34,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -48,8 +42,6 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import tech.vauldex.dekita.R
 import tech.vauldex.dekita.domain.FulfillmentMode
-import tech.vauldex.dekita.domain.PaymentMethod
-import tech.vauldex.dekita.domain.PaymentType
 import tech.vauldex.dekita.presentation.CANCEL_EXIT
 import tech.vauldex.dekita.presentation.CANCEL_EXIT_DETAIL
 import tech.vauldex.dekita.presentation.NO_SEAT_DETAIL
@@ -60,6 +52,7 @@ import tech.vauldex.dekita.presentation.SWITCH_TO_TAKEOUT_DETAIL
 import tech.vauldex.dekita.presentation.WAIT_IN_LINE
 import tech.vauldex.dekita.presentation.WAIT_IN_LINE_DETAIL
 import tech.vauldex.dekita.presentation.checkin.SeatCheckEvent
+import tech.vauldex.dekita.presentation.payment.PaymentViewModel
 import tech.vauldex.dekita.presentation.checkin.SeatCheckStep
 import tech.vauldex.dekita.presentation.checkin.SeatCheckUiState
 import tech.vauldex.dekita.presentation.checkin.SeatCheckViewModel
@@ -67,22 +60,24 @@ import tech.vauldex.dekita.presentation.choiceLabel
 import tech.vauldex.dekita.presentation.itemsLabel
 import tech.vauldex.dekita.presentation.label
 import tech.vauldex.dekita.presentation.noSeatTitle
-import tech.vauldex.dekita.presentation.payButtonLabel
 import tech.vauldex.dekita.ui.components.LoadingIndicator
 import tech.vauldex.dekita.ui.components.PrimaryButton
 import tech.vauldex.dekita.ui.components.groupedShape
 import tech.vauldex.dekita.ui.theme.DekitaTheme
+import tech.vauldex.dekita.ui.payment.CollectPaymentEvents
+import tech.vauldex.dekita.ui.payment.PaymentSheet
 import tech.vauldex.dekita.ui.theme.Dimens
 
 /**
  * Seat verification (SEAT-01), opened by Start Cooking after check-in. "Have you found a seat?" comes before
- * the kitchen starts: Yes opens 1-tap payment, which opens the order's ticket, and a full store or "Not yet" offers Switch to Takeout, Wait in
- * line or Cancel / Exit. None of them loses the order.
+ * the kitchen starts: Yes opens the payment sheet (PAY-01) for the draft, whose payment opens the order's ticket, and a
+ * full store or "Not yet" offers Switch to Takeout, Wait in line or Cancel / Exit. None of them loses the order.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SeatCheckScreen(
     viewModel: SeatCheckViewModel,
+    payment: PaymentViewModel,
     onBack: () -> Unit,
     onSwitchedToTakeout: (storeId: String) -> Unit,
     onWaitInLine: () -> Unit,
@@ -93,14 +88,21 @@ fun SeatCheckScreen(
     val currentOnSwitched by rememberUpdatedState(onSwitchedToTakeout)
     val currentOnWait by rememberUpdatedState(onWaitInLine)
     val currentOnExit by rememberUpdatedState(onExit)
-    val currentOnPaid by rememberUpdatedState(onPaid)
+    CollectPaymentEvents(
+        payment,
+        onPaid = { orderId ->
+            viewModel.markPaid(orderId)
+            onPaid(orderId)
+        },
+        // Left without paying (PAY-02): back to the question, still checked in.
+        onClosed = viewModel::closePayment,
+    )
     LaunchedEffect(viewModel) {
         viewModel.events.collect { event ->
             when (event) {
                 is SeatCheckEvent.SwitchedToTakeout -> currentOnSwitched(event.storeId)
                 SeatCheckEvent.WaitInLine -> currentOnWait()
                 SeatCheckEvent.Exited -> currentOnExit()
-                is SeatCheckEvent.Paid -> currentOnPaid(event.orderId)
             }
         }
     }
@@ -147,19 +149,8 @@ fun SeatCheckScreen(
         }
     }
 
-    if (state.step == SeatCheckStep.PAYMENT && !state.isUnavailable && !state.isPaid) {
-        ModalBottomSheet(
-            onDismissRequest = viewModel::closePayment,
-            sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
-        ) {
-            PaymentSheet(
-                state = state,
-                onSelect = viewModel::selectPaymentMethod,
-                onPay = viewModel::pay,
-                onClose = viewModel::closePayment,
-            )
-        }
-    }
+    // Closing the sheet without paying goes back to the question; the check-in is kept.
+    if (state.showsPayment) PaymentSheet(payment, onDismiss = viewModel::closePayment)
 
     state.pendingReplaceCartStoreName?.let { otherStore ->
         AlertDialog(
@@ -293,82 +284,6 @@ private fun FallbackOption(
                 Text(title, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurface.copy(alpha = alpha))
                 Text(detail, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
-        }
-    }
-}
-
-/** 1-tap payment, as the Android Payment artboard. The wallet is already picked, so one tap on Pay sends the order. */
-@Composable
-private fun PaymentSheet(state: SeatCheckUiState, onSelect: (String) -> Unit, onPay: () -> Unit, onClose: () -> Unit) {
-    val order = state.order ?: return
-    val storeName = state.store?.name ?: order.storeName
-    Column(
-        verticalArrangement = Arrangement.spacedBy(16.dp),
-        modifier = Modifier.padding(start = 24.dp, end = 24.dp, bottom = 32.dp),
-    ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(
-                "Payment",
-                style = MaterialTheme.typography.headlineSmall,
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier.weight(1f).semantics { heading() },
-            )
-            IconButton(onClick = onClose) {
-                Icon(painterResource(R.drawable.ic_close), contentDescription = "Close")
-            }
-        }
-        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            Text(
-                "$storeName · ${FulfillmentMode.IN_STORE.choiceLabel} · ${if (order.itemCount == 1) "1 item" else "${order.itemCount} items"}",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            Text(order.total.formatted(), style = MaterialTheme.typography.displaySmall, fontWeight = FontWeight.Bold)
-            Text("Tax included", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
-        if (state.paymentMethods.isEmpty()) {
-            LoadingIndicator("Loading payment methods…")
-        } else {
-            Column(verticalArrangement = Arrangement.spacedBy(2.dp), modifier = Modifier.selectableGroup()) {
-                state.paymentMethods.forEachIndexed { index, method ->
-                    PaymentMethodRow(
-                        method = method,
-                        selected = method.id == state.selectedMethodId,
-                        shape = groupedShape(index, state.paymentMethods.size),
-                        onSelect = { onSelect(method.id) },
-                    )
-                }
-            }
-        }
-        PrimaryButton(text = payButtonLabel(order.total), onClick = onPay, enabled = state.canPay)
-    }
-}
-
-@Composable
-private fun PaymentMethodRow(method: PaymentMethod, selected: Boolean, shape: Shape, onSelect: () -> Unit) {
-    Surface(color = MaterialTheme.colorScheme.surfaceContainerLowest, shape = shape) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(16.dp),
-            modifier = Modifier
-                .fillMaxWidth()
-                .selectable(selected = selected, onClick = onSelect, role = Role.RadioButton)
-                .heightIn(min = 56.dp)
-                .padding(horizontal = 16.dp),
-        ) {
-            Icon(
-                painterResource(if (method.type == PaymentType.CARD) R.drawable.ic_credit_card else R.drawable.ic_wallet),
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            Text(
-                method.label,
-                style = MaterialTheme.typography.bodyLarge,
-                fontWeight = if (selected) FontWeight.Medium else FontWeight.Normal,
-                modifier = Modifier.weight(1f),
-            )
-            // The row handles the tap, so the radio itself is only a picture of the state.
-            RadioButton(selected = selected, onClick = null)
         }
     }
 }

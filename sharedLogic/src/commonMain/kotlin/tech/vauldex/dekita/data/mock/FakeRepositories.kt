@@ -43,6 +43,7 @@ import tech.vauldex.dekita.domain.Order
 import tech.vauldex.dekita.domain.OrderStatus
 import tech.vauldex.dekita.domain.OrderStatusMachine
 import tech.vauldex.dekita.domain.PaymentMethod
+import tech.vauldex.dekita.domain.PaymentType
 import tech.vauldex.dekita.domain.PhoneNumber
 import tech.vauldex.dekita.domain.QueueStatus
 import tech.vauldex.dekita.domain.Session
@@ -407,16 +408,26 @@ class FakeOrderRepository(
         // Eat-In is paid at check-in, so there is no payment method yet.
         newDraft(cart, storeName).also(::add)
 
-    override fun placeOrder(cart: Cart, storeName: String): Order {
+    /**
+     * Pay now, for the mock payment service (PAY-01) once a charge goes through, and for tests: places [cart] as an
+     * order paid with [paymentMethodId], PAID for pickup or QUEUED for in-store, and starts the mock kitchen.
+     * Not on [OrderRepository], so only a confirmed payment creates a paid order.
+     */
+    internal fun placeOrder(cart: Cart, storeName: String, paymentMethodId: String = DEFAULT_PAYMENT_METHOD_ID): Order {
         val draft = newDraft(cart, storeName)
-        val order = paid(draft) ?: error("A new draft can always be paid")
+        val order = paid(draft, paymentMethodId) ?: error("A new draft can always be paid")
         add(order)
         _statusChanges.tryEmit(order)
         drive(order.id)
         return order
     }
 
-    override fun payAtCheckIn(orderId: String, paymentMethodId: String?): Order? {
+    /**
+     * Eat-In, for the mock payment service (PAY-01) once a charge goes through, and for tests: pays the checked-in
+     * draft with [paymentMethodId] (null: the default method), moving it to QUEUED and starting the mock kitchen.
+     * Null, changing nothing, when [orderId] is not a checked-in in-store draft. Not on [OrderRepository].
+     */
+    internal fun payAtCheckIn(orderId: String, paymentMethodId: String? = null): Order? {
         var result: Order? = null
         _orders.update { state ->
             result = null
@@ -563,15 +574,40 @@ class FakePaymentRepository(
     private val _methods = MutableStateFlow<LoadState<List<PaymentMethod>>>(LoadState.Loading)
     override val methods: StateFlow<LoadState<List<PaymentMethod>>> = _methods.asStateFlow()
 
+    // Declared before init: reset() uses them.
+    /** Cards added with the demo form this session: labels only, never the number. Reset removes them. */
+    private val added = MutableStateFlow<List<PaymentMethod>>(emptyList())
+
+    /** Methods the mock payment service declines: the seed decline card and added decline test cards. */
+    private val declining = MutableStateFlow(setOf(SeedPaymentIds.DECLINE_CARD))
+
     private var loadJob: Job? = null
 
     init {
         reset()
     }
 
+    override fun addTestCard(cardNumber: String): PaymentMethod? {
+        val card = publishedTestCards.firstOrNull { it.number == cardNumber } ?: return null
+        val method = PaymentMethod(
+            id = "pm-added-${added.value.size + 1}-${card.last4}",
+            type = PaymentType.CARD,
+            label = "Test ${card.brand} •••• ${card.last4}" + if (card.declines) " (declines)" else "",
+        )
+        added.update { it + method }
+        if (card.declines) declining.update { it + method.id }
+        _methods.update { state -> if (state is LoadState.Success) LoadState.Success(state.data + method) else state }
+        return method
+    }
+
+    /** True for a method the mock payment service always declines. */
+    internal fun declines(methodId: String): Boolean = methodId in declining.value
+
     override fun reset() {
         loadJob?.cancel()
-        loadJob = scope.simulateLoad(_methods, config) { seedPaymentMethods }
+        added.value = emptyList()
+        declining.value = setOf(SeedPaymentIds.DECLINE_CARD)
+        loadJob = scope.simulateLoad(_methods, config) { seedPaymentMethods + added.value }
     }
 }
 

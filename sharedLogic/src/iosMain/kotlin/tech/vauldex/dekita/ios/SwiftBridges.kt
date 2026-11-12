@@ -26,13 +26,13 @@ import tech.vauldex.dekita.data.dataOrNull
 import tech.vauldex.dekita.di.AppContainer
 import tech.vauldex.dekita.domain.BusinessType
 import tech.vauldex.dekita.domain.CheckInQr
+import tech.vauldex.dekita.domain.ClientPlatform
 import tech.vauldex.dekita.domain.DialCode
 import tech.vauldex.dekita.domain.Geofence
 import tech.vauldex.dekita.domain.Menu
 import tech.vauldex.dekita.domain.MenuItem
 import tech.vauldex.dekita.domain.ModifierOption
 import tech.vauldex.dekita.domain.Order
-import tech.vauldex.dekita.domain.PaymentType
 import tech.vauldex.dekita.domain.SignInMethod
 import tech.vauldex.dekita.domain.Store
 import tech.vauldex.dekita.domain.StoreAvailability
@@ -75,6 +75,10 @@ import tech.vauldex.dekita.presentation.orders.OrdersUiState
 import tech.vauldex.dekita.presentation.orders.RateOrderUiState
 import tech.vauldex.dekita.presentation.orders.RateOrderViewModel
 import tech.vauldex.dekita.presentation.orders.OrdersViewModel
+import tech.vauldex.dekita.presentation.payment.PaymentEvent
+import tech.vauldex.dekita.presentation.payment.PaymentTarget
+import tech.vauldex.dekita.presentation.payment.PaymentUiState
+import tech.vauldex.dekita.presentation.payment.PaymentViewModel
 import tech.vauldex.dekita.presentation.store.StoreDetailUiState
 import tech.vauldex.dekita.presentation.store.StoreDetailViewModel
 
@@ -254,17 +258,10 @@ class CheckInBridge(orderId: String) : ScreenBridge() {
     fun watch(onState: (CheckInUiState) -> Unit): FlowWatch = viewModel.state.watch(onState)
 }
 
-/** SEAT-01 seat verification for one checked-in draft. iOS offers Apple Pay as its wallet. */
+/** SEAT-01 seat verification for one checked-in draft. Its Yes opens PAY-01's payment sheet ([PaymentBridge]). */
 class SeatCheckBridge(orderId: String) : ScreenBridge() {
     val viewModel: SeatCheckViewModel = makeViewModel(SeatCheckViewModel::class) {
-        SeatCheckViewModel(
-            orderId,
-            container.orderRepository,
-            container.storeRepository,
-            container.cartRepository,
-            container.paymentRepository,
-            PaymentType.APPLE_PAY,
-        )
+        SeatCheckViewModel(orderId, container.orderRepository, container.storeRepository, container.cartRepository)
     }
 
     val currentState: SeatCheckUiState get() = viewModel.state.value
@@ -372,6 +369,30 @@ class CartReviewBridge : ScreenBridge() {
     fun watchEvents(onEvent: (CartReviewEvent) -> Unit): FlowWatch = viewModel.events.watch(onEvent)
 }
 
+/**
+ * The payment sheet: for the cart, or for the in-store draft when [draftOrderId] is set (PAY-01). Offers the iOS methods:
+ * Apple Pay, never Google Pay.
+ */
+class PaymentBridge(draftOrderId: String?) : ScreenBridge() {
+    val viewModel: PaymentViewModel = makeViewModel(PaymentViewModel::class) {
+        PaymentViewModel(
+            draftOrderId?.let { PaymentTarget.Draft(it) } ?: PaymentTarget.Cart,
+            ClientPlatform.IOS,
+            container.paymentService,
+            container.paymentRepository,
+            container.cartRepository,
+            container.orderRepository,
+            container.storeRepository,
+        )
+    }
+
+    val currentState: PaymentUiState get() = viewModel.state.value
+
+    fun watch(onState: (PaymentUiState) -> Unit): FlowWatch = viewModel.state.watch(onState)
+
+    fun watchEvents(onEvent: (PaymentEvent) -> Unit): FlowWatch = viewModel.events.watch(onEvent)
+}
+
 /** What the debug panel shows. Durations are milliseconds, which Swift can use directly. */
 data class DebugState(
     val loadingDelayMillis: Long,
@@ -379,6 +400,8 @@ data class DebugState(
     /** ORDER-01: orders paid in this session move through their statuses on a timer. */
     val liveOrders: Boolean,
     val forceSsoFailure: Boolean,
+    /** PAY-01: every payment is declined, whatever the method. */
+    val forcePaymentDecline: Boolean,
     /** "guest", or "signed in with phone" and so on. */
     val session: String,
     /** Null until the store feed has loaded. */
@@ -410,6 +433,7 @@ class DebugBridge {
         liveQueue = config.liveQueue.value,
         liveOrders = config.liveOrders.value,
         forceSsoFailure = config.forceSsoFailure.value,
+        forcePaymentDecline = config.forcePaymentDecline.value,
         session = sessionLabel(container.authRepository.session.value?.method),
         stores = container.storeRepository.stores.value.dataOrNull(),
         availabilityStore = availabilityStore(),
@@ -441,6 +465,7 @@ class DebugBridge {
             config.liveQueue,
             config.liveOrders,
             config.forceSsoFailure,
+            config.forcePaymentDecline,
             container.authRepository.session,
             container.storeRepository.stores,
             container.orderRepository.orders,
@@ -470,6 +495,10 @@ class DebugBridge {
 
     fun setForceSsoFailure(on: Boolean) {
         config.forceSsoFailure.value = on
+    }
+
+    fun setForcePaymentDecline(on: Boolean) {
+        config.forcePaymentDecline.value = on
     }
 
     fun failNextStoreLoad() {

@@ -76,6 +76,7 @@ import tech.vauldex.dekita.ui.theme.Dimens
  * Cart Review, laid out as the Android Cart artboard: the store and its live queue, Eat-In / Takeout for
  * stores with both modes, lines with Edit, quantity and remove, totals, and one button whose action depends
  * on the store and mode. A guest's tap goes to sign-in, which returns here with the cart unchanged.
+ * "Pay now" calls [onPayNow], which opens the payment sheet over this screen (PAY-01).
  */
 @Composable
 fun CartReviewScreen(
@@ -83,18 +84,18 @@ fun CartReviewScreen(
     onBack: () -> Unit,
     onBrowseMenu: () -> Unit,
     onSignInRequired: () -> Unit,
+    onPayNow: () -> Unit,
     onDraftSaved: (orderId: String) -> Unit,
-    onOrderPlaced: (orderId: String) -> Unit,
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val currentOnSignInRequired by rememberUpdatedState(onSignInRequired)
+    val currentOnPayNow by rememberUpdatedState(onPayNow)
     val currentOnDraftSaved by rememberUpdatedState(onDraftSaved)
-    val currentOnOrderPlaced by rememberUpdatedState(onOrderPlaced)
     LaunchedEffect(viewModel) {
         viewModel.events.collect { event ->
             when (event) {
                 CartReviewEvent.RequireSignIn -> currentOnSignInRequired()
-                is CartReviewEvent.OrderPlaced -> currentOnOrderPlaced(event.orderId)
+                CartReviewEvent.OpenPayment -> currentOnPayNow()
                 is CartReviewEvent.DraftSaved -> currentOnDraftSaved(event.orderId)
             }
         }

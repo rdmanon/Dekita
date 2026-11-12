@@ -398,6 +398,31 @@ final class CartReviewModel: ObservableObject {
     }
 }
 
+/// The payment sheet: for the cart, or for the in-store draft `draftOrderId` (PAY-01).
+final class PaymentModel: ObservableObject {
+    private let bridge: PaymentBridge
+    private var watches: [FlowWatch] = []
+
+    @Published private(set) var state: PaymentUiState
+    let events = PassthroughSubject<any PaymentEvent, Never>()
+
+    var viewModel: PaymentViewModel { bridge.viewModel }
+
+    init(draftOrderId: String? = nil) {
+        bridge = PaymentBridge(draftOrderId: draftOrderId)
+        state = bridge.currentState
+        watches = [
+            bridge.watch { [weak self] state in self?.state = state },
+            bridge.watchEvents { [weak self] event in self?.events.send(event) },
+        ]
+    }
+
+    deinit {
+        watches.forEach { $0.cancel() }
+        bridge.close()
+    }
+}
+
 /// The debug panel's view of the mock data layer. Debug builds only.
 final class DebugModel: ObservableObject {
     let bridge = DebugBridge()

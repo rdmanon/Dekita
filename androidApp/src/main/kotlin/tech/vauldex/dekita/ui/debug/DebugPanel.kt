@@ -76,6 +76,7 @@ internal val debugSections: List<DebugSection> = listOf(
     DebugSection("Cart") { container -> CartControls(container) },
     DebugSection("Check-in") { container -> CheckInControls(container) },
     DebugSection("Seat check") { container -> SeatControls(container) },
+    DebugSection("Payments") { container -> PaymentControls(container) },
 )
 
 @Composable
@@ -425,4 +426,21 @@ internal fun Modifier.twoFingerLongPress(onTrigger: () -> Unit): Modifier = poin
         }
         if (interrupted == null) onTrigger()
     }
+}
+
+/** PAY-01: every method can also fail, not just the decline card and the approval screens' Cancel. */
+@Composable
+private fun PaymentControls(container: AppContainer) {
+    val forceDecline by container.mockConfig.forcePaymentDecline.collectAsStateWithLifecycle()
+    FilterChip(
+        selected = forceDecline,
+        onClick = { container.mockConfig.forcePaymentDecline.value = !forceDecline },
+        label = { Text("Decline every payment") },
+    )
+    Text(
+        "Without this, \"Test Visa •••• 0002\" always declines and the rest succeed. " +
+            "Add card takes published test numbers only, such as 4242 4242 4242 4242.",
+        style = MaterialTheme.typography.bodyMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
 }

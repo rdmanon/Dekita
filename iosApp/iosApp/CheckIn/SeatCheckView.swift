@@ -2,10 +2,13 @@ import SwiftUI
 import SharedLogic
 
 /// Seat verification (SEAT-01), opened by Start Cooking after check-in. "Have you found a seat?" comes before
-/// the kitchen starts: Yes opens 1-tap payment, which opens the order's ticket, and a full store or "Not yet" offers Switch to Takeout, Wait in
-/// line or Cancel / Exit. None of them loses the order.
+/// the kitchen starts: Yes opens the payment sheet (PAY-01) for the draft, whose payment opens the order's ticket, and
+/// a full store or "Not yet" offers Switch to Takeout, Wait in line or Cancel / Exit. None of them loses the order.
 struct SeatCheckView: View {
     @StateObject private var model: SeatCheckModel
+    @StateObject private var payment: PaymentModel
+    /// Set when the sheet's payment went through, so the ticket opens once the sheet has closed.
+    @State private var paidFromSheet: String?
     let onWaitInLine: () -> Void
     let onSwitchedToTakeout: (_ storeId: String, _ storeName: String) -> Void
     let onExit: () -> Void
@@ -19,6 +22,7 @@ struct SeatCheckView: View {
         onPaid: @escaping (_ orderId: String) -> Void
     ) {
         _model = StateObject(wrappedValue: SeatCheckModel(orderId: orderId))
+        _payment = StateObject(wrappedValue: PaymentModel(draftOrderId: orderId))
         self.onWaitInLine = onWaitInLine
         self.onSwitchedToTakeout = onSwitchedToTakeout
         self.onExit = onExit
@@ -57,9 +61,8 @@ struct SeatCheckView: View {
         .background(Palette.screen)
         .navigationTitle("Seat check")
         .navigationBarTitleDisplayMode(.inline)
-        .sheet(isPresented: paymentPresented) {
-            PaymentSheet(model: model)
-                .presentationDetents([.medium, .large])
+        .sheet(isPresented: paymentPresented, onDismiss: afterPaymentSheet) {
+            PaymentSheetView(model: payment)
         }
         .confirmationDialog("Replace your cart?", isPresented: replacePresented, titleVisibility: .visible) {
             Button("Replace cart") { model.viewModel.confirmReplaceCart() }
@@ -75,18 +78,33 @@ struct SeatCheckView: View {
                 onWaitInLine()
             } else if event is SeatCheckEventExited {
                 onExit()
-            } else if let paid = event as? SeatCheckEventPaid {
-                onPaid(paid.orderId)
             }
+        }
+        .onReceive(payment.events) { event in
+            if let paid = event as? PaymentEventPaid {
+                // Marking it paid closes the sheet; the ticket opens once it has.
+                paidFromSheet = paid.orderId
+                model.viewModel.markPaid(paidOrderId: paid.orderId)
+            } else if event is PaymentEventClosed {
+                // Left without paying (PAY-02): back to the question, still checked in.
+                model.viewModel.closePayment()
+            }
+        }
+    }
+
+    private func afterPaymentSheet() {
+        if let orderId = paidFromSheet {
+            paidFromSheet = nil
+            onPaid(orderId)
+        } else {
+            // Closed without paying: back to the question, with the check-in kept.
+            payment.viewModel.reset()
         }
     }
 
     private var paymentPresented: Binding<Bool> {
         Binding(
-            get: {
-                let state = model.state
-                return state.step == SeatCheckStep.payment && !state.isUnavailable && !state.isPaid
-            },
+            get: { model.state.showsPayment },
             set: { if !$0 { model.viewModel.closePayment() } }
         )
     }
@@ -210,77 +228,5 @@ private struct NoSeatContent: View {
         .buttonStyle(.plain)
         .disabled(!enabled)
         .opacity(enabled ? 1 : 0.5)
-    }
-}
-
-/// 1-tap payment, as the iOS Payment artboard. Apple Pay is already picked, so one tap on Pay sends the order.
-private struct PaymentSheet: View {
-    @ObservedObject var model: SeatCheckModel
-
-    var body: some View {
-        let state = model.state
-        NavigationStack {
-            List {
-                if let order = state.order {
-                    Section {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("\(state.store?.name ?? order.storeName) · \(FulfillmentMode.inStore.choiceLabel) · \(order.itemCount == 1 ? "1 item" : "\(order.itemCount) items")")
-                                .font(.subheadline)
-                                .foregroundStyle(.secondary)
-                            Text(order.total.formatted()).font(.largeTitle.weight(.bold))
-                            Text("Tax included").font(.footnote).foregroundStyle(.secondary)
-                        }
-                        .listRowBackground(Color.clear)
-                        .listRowInsets(EdgeInsets(top: 0, leading: 4, bottom: 0, trailing: 4))
-                        .accessibilityElement(children: .combine)
-                    }
-                }
-                Section {
-                    if state.paymentMethods.isEmpty {
-                        ProgressView("Loading payment methods…")
-                    }
-                    ForEach(state.paymentMethods, id: \.id) { method in
-                        let selected = method.id == state.selectedMethodId
-                        Button { model.viewModel.selectPaymentMethod(methodId: method.id) } label: {
-                            HStack(spacing: 12) {
-                                Image(systemName: method.type == PaymentType.card ? "creditcard" : "wallet.pass")
-                                    .frame(width: 32, height: 32)
-                                    .foregroundStyle(method.type == PaymentType.applePay ? Color.white : Color.primary)
-                                    .background(
-                                        method.type == PaymentType.applePay ? Color.primary : Palette.screen,
-                                        in: RoundedRectangle(cornerRadius: 9, style: .continuous)
-                                    )
-                                Text(method.label)
-                                    .fontWeight(selected ? .semibold : .regular)
-                                    .foregroundStyle(.primary)
-                                Spacer()
-                                if selected {
-                                    Image(systemName: "checkmark").foregroundStyle(Palette.action).fontWeight(.semibold)
-                                }
-                            }
-                            .contentShape(Rectangle())
-                        }
-                        .buttonStyle(.plain)
-                        .accessibilityAddTraits(selected ? .isSelected : [])
-                    }
-                }
-            }
-            .safeAreaInset(edge: .bottom) {
-                if let order = state.order {
-                    BottomAction(action: { model.viewModel.pay() }) {
-                        CapsuleLabel(title: LabelsKt.payButtonLabel(total: order.total))
-                    }
-                    .disabled(!state.canPay)
-                }
-            }
-            .navigationTitle("Payment")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button { model.viewModel.closePayment() } label: { Image(systemName: "xmark") }
-                        .accessibilityLabel("Close")
-                }
-            }
-        }
     }
 }
