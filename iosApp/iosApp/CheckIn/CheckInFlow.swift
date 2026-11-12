@@ -6,7 +6,7 @@ extension EnvironmentValues {
     @Entry var openCheckIn: (String) -> Void = { _ in }
 }
 
-/// Check-in from "On your way" to the seat check, with the QR scanner as the fallback.
+/// Check-in from "On your way" to the seat check (SEAT-01), with the QR scanner as the fallback.
 /// Closing it at any point keeps the draft, which Orders and the Discover banner both resume.
 /// Paying at the seat check swaps this flow for the order's ticket.
 struct CheckInFlow: View {
@@ -15,6 +15,7 @@ struct CheckInFlow: View {
     @State private var path: [Step] = []
     @Environment(\.dismiss) private var dismiss
     @Environment(\.openOrderTicket) private var openOrderTicket
+    @EnvironmentObject private var flow: AuthFlow
 
     private enum Step: Hashable {
         case scanner, seatCheck
@@ -39,9 +40,20 @@ struct CheckInFlow: View {
                     // The scanner is done once it checks in, so Back from the seat check returns to check-in.
                     QrScannerView(orderId: orderId) { path = [.seatCheck] }
                 case .seatCheck:
-                    SeatCheckView(model: model) {
-                        if let paidOrderId = model.viewModel.payAtCheckIn() { openOrderTicket(paidOrderId) }
-                    }
+                    SeatCheckView(
+                        orderId: orderId,
+                        // Back to check-in, which keeps the check-in, so Start Cooking asks again later.
+                        onWaitInLine: { path = [] },
+                        onSwitchedToTakeout: { storeId, storeName in
+                            dismiss()
+                            flow.showTakeoutCart(storeId: storeId, storeName: storeName)
+                        },
+                        onExit: {
+                            dismiss()
+                            flow.showDiscover()
+                        },
+                        onPaid: { openOrderTicket($0) }
+                    )
                 }
             }
         }

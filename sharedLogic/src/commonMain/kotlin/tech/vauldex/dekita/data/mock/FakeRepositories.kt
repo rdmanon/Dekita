@@ -75,6 +75,9 @@ interface StoreFeedSimulator {
 
     /** Switches a store's service mode (In-store only, Pickup only or both), as the store's own app would. */
     fun setBusinessType(storeId: String, businessType: BusinessType)
+
+    /** SEAT-01: marks every seat taken, or free again. See [Store.seatsFull]. */
+    fun setSeatsFull(storeId: String, full: Boolean)
 }
 
 class FakeStoreRepository(
@@ -159,6 +162,11 @@ class FakeStoreRepository(
                 }
             }
         }
+        _stores.update { state -> if (state is LoadState.Success) LoadState.Success(updated) else state }
+    }
+
+    override fun setSeatsFull(storeId: String, full: Boolean) {
+        val updated = feed.updateAndGet { stores -> stores.map { if (it.id == storeId) it.copy(seatsFull = full) else it } }
         _stores.update { state -> if (state is LoadState.Success) LoadState.Success(updated) else state }
     }
 
@@ -326,6 +334,10 @@ class FakeCartRepository : CartRepository, Resettable {
         }
     }
 
+    override fun restore(cart: Cart) {
+        _cart.value = cart.takeUnless { it.isEmpty }
+    }
+
     override fun clear() {
         _cart.value = null
     }
@@ -404,14 +416,14 @@ class FakeOrderRepository(
         return order
     }
 
-    override fun payAtCheckIn(orderId: String): Order? {
+    override fun payAtCheckIn(orderId: String, paymentMethodId: String?): Order? {
         var result: Order? = null
         _orders.update { state ->
             result = null
             val orders = state.dataOrNull() ?: return@update state
             val draft = orders.firstOrNull { it.id == orderId }?.takeIf { it.awaitsCheckIn && it.checkIn != null }
                 ?: return@update state
-            val order = paid(draft) ?: return@update state
+            val order = paid(draft, paymentMethodId ?: DEFAULT_PAYMENT_METHOD_ID) ?: return@update state
             result = order
             LoadState.Success(orders.map { if (it.id == orderId) order else it })
         }
@@ -471,12 +483,15 @@ class FakeOrderRepository(
         _orders.update { state -> if (state is LoadState.Success) LoadState.Success(listOf(order) + state.data) else state }
     }
 
-    /** The draft after a mock payment with the default method: PAID for pickup, QUEUED for in-store. Null if it isn't a draft. */
-    private fun paid(draft: Order): Order? {
+    /**
+     * The draft after a mock payment with [paymentMethodId] (the default method unless the seat check picked
+     * one): PAID for pickup, QUEUED for in-store. Null if it isn't a draft.
+     */
+    private fun paid(draft: Order, paymentMethodId: String = DEFAULT_PAYMENT_METHOD_ID): Order? {
         if (draft.status != OrderStatus.DRAFT) return null
         val next = OrderStatusMachine.nextStatus(draft.status, draft.mode) ?: return null
         val accepted = OrderStatusMachine.transition(draft, next, clock.now()) as? TransitionResult.Accepted ?: return null
-        return accepted.order.copy(paymentMethodId = DEFAULT_PAYMENT_METHOD_ID)
+        return accepted.order.copy(paymentMethodId = paymentMethodId)
     }
 
     /**
@@ -494,6 +509,20 @@ class FakeOrderRepository(
                 if (now.canConfirm) autoComplete(orderId) else advance(orderId)
             }
         }
+    }
+
+    override fun discardDraft(orderId: String): Order? {
+        var removed: Order? = null
+        _orders.update { state ->
+            removed = null
+            val orders = state.dataOrNull() ?: return@update state
+            val draft = orders.firstOrNull { it.id == orderId && it.status == OrderStatus.DRAFT } ?: return@update state
+            removed = draft
+            LoadState.Success(orders - draft)
+        }
+        // A reload keeps orders made in this session, so the draft must leave that list too.
+        removed?.let { draft -> created.update { list -> list.filterNot { it.id == draft.id } } }
+        return removed
     }
 
     override fun checkIn(orderId: String, checkIn: CheckIn): Boolean {

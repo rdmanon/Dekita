@@ -35,6 +35,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.serialization.Serializable
 import tech.vauldex.dekita.R
 import tech.vauldex.dekita.di.AppContainer
+import tech.vauldex.dekita.domain.PaymentType
 import tech.vauldex.dekita.presentation.account.AccountViewModel
 import tech.vauldex.dekita.presentation.auth.EmailAuthMode
 import tech.vauldex.dekita.presentation.auth.EmailAuthViewModel
@@ -45,6 +46,7 @@ import tech.vauldex.dekita.presentation.auth.SignInViewModel
 import tech.vauldex.dekita.presentation.cart.CartReviewViewModel
 import tech.vauldex.dekita.presentation.checkin.CheckInViewModel
 import tech.vauldex.dekita.presentation.checkin.QrScannerViewModel
+import tech.vauldex.dekita.presentation.checkin.SeatCheckViewModel
 import tech.vauldex.dekita.presentation.discover.DiscoverViewModel
 import tech.vauldex.dekita.presentation.discover.FavoritesViewModel
 import tech.vauldex.dekita.presentation.discover.HistoryViewModel
@@ -378,9 +380,20 @@ private fun NavGraphBuilder.checkInDestinations(container: AppContainer, navCont
         val orderId = entry.toRoute<SeatCheckRoute>().orderId
         SeatCheckScreen(
             viewModel = viewModel {
-                CheckInViewModel(orderId, container.orderRepository, container.storeRepository, container.locationRepository)
+                SeatCheckViewModel(
+                    orderId,
+                    container.orderRepository,
+                    container.storeRepository,
+                    container.cartRepository,
+                    container.paymentRepository,
+                    PaymentType.GOOGLE_PAY,
+                )
             },
             onBack = { if (entry.isResumed()) navController.popBackStack() },
+            onSwitchedToTakeout = { storeId -> navController.openTakeoutCart(storeId) },
+            // Back to check-in, which keeps the check-in, so Start Cooking brings the seat check back.
+            onWaitInLine = { navController.popBackStack<SeatCheckRoute>(inclusive = true) },
+            onExit = { navController.leaveCheckInForDiscover() },
             onPaid = { paidOrderId ->
                 // Check-in is over once the order is paid, so Back from the ticket leaves the whole flow.
                 navController.navigate(OrderTicketRoute(paidOrderId)) { popUpTo<CheckInRoute> { inclusive = true } }
@@ -428,6 +441,27 @@ private fun NavGraphBuilder.orderDestinations(container: AppContainer, navContro
             onDone = { if (entry.isResumed()) navController.popBackStack() },
         )
     }
+}
+
+/**
+ * SEAT-01 Switch to Takeout: closes check-in and opens Cart Review on the store's menu, so "Add more items"
+ * and Back lead there. Reuses the store screen when check-in was opened from it (the "Head to store" path).
+ */
+private fun NavController.openTakeoutCart(storeId: String) {
+    popBackStack<CheckInRoute>(inclusive = true)
+    val onStore = currentBackStackEntry?.takeIf { it.destination.hasRoute(StoreDetailRoute::class) }
+        ?.toRoute<StoreDetailRoute>()?.storeId == storeId
+    if (!onStore) {
+        navigateToTab(TopLevelTab.DISCOVER)
+        navigate(StoreDetailRoute(storeId))
+    }
+    navigate(CartRoute)
+}
+
+/** SEAT-01 Cancel / Exit: closes check-in and returns to Discover. The draft is kept. */
+private fun NavController.leaveCheckInForDiscover() {
+    popBackStack<CheckInRoute>(inclusive = true)
+    if (!popBackStack<DiscoverRoute>(inclusive = false)) navigateToTab(TopLevelTab.DISCOVER)
 }
 
 private fun NavController.navigateToTab(tab: TopLevelTab) {

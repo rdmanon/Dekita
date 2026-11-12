@@ -32,7 +32,6 @@ import tech.vauldex.dekita.data.mock.FakeStoreRepository
 import tech.vauldex.dekita.data.mock.MockConfig
 import tech.vauldex.dekita.domain.CheckIn
 import tech.vauldex.dekita.domain.CheckInMethod
-import tech.vauldex.dekita.domain.OrderStatus
 import tech.vauldex.dekita.domain.QrScanResult
 import tech.vauldex.dekita.domain.SsoProvider
 import tech.vauldex.dekita.domain.StoreAvailability
@@ -254,25 +253,6 @@ class CheckInViewModelTest {
         assertEquals(draftId, discover.state.value.draftToResume?.id)
         assertEquals("Test Ramen Bar", discover.state.value.lastOrderStoreName)
         assertEquals("store-test-ramen-bar", fixture.simulator.draftStoreId)
-    }
-
-    @Test
-    fun payAtCheckInPaysTheCheckedInDraftOnce() = runTest(mainDispatcher) {
-        // ORDER-01: the seat check's mock payment starts the kitchen and opens the ticket.
-        val fixture = fixture()
-        val viewModel = checkInViewModel(fixture)
-        finishLoading()
-        assertNull(viewModel.payAtCheckIn(), "Not checked in yet")
-
-        fixture.simulator.simulateArrival()
-        runCurrent()
-        assertTrue(viewModel.startCooking())
-
-        assertEquals(draftId, viewModel.payAtCheckIn())
-        assertEquals(OrderStatus.QUEUED, fixture.orders.orders.value.dataOrNull()?.first { it.id == draftId }?.status)
-        assertNull(viewModel.payAtCheckIn(), "A second tap pays nothing")
-        runCurrent()
-        assertNull(viewModel.state.value.draft, "A paid order is no longer waiting for check-in")
     }
 
     @Test

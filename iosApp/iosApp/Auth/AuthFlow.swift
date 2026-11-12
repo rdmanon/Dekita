@@ -59,6 +59,23 @@ final class AuthFlow: ObservableObject {
         }
     }
 
+    /// SEAT-01 Switch to Takeout: Cart Review on the store's menu, so "Add more items" and Back lead there.
+    func showTakeoutCart(storeId: String, storeName: String) {
+        let routes = NavigationPath([DiscoverRoute.store(id: storeId, name: storeName), DiscoverRoute.cart])
+        if selection == .search {
+            searchPath = routes
+        } else {
+            selection = .discover
+            discoverPath = routes
+        }
+    }
+
+    /// SEAT-01 Cancel / Exit: back to Discover. The draft is kept.
+    func showDiscover() {
+        selection = .discover
+        discoverPath = NavigationPath()
+    }
+
     private func showFreshDiscover() {
         discoverPath = NavigationPath()
         searchPath = NavigationPath()
