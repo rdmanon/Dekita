@@ -5,12 +5,15 @@ import SharedLogic
 /// editable lines, totals and one checkout button. The button follows the store's business type: single-mode
 /// stores pay now; stores with both offer Eat-In ("Head to store", a DRAFT order) or Takeout ("Pay now").
 /// A guest's checkout opens sign-in as a sheet over this screen, so finishing it lands back here unchanged.
+/// "Pay now" opens the payment sheet (PAY-01); a fresh one each time, so every checkout gets its own id.
 struct CartReviewView: View {
     @EnvironmentObject private var flow: AuthFlow
     @Environment(\.dismiss) private var dismiss
     @Environment(\.openCheckIn) private var openCheckIn
     @Environment(\.openOrderTicket) private var openOrderTicket
     @StateObject private var model = CartReviewModel()
+    @State private var showPayment = false
+    @State private var paidOrderId: String?
 
     var body: some View {
         let state = model.state
@@ -113,12 +116,24 @@ struct CartReviewView: View {
                 // The cart is now a draft order: close it, then check in over the tabs (CHECKIN-01).
                 flow.popTop()
                 openCheckIn(saved.orderId)
-            } else if let placed = event as? CartReviewEventOrderPlaced {
-                // The cart is now a paid order: close it, then show the ticket over the tabs (ORDER-01).
-                flow.popTop()
-                openOrderTicket(placed.orderId)
+            } else if event is CartReviewEventOpenPayment {
+                showPayment = true
             }
         }
+        .sheet(isPresented: $showPayment, onDismiss: openPaidTicket) {
+            CartPaymentSheet { orderId in
+                paidOrderId = orderId
+                showPayment = false
+            }
+        }
+    }
+
+    /// Once the sheet is gone: the cart is paid and empty, so close it and show the ticket over the tabs (PAY-01).
+    private func openPaidTicket() {
+        guard let orderId = paidOrderId else { return }
+        paidOrderId = nil
+        flow.popTop()
+        openOrderTicket(orderId)
     }
 
     private var editPresented: Binding<Bool> {
@@ -126,6 +141,19 @@ struct CartReviewView: View {
             get: { model.state.editSheet != nil },
             set: { if !$0 { model.viewModel.closeEdit() } }
         )
+    }
+}
+
+/// The payment sheet for the cart. It owns its model, so closing the sheet ends that checkout.
+private struct CartPaymentSheet: View {
+    let onPaid: (String) -> Void
+    @StateObject private var model = PaymentModel()
+
+    var body: some View {
+        PaymentSheetView(model: model)
+            .onReceive(model.events) { event in
+                if let paid = event as? PaymentEventPaid { onPaid(paid.orderId) }
+            }
     }
 }
 

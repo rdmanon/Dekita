@@ -29,8 +29,10 @@ import tech.vauldex.dekita.data.mock.FakeLocationRepository
 import tech.vauldex.dekita.data.mock.FakeMenuRepository
 import tech.vauldex.dekita.data.mock.FakeOrderRepository
 import tech.vauldex.dekita.data.mock.FakePaymentRepository
+import tech.vauldex.dekita.data.mock.FakePaymentService
 import tech.vauldex.dekita.data.mock.FakeStoreRepository
 import tech.vauldex.dekita.data.mock.MockConfig
+import tech.vauldex.dekita.data.mock.SeedPaymentIds
 import tech.vauldex.dekita.data.mock.SeedStoreIds
 import tech.vauldex.dekita.data.mock.seedItem
 import tech.vauldex.dekita.data.mock.seedSampleCart
@@ -42,13 +44,16 @@ import tech.vauldex.dekita.domain.CheckoutAction
 import tech.vauldex.dekita.domain.FulfillmentMode
 import tech.vauldex.dekita.domain.Order
 import tech.vauldex.dekita.domain.OrderStatus
-import tech.vauldex.dekita.domain.PaymentType
+import tech.vauldex.dekita.domain.ClientPlatform
 import tech.vauldex.dekita.domain.SsoProvider
 import tech.vauldex.dekita.domain.StoreAvailability
 import tech.vauldex.dekita.presentation.cart.CartReviewViewModel
 import tech.vauldex.dekita.presentation.collectEvents
 import tech.vauldex.dekita.presentation.discover.DiscoverViewModel
 import tech.vauldex.dekita.presentation.orders.OrdersViewModel
+import tech.vauldex.dekita.presentation.payment.PaymentEvent
+import tech.vauldex.dekita.presentation.payment.PaymentTarget
+import tech.vauldex.dekita.presentation.payment.PaymentViewModel
 
 /** SEAT-01: the seat question after check-in, the store-full fallbacks, and resuming a kept draft. */
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -80,9 +85,13 @@ class SeatCheckViewModelTest {
         val orders = FakeOrderRepository(scope, config, object : Clock {
             override fun now() = Instant.fromEpochSeconds(1_800_000_000)
         })
+        val service = FakePaymentService(orders, payments, config)
 
-        fun seatCheck(orderId: String, wallet: PaymentType = PaymentType.APPLE_PAY) =
-            SeatCheckViewModel(orderId, orders, stores, cart, payments, wallet)
+        fun seatCheck(orderId: String) = SeatCheckViewModel(orderId, orders, stores, cart)
+
+        /** PAY-01's payment sheet for the draft, as the seat check opens it on iOS. */
+        fun paymentSheet(orderId: String) =
+            PaymentViewModel(PaymentTarget.Draft(orderId), ClientPlatform.IOS, service, payments, cart, orders, stores)
 
         fun order(id: String): Order? = orders.orders.value.dataOrNull()?.firstOrNull { it.id == id }
     }
@@ -98,14 +107,14 @@ class SeatCheckViewModelTest {
      * Signed in, with the sample cart (Test Ramen Bar, 2 items) saved as an Eat-In draft and checked in at
      * "Test Ramen Bar" (CHECKIN-01), then the seat check opened by Start Cooking.
      */
-    private fun TestScope.checkedIn(wallet: PaymentType = PaymentType.APPLE_PAY): Triple<Fixture, Order, SeatCheckViewModel> {
+    private fun TestScope.checkedIn(): Triple<Fixture, Order, SeatCheckViewModel> {
         val f = Fixture(backgroundScope)
         finishLoading()
         backgroundScope.launch { f.auth.signInWith(SsoProvider.APPLE) }
         finishLoading()
         val draft = f.orders.createDraft(seedSampleCart(), "Test Ramen Bar")
         assertTrue(f.orders.checkIn(draft.id, CheckIn(CheckInMethod.GEOFENCE)))
-        val viewModel = f.seatCheck(draft.id, wallet)
+        val viewModel = f.seatCheck(draft.id)
         backgroundScope.launch { viewModel.state.collect {} }
         runCurrent()
         return Triple(f, draft, viewModel)
@@ -114,7 +123,7 @@ class SeatCheckViewModelTest {
     // Gherkin scenarios
 
     @Test
-    fun scenario1_seatConfirmedOpensOneTapPayment() = runTest(mainDispatcher) {
+    fun scenario1_seatConfirmedOpensThePaymentSheet() = runTest(mainDispatcher) {
         val (f, draft, seat) = checkedIn()
         assertEquals("Test Ramen Bar", seat.state.value.store?.name)
         assertEquals(SeatCheckStep.QUESTION, seat.state.value.step)
@@ -122,23 +131,23 @@ class SeatCheckViewModelTest {
         seat.answerSeat(hasSeat = true)
         runCurrent()
 
-        val state = seat.state.value
-        assertEquals(SeatCheckStep.PAYMENT, state.step)
-        // 1-tap: this platform's wallet is listed first and already picked.
-        assertEquals(PaymentType.APPLE_PAY, state.paymentMethods.first().type)
-        assertEquals(PaymentType.APPLE_PAY, state.selectedMethod?.type)
-        assertTrue(state.paymentMethods.none { it.type == PaymentType.GOOGLE_PAY })
-        assertTrue(state.canPay)
+        assertEquals(SeatCheckStep.PAYMENT, seat.state.value.step)
+        assertTrue(seat.state.value.showsPayment)
 
-        val events = collectEvents(seat.events)
-        seat.pay()
+        // PAY-01's sheet charges the saved method in one tap; its Paid event opens the ticket (ORDER-01).
+        val sheet = f.paymentSheet(draft.id)
+        backgroundScope.launch { sheet.state.collect {} }
+        val payments = collectEvents(sheet.events)
         runCurrent()
-        // Paying opens the order's ticket (ORDER-01).
-        assertEquals(listOf<SeatCheckEvent>(SeatCheckEvent.Paid(draft.id)), events)
+        sheet.pay()
+        finishLoading()
+        assertEquals(listOf<PaymentEvent>(PaymentEvent.Paid(draft.id, draft.number)), payments)
+        seat.markPaid(draft.id)
+        runCurrent()
         assertEquals(draft.id, seat.state.value.paidOrderId)
         val sent = assertNotNull(f.order(draft.id))
         assertEquals(OrderStatus.QUEUED, sent.status)
-        assertEquals(state.selectedMethodId, sent.paymentMethodId)
+        assertEquals(SeedPaymentIds.TEST_CARD, sent.paymentMethodId)
         // The check-in is kept on the order for the ticket.
         assertEquals(CheckInMethod.GEOFENCE, sent.checkIn?.method)
         assertFalse(seat.state.value.isUnavailable)
@@ -288,20 +297,8 @@ class SeatCheckViewModelTest {
         f.stores.setAvailability(SeedStoreIds.RAMEN_BAR, StoreAvailability.PAUSED)
         runCurrent()
 
-        assertFalse(seat.state.value.canPay)
-        seat.pay()
-        runCurrent()
+        assertFalse(seat.state.value.showsPayment)
         assertEquals(OrderStatus.DRAFT, f.order(draft.id)?.status)
-    }
-
-    @Test
-    fun androidListsGooglePayFirstAndNotApplePay() = runTest(mainDispatcher) {
-        val (_, _, seat) = checkedIn(wallet = PaymentType.GOOGLE_PAY)
-
-        val methods = seat.state.value.paymentMethods
-        assertEquals(PaymentType.GOOGLE_PAY, methods.first().type)
-        assertTrue(methods.none { it.type == PaymentType.APPLE_PAY })
-        assertEquals(PaymentType.GOOGLE_PAY, seat.state.value.selectedMethod?.type)
     }
 
     @Test
@@ -315,7 +312,7 @@ class SeatCheckViewModelTest {
         assertTrue(seat.state.value.isUnavailable)
         seat.answerSeat(hasSeat = true)
         runCurrent()
-        assertFalse(seat.state.value.canPay)
+        assertFalse(seat.state.value.showsPayment)
     }
 
     @Test

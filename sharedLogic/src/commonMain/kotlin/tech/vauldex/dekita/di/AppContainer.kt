@@ -11,6 +11,7 @@ import tech.vauldex.dekita.data.LocationRepository
 import tech.vauldex.dekita.data.MenuRepository
 import tech.vauldex.dekita.data.OrderRepository
 import tech.vauldex.dekita.data.PaymentRepository
+import tech.vauldex.dekita.data.PaymentService
 import tech.vauldex.dekita.data.QrScanner
 import tech.vauldex.dekita.data.StoreRepository
 import tech.vauldex.dekita.data.mock.CheckInSimulator
@@ -22,6 +23,7 @@ import tech.vauldex.dekita.data.mock.FakeLocationRepository
 import tech.vauldex.dekita.data.mock.FakeMenuRepository
 import tech.vauldex.dekita.data.mock.FakeOrderRepository
 import tech.vauldex.dekita.data.mock.FakePaymentRepository
+import tech.vauldex.dekita.data.mock.FakePaymentService
 import tech.vauldex.dekita.data.mock.FakeQrScanner
 import tech.vauldex.dekita.data.mock.FakeStoreRepository
 import tech.vauldex.dekita.data.mock.MockConfig
@@ -43,6 +45,7 @@ class AppContainer(
     private val cart = FakeCartRepository()
     private val orders = FakeOrderRepository(scope, mockConfig, clock)
     private val payments = FakePaymentRepository(scope, mockConfig)
+    private val charges = FakePaymentService(orders, payments, mockConfig)
     private val inbox = FakeInboxRepository(scope, mockConfig, clock)
     private val auth = FakeAuthRepository(mockConfig)
     private val location = FakeLocationRepository()
@@ -53,6 +56,7 @@ class AppContainer(
     val cartRepository: CartRepository get() = cart
     val orderRepository: OrderRepository get() = orders
     val paymentRepository: PaymentRepository get() = payments
+    val paymentService: PaymentService get() = charges
     val inboxRepository: InboxRepository get() = inbox
     val authRepository: AuthRepository get() = auth
     val locationRepository: LocationRepository get() = location
@@ -89,7 +93,7 @@ class AppContainer(
 
     /** Puts every repository back to the seed data, with the loading delay. Also signs out. */
     fun resetMockData() {
-        listOf(stores, menus, cart, orders, payments, inbox, auth, location).forEach { it.reset() }
+        listOf(stores, menus, cart, orders, payments, charges, inbox, auth, location).forEach { it.reset() }
     }
 
     companion object {

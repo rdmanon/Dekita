@@ -91,8 +91,8 @@ sealed interface CartReviewEvent {
     /** A guest tapped the checkout button; sign-in comes back here afterwards. */
     data object RequireSignIn : CartReviewEvent
 
-    /** "Pay now" paid for the cart and placed the order. Show its ticket (ORDER-01) for [orderId]. */
-    data class OrderPlaced(val orderId: String) : CartReviewEvent
+    /** "Pay now" when signed in: open the payment sheet (PAY-01) over Cart Review. The cart is kept until it's paid. */
+    data object OpenPayment : CartReviewEvent
 
     /** "Head to store" saved the cart as a DRAFT order. Show check-in (CHECKIN-01) for [orderId]. */
     data class DraftSaved(val orderId: String, val orderNumber: Int, val storeName: String) : CartReviewEvent
@@ -187,9 +187,8 @@ class CartReviewViewModel(
     }
 
     /**
-     * The one checkout button. Guests are sent to sign-in first. "Pay now" pays, places the order, empties the
-     * cart and opens its ticket; "Head to store" saves a DRAFT order, empties the cart and opens check-in.
-     * A second tap does nothing, because the cart is already empty.
+     * The one checkout button. Guests are sent to sign-in first. "Pay now" opens the payment sheet, which charges
+     * the cart in the mode shown here; "Head to store" saves a DRAFT order, empties the cart and opens check-in.
      */
     fun checkout() {
         val current = currentState()
@@ -201,11 +200,9 @@ class CartReviewViewModel(
         }
         when (current.action) {
             CheckoutAction.PAY_NOW -> {
-                val store = current.store ?: return
-                // shortcut: a mock payment with the default method. PAY-01 puts the payment sheet in front of this.
-                val order = orderRepository.placeOrder(cart.copy(mode = current.mode ?: cart.mode), store.name)
-                cartRepository.clear()
-                _events.trySend(CartReviewEvent.OrderPlaced(order.id))
+                // The sheet charges the cart as it is, so it must hold the mode this screen shows.
+                current.mode?.let { if (it != cart.mode) cartRepository.setMode(it) }
+                _events.trySend(CartReviewEvent.OpenPayment)
             }
             CheckoutAction.HEAD_TO_STORE -> {
                 val store = current.store ?: return

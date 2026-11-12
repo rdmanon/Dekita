@@ -13,6 +13,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.painterResource
 import androidx.lifecycle.Lifecycle
@@ -35,7 +38,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.serialization.Serializable
 import tech.vauldex.dekita.R
 import tech.vauldex.dekita.di.AppContainer
-import tech.vauldex.dekita.domain.PaymentType
+import tech.vauldex.dekita.domain.ClientPlatform
 import tech.vauldex.dekita.presentation.account.AccountViewModel
 import tech.vauldex.dekita.presentation.auth.EmailAuthMode
 import tech.vauldex.dekita.presentation.auth.EmailAuthViewModel
@@ -53,6 +56,8 @@ import tech.vauldex.dekita.presentation.discover.HistoryViewModel
 import tech.vauldex.dekita.presentation.orders.OrderTicketViewModel
 import tech.vauldex.dekita.presentation.orders.OrdersViewModel
 import tech.vauldex.dekita.presentation.orders.RateOrderViewModel
+import tech.vauldex.dekita.presentation.payment.PaymentTarget
+import tech.vauldex.dekita.presentation.payment.PaymentViewModel
 import tech.vauldex.dekita.presentation.store.StoreDetailViewModel
 import tech.vauldex.dekita.ui.account.AccountScreen
 import tech.vauldex.dekita.ui.auth.EmailAuthScreen
@@ -70,6 +75,8 @@ import tech.vauldex.dekita.ui.discover.HistoryScreen
 import tech.vauldex.dekita.ui.orders.OrderTicketScreen
 import tech.vauldex.dekita.ui.orders.OrdersScreen
 import tech.vauldex.dekita.ui.orders.RateOrderScreen
+import tech.vauldex.dekita.ui.payment.CollectPaymentEvents
+import tech.vauldex.dekita.ui.payment.PaymentSheet
 import tech.vauldex.dekita.ui.store.StoreDetailScreen
 
 // One nested graph per tab, so each tab keeps its own back stack when you switch away and back.
@@ -220,6 +227,24 @@ fun AppShell(
                     )
                 }
                 composable<CartRoute> { entry ->
+                    var showPayment by rememberSaveable { mutableStateOf(false) }
+                    val payment = viewModel {
+                        PaymentViewModel(
+                            PaymentTarget.Cart,
+                            ClientPlatform.ANDROID,
+                            container.paymentService,
+                            container.paymentRepository,
+                            container.cartRepository,
+                            container.orderRepository,
+                            container.storeRepository,
+                        )
+                    }
+                    CollectPaymentEvents(payment) { orderId ->
+                        navController.navigate(OrderTicketRoute(orderId)) {
+                            // The cart is paid and empty, so Back from the ticket skips it.
+                            popUpTo<CartRoute> { inclusive = true }
+                        }
+                    }
                     CartReviewScreen(
                         viewModel = viewModel {
                             CartReviewViewModel(
@@ -234,19 +259,15 @@ fun AppShell(
                         // The cart is opened from its store's screen, so the menu is one step back.
                         onBrowseMenu = { if (entry.isResumed()) navController.popBackStack() },
                         onSignInRequired = { if (entry.isResumed()) navController.navigate(SignInRoute()) },
+                        onPayNow = { showPayment = true },
                         onDraftSaved = { orderId ->
                             navController.navigate(CheckInRoute(orderId)) {
                                 // The cart is now a draft order, so Back from check-in skips the empty cart.
                                 popUpTo<CartRoute> { inclusive = true }
                             }
                         },
-                        onOrderPlaced = { orderId ->
-                            navController.navigate(OrderTicketRoute(orderId)) {
-                                // The cart is now a paid order, so Back from the ticket skips the empty cart.
-                                popUpTo<CartRoute> { inclusive = true }
-                            }
-                        },
                     )
+                    if (showPayment) PaymentSheet(payment, onDismiss = { showPayment = false })
                 }
             }
             navigation<OrdersGraph>(startDestination = OrdersRoute) {
@@ -380,13 +401,18 @@ private fun NavGraphBuilder.checkInDestinations(container: AppContainer, navCont
         val orderId = entry.toRoute<SeatCheckRoute>().orderId
         SeatCheckScreen(
             viewModel = viewModel {
-                SeatCheckViewModel(
-                    orderId,
+                SeatCheckViewModel(orderId, container.orderRepository, container.storeRepository, container.cartRepository)
+            },
+            // "Yes, I have a seat" opens PAY-01's payment sheet for the draft. Android offers Google Pay as its wallet.
+            payment = viewModel {
+                PaymentViewModel(
+                    PaymentTarget.Draft(orderId),
+                    ClientPlatform.ANDROID,
+                    container.paymentService,
+                    container.paymentRepository,
+                    container.cartRepository,
                     container.orderRepository,
                     container.storeRepository,
-                    container.cartRepository,
-                    container.paymentRepository,
-                    PaymentType.GOOGLE_PAY,
                 )
             },
             onBack = { if (entry.isResumed()) navController.popBackStack() },

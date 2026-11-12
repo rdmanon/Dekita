@@ -71,6 +71,17 @@ struct DebugPanelView: View {
 
                 checkInSection(state: state, bridge: bridge)
                 seatSection(state: state, bridge: bridge)
+
+                Section {
+                    Toggle("Decline every payment", isOn: Binding(
+                        get: { state.forcePaymentDecline },
+                        set: { bridge.setForcePaymentDecline(on: $0) }
+                    ))
+                } header: {
+                    Text("Payments")
+                } footer: {
+                    Text("Without this, \"Test Visa •••• 0002\" always declines and the rest succeed. Add Card takes published test numbers only, such as 4242 4242 4242 4242.")
+                }
             }
             .navigationTitle("Debug Panel")
             .navigationBarTitleDisplayMode(.inline)
