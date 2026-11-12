@@ -43,6 +43,7 @@ import androidx.compose.ui.unit.dp
 import tech.vauldex.dekita.R
 import tech.vauldex.dekita.domain.FulfillmentMode
 import tech.vauldex.dekita.domain.Order
+import tech.vauldex.dekita.ui.debug.DebugPanelAction
 
 /** The search bar at the top of Discover. Search covers store names and item names. */
 @Composable
@@ -107,6 +108,8 @@ internal fun DiscoverSearchField(
                 )
             }
         }
+        // Debug builds only, as on iOS Discover: the panel opens over the list, which changes live.
+        DebugPanelAction()
     }
 }
 

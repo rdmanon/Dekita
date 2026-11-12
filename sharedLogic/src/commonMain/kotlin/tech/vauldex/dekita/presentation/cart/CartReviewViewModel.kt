@@ -30,7 +30,6 @@ import tech.vauldex.dekita.domain.ItemDraft
 import tech.vauldex.dekita.domain.MAX_QUANTITY
 import tech.vauldex.dekita.domain.Menu
 import tech.vauldex.dekita.domain.MenuItem
-import tech.vauldex.dekita.domain.ModifierOption
 import tech.vauldex.dekita.domain.Session
 import tech.vauldex.dekita.domain.Store
 import tech.vauldex.dekita.domain.StoreAvailability
@@ -38,6 +37,7 @@ import tech.vauldex.dekita.domain.checkoutAction
 import tech.vauldex.dekita.domain.letsCustomerChooseMode
 import tech.vauldex.dekita.domain.resolveMode
 import tech.vauldex.dekita.presentation.ITEM_SOLD_OUT_MESSAGE
+import tech.vauldex.dekita.presentation.OPTION_SOLD_OUT_MESSAGE
 import tech.vauldex.dekita.presentation.STOP_TIMEOUT_MILLIS
 import tech.vauldex.dekita.presentation.STORE_NOT_TAKING_ORDERS_MESSAGE
 import tech.vauldex.dekita.presentation.choiceLabel
@@ -261,9 +261,9 @@ class CartReviewViewModel(
         val draft = editing.draft.withItem(live ?: editing.draft.item)
         val reason = when {
             store == null || !store.isAcceptingOrders -> STORE_NOT_TAKING_ORDERS_MESSAGE
-            // Gone from a loaded menu, sold out, or a picked option sold out.
-            (menu != null && live == null) || draft.item.isSoldOut || draft.selected.values.flatten().any { it.soldOutIn(draft.item) } ->
-                ITEM_SOLD_OUT_MESSAGE
+            // Gone from a loaded menu, or sold out.
+            (menu != null && live == null) || draft.item.isSoldOut -> ITEM_SOLD_OUT_MESSAGE
+            draft.soldOutSelections.isNotEmpty() -> OPTION_SOLD_OUT_MESSAGE
             mode !in draft.item.availableModes ->
                 "Only for ${draft.item.availableModes.joinToString(" or ") { it.label }} orders"
             else -> null
@@ -272,17 +272,14 @@ class CartReviewViewModel(
     }
 }
 
-/** True when the live item has this option sold out, or no longer has it. */
-private fun ModifierOption.soldOutIn(liveItem: MenuItem): Boolean =
-    liveItem.modifierGroups.flatMap { it.options }.firstOrNull { it.id == id }?.isSoldOut ?: true
-
 /**
- * Why a line can't be ordered: the live item or one of its options is sold out or gone, or the item is
- * only offered in the other mode. Null when it can.
+ * Why a line can't be ordered: the live item is sold out or gone ("Sold out"), one of its options is
+ * ("Corn sold out"), or the item is only offered in the other mode. Null when it can.
  */
 private fun CartLine.unavailableReason(menu: Menu?, mode: FulfillmentMode, canChooseMode: Boolean): String? {
     val live = if (menu == null) item else menu.items.firstOrNull { it.id == item.id } ?: return "Sold out"
-    if (live.isSoldOut || selectedOptions.any { it.soldOutIn(live) }) return "Sold out"
+    if (live.isSoldOut) return "Sold out"
+    selectedOptions.firstOrNull { live.hasSoldOut(it) }?.let { return "${it.name} sold out" }
     if (mode !in live.availableModes) {
         val only = live.availableModes.joinToString(" or ") { if (canChooseMode) it.choiceLabel else it.label }
         return "$only only"

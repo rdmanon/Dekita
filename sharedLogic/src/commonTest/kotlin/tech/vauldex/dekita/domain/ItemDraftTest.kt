@@ -70,4 +70,26 @@ class ItemDraftTest {
         val b = shoyu.toggle("ramen-toppings", "topping-nori").toggle("ramen-toppings", "topping-egg")
         assertEquals(a.toCartLine().lineId, b.toCartLine().lineId)
     }
+
+    @Test
+    fun aPickedOptionThatSellsOutBlocksAddUntilItIsRemoved() {
+        val withEgg = shoyu.toggle("ramen-spice", "ramen-spice-medium").toggle("ramen-toppings", "topping-egg")
+        val eggGone = withEgg.withItem(withEgg.item.withOption("topping-egg") { it.copy(isSoldOut = true) })
+
+        assertEquals(listOf("topping-egg"), eggGone.soldOutSelections.map { it.id })
+        assertFalse(eggGone.canAdd)
+
+        val toppings = eggGone.item.modifierGroups.first { it.id == "ramen-toppings" }
+        val egg = toppings.options.first { it.id == "topping-egg" }
+        assertTrue(eggGone.canToggle(toppings, egg), "A picked option can be removed after it sells out")
+        val removed = eggGone.toggle("ramen-toppings", "topping-egg")
+        assertTrue(removed.canAdd)
+        assertFalse(removed.canToggle(toppings, egg), "It can't be picked again while sold out")
+    }
+
+    private fun MenuItem.withOption(optionId: String, change: (ModifierOption) -> ModifierOption) = copy(
+        modifierGroups = modifierGroups.map { group ->
+            group.copy(options = group.options.map { if (it.id == optionId) change(it) else it })
+        },
+    )
 }

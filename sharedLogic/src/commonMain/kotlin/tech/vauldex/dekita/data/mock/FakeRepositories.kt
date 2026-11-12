@@ -21,6 +21,7 @@ import tech.vauldex.dekita.data.MenuRepository
 import tech.vauldex.dekita.data.OrderRepository
 import tech.vauldex.dekita.data.PaymentRepository
 import tech.vauldex.dekita.data.StoreRepository
+import tech.vauldex.dekita.domain.BusinessType
 import tech.vauldex.dekita.domain.Cart
 import tech.vauldex.dekita.domain.CartLine
 import tech.vauldex.dekita.domain.CheckIn
@@ -29,6 +30,7 @@ import tech.vauldex.dekita.domain.FavoriteItem
 import tech.vauldex.dekita.domain.FulfillmentMode
 import tech.vauldex.dekita.domain.InboxMessage
 import tech.vauldex.dekita.domain.Menu
+import tech.vauldex.dekita.domain.MenuItem
 import tech.vauldex.dekita.domain.Order
 import tech.vauldex.dekita.domain.OrderStatus
 import tech.vauldex.dekita.domain.OrderStatusMachine
@@ -59,6 +61,9 @@ interface StoreFeedSimulator {
 
     /** Moves a store's queue by [delta] orders, as orders come in or are served. Never below zero. */
     fun adjustQueue(storeId: String, delta: Int)
+
+    /** Switches a store's service mode (In-store only, Pickup only or both), as the store's own app would. */
+    fun setBusinessType(storeId: String, businessType: BusinessType)
 }
 
 class FakeStoreRepository(
@@ -112,6 +117,13 @@ class FakeStoreRepository(
             stores.map { if (it.id == storeId) it.withAvailability(availability) else it }
         }
         // Push to anyone showing the feed. A load in flight reads the updated feed when it finishes.
+        _stores.update { state -> if (state is LoadState.Success) LoadState.Success(updated) else state }
+    }
+
+    override fun setBusinessType(storeId: String, businessType: BusinessType) {
+        val updated = feed.updateAndGet { stores ->
+            stores.map { if (it.id == storeId) it.copy(businessType = businessType) else it }
+        }
         _stores.update { state -> if (state is LoadState.Success) LoadState.Success(updated) else state }
     }
 
@@ -190,8 +202,11 @@ private fun Store.withQueueOffset(offset: Int): Store {
 
 /** Debug-panel-only changes to a menu, as the store's own app would push them. */
 interface MenuSimulator {
-    /** Marks an item sold out or back on sale in a menu that is already loaded. */
+    /** Marks an item sold out or back on sale. A menu that is open changes at once; one opened later loads it. */
     fun setItemSoldOut(storeId: String, itemId: String, soldOut: Boolean)
+
+    /** Marks an option sold out or back on sale on every item of the store that offers it. */
+    fun setOptionSoldOut(storeId: String, optionId: String, soldOut: Boolean)
 }
 
 class FakeMenuRepository(
@@ -201,30 +216,51 @@ class FakeMenuRepository(
 
     private val menus = mutableMapOf<String, MutableStateFlow<LoadState<Menu>>>()
 
+    /** What the "server" holds now. Loads read it, and live changes are applied to it first. */
+    private val feed = MutableStateFlow(seedMenus)
+
     override fun menu(storeId: String): StateFlow<LoadState<Menu>> =
         menus.getOrPut(storeId) {
             MutableStateFlow<LoadState<Menu>>(LoadState.Loading).also { load(storeId, it) }
         }.asStateFlow()
 
-    override fun setItemSoldOut(storeId: String, itemId: String, soldOut: Boolean) {
-        menus[storeId]?.update { state ->
-            val menu = (state as? LoadState.Success)?.data ?: return@update state
-            LoadState.Success(menu.copy(items = menu.items.map { if (it.id == itemId) it.copy(isSoldOut = soldOut) else it }))
+    override fun setItemSoldOut(storeId: String, itemId: String, soldOut: Boolean) =
+        change(storeId) { menu ->
+            menu.copy(items = menu.items.map { if (it.id == itemId) it.copy(isSoldOut = soldOut) else it })
         }
-    }
+
+    override fun setOptionSoldOut(storeId: String, optionId: String, soldOut: Boolean) =
+        change(storeId) { menu ->
+            menu.copy(items = menu.items.map { item -> item.withOptionSoldOut(optionId, soldOut) })
+        }
 
     override fun reset() {
+        feed.value = seedMenus
         menus.forEach { (storeId, flow) -> load(storeId, flow) }
     }
 
+    private fun change(storeId: String, transform: (Menu) -> Menu) {
+        val updated = feed.updateAndGet { all -> all[storeId]?.let { all + (storeId to transform(it)) } ?: all }[storeId] ?: return
+        // Push to anyone showing the menu. A load in flight reads the updated feed when it finishes.
+        menus[storeId]?.update { state -> if (state is LoadState.Success) LoadState.Success(updated) else state }
+    }
+
     private fun load(storeId: String, target: MutableStateFlow<LoadState<Menu>>) {
-        val menu = seedMenus[storeId]
-        if (menu == null) {
+        if (feed.value[storeId] == null) {
             target.value = LoadState.Error("No menu for store $storeId")
         } else {
-            scope.simulateLoad(target, config) { menu }
+            scope.simulateLoad(target, config) { feed.value.getValue(storeId) }
         }
     }
+}
+
+private fun MenuItem.withOptionSoldOut(optionId: String, soldOut: Boolean): MenuItem {
+    if (modifierGroups.none { group -> group.options.any { it.id == optionId } }) return this
+    return copy(
+        modifierGroups = modifierGroups.map { group ->
+            group.copy(options = group.options.map { if (it.id == optionId) it.copy(isSoldOut = soldOut) else it })
+        },
+    )
 }
 
 class FakeCartRepository : CartRepository, Resettable {

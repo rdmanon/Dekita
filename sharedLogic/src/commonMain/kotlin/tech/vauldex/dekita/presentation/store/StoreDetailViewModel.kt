@@ -21,6 +21,7 @@ import tech.vauldex.dekita.domain.ItemDraft
 import tech.vauldex.dekita.domain.Menu
 import tech.vauldex.dekita.domain.Store
 import tech.vauldex.dekita.presentation.ITEM_SOLD_OUT_MESSAGE
+import tech.vauldex.dekita.presentation.OPTION_SOLD_OUT_MESSAGE
 import tech.vauldex.dekita.presentation.STOP_TIMEOUT_MILLIS
 import tech.vauldex.dekita.presentation.STORE_NOT_TAKING_ORDERS_MESSAGE
 import tech.vauldex.dekita.presentation.label
@@ -42,7 +43,10 @@ data class StoreDetailUiState(
     val sheet: ItemSheetState? = null,
     /** The other store's name while Add waits for the customer to agree to start a new cart. */
     val pendingReplaceStoreName: String? = null,
-)
+) {
+    /** False while the store is paused or full, so every menu row shows Add as off. */
+    val canOrder: Boolean get() = store?.isAcceptingOrders == true
+}
 
 enum class AddResult { ADDED, NEEDS_REPLACE, NOT_ADDED }
 
@@ -148,6 +152,7 @@ class StoreDetailViewModel(
         val reason = when {
             store == null || !store.isAcceptingOrders -> STORE_NOT_TAKING_ORDERS_MESSAGE
             current.item.isSoldOut -> ITEM_SOLD_OUT_MESSAGE
+            current.soldOutSelections.isNotEmpty() -> OPTION_SOLD_OUT_MESSAGE
             mode != null && mode !in current.item.availableModes ->
                 "Only for ${current.item.availableModes.joinToString(" or ") { it.label }} orders"
             else -> null
@@ -155,9 +160,12 @@ class StoreDetailViewModel(
         return ItemSheetState(current, reason)
     }
 
-    /** This store's cart mode, else the mode picked on Discover if the store offers it, else the store's first mode. */
+    /**
+     * This store's cart mode, else the mode picked on Discover, else the store's first mode. Each only counts
+     * while the store still offers it, so a switch to one mode takes effect at once.
+     */
     private fun orderMode(store: Store, cart: Cart?, preferred: FulfillmentMode?): FulfillmentMode =
-        cart?.takeIf { it.storeId == storeId }?.mode
+        cart?.takeIf { it.storeId == storeId }?.mode?.takeIf { store.supports(it) }
             ?: preferred?.takeIf { store.supports(it) }
             ?: store.businessType.supportedModes.first()
 }

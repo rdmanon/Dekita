@@ -55,6 +55,9 @@ struct StoreScreen: View {
         .navigationTitle(name)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
+            if AppBuild.isDebug {
+                ToolbarItem(placement: .topBarTrailing) { DebugPanelButton() }
+            }
             ToolbarItem(placement: .topBarTrailing) {
                 Button { favorite.toggle() } label: {
                     Image(systemName: favorite.isFavorite ? "heart.fill" : "heart")
@@ -73,7 +76,7 @@ struct StoreScreen: View {
                         let items = menu.itemsIn(categoryId: category.id)
                         ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
                             Button { model.viewModel.openItem(itemId: item.id) } label: {
-                                MenuItemRowView(item: item)
+                                MenuItemRowView(item: item, canOrder: model.state.canOrder)
                             }
                             .buttonStyle(.plain)
                             .disabled(item.isSoldOut)
@@ -218,8 +221,11 @@ private struct NotAcceptingOrdersBanner: View {
 }
 
 /// A placeholder menu row: name, description, price and options, with a sold-out or mode badge.
+/// Orderable items end with the iOS-Menu artboard's add button, dimmed while the store isn't accepting
+/// orders. It is decorative: the row opens the sheet, which says why Add is off.
 private struct MenuItemRowView: View {
     let item: MenuItem
+    let canOrder: Bool
 
     var body: some View {
         HStack(spacing: 12) {
@@ -243,6 +249,16 @@ private struct MenuItemRowView: View {
                     .frame(minHeight: 22)
                     .foregroundStyle(badge.colors.foreground)
                     .background(badge.colors.background, in: Capsule())
+            }
+            if !item.isSoldOut {
+                Image(systemName: "plus")
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundStyle(Palette.link)
+                    .frame(width: 28, height: 28)
+                    .background(Palette.card, in: Circle())
+                    .shadow(color: .black.opacity(0.18), radius: 4, y: 2)
+                    .opacity(canOrder ? 1 : 0.35)
+                    .accessibilityHidden(true)
             }
         }
         .padding(.horizontal, 16)

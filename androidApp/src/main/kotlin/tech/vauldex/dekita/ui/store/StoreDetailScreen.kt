@@ -4,6 +4,7 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -13,6 +14,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.Icon
@@ -56,6 +58,7 @@ import tech.vauldex.dekita.ui.components.LoadingIndicator
 import tech.vauldex.dekita.ui.components.SectionTitle
 import tech.vauldex.dekita.ui.components.StatusPill
 import tech.vauldex.dekita.ui.components.StoreArt
+import tech.vauldex.dekita.ui.debug.DebugPanelAction
 import tech.vauldex.dekita.ui.debug.LocalOpenDebugPanel
 import tech.vauldex.dekita.ui.theme.DekitaTheme
 import tech.vauldex.dekita.ui.theme.Dimens
@@ -84,6 +87,7 @@ fun StoreDetailScreen(viewModel: StoreDetailViewModel, onBack: () -> Unit, onVie
                     }
                 },
                 actions = {
+                    DebugPanelAction()
                     if (store != null) {
                         IconToggleButton(checked = state.isFavorite, onCheckedChange = { viewModel.toggleFavorite() }) {
                             Icon(
@@ -129,7 +133,7 @@ fun StoreDetailScreen(viewModel: StoreDetailViewModel, onBack: () -> Unit, onVie
                         SectionTitle(category.name, Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface))
                     }
                     items(menu.data.itemsIn(category.id), key = { it.id }) { item ->
-                        MenuItemRow(item) { viewModel.openItem(item.id) }
+                        MenuItemRow(item, canOrder = state.canOrder) { viewModel.openItem(item.id) }
                     }
                 }
             }
@@ -209,8 +213,13 @@ private fun StoreHeader(store: Store) {
     }
 }
 
+/**
+ * A menu row. Orderable items end with the Android-Menu artboard's tonal add button, which turns off with the
+ * rest of the store's ordering while it isn't accepting orders. The row still opens the sheet so the menu
+ * can be read.
+ */
 @Composable
-private fun MenuItemRow(item: MenuItem, onClick: () -> Unit) {
+private fun MenuItemRow(item: MenuItem, canOrder: Boolean, onClick: () -> Unit) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(16.dp),
@@ -241,5 +250,25 @@ private fun MenuItemRow(item: MenuItem, onClick: () -> Unit) {
             item.availableModes == setOf(FulfillmentMode.IN_STORE) -> StatusPill("In-store only", DekitaTheme.colors.inStore)
             item.availableModes == setOf(FulfillmentMode.PICKUP) -> StatusPill("Pickup only", DekitaTheme.colors.pickup)
         }
+        if (!item.isSoldOut) AddAffordance(enabled = canOrder)
+    }
+}
+
+/** Decorative: tapping the row opens the sheet. Dimmed like a disabled control while the store is paused. */
+@Composable
+private fun AddAffordance(enabled: Boolean) {
+    Box(
+        contentAlignment = Alignment.Center,
+        modifier = Modifier
+            .size(40.dp)
+            .alpha(if (enabled) 1f else 0.38f)
+            .background(MaterialTheme.colorScheme.primaryContainer, CircleShape),
+    ) {
+        Icon(
+            painterResource(R.drawable.ic_add),
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.onPrimaryContainer,
+            modifier = Modifier.size(22.dp),
+        )
     }
 }
