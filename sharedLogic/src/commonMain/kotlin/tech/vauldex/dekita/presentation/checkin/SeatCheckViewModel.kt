@@ -126,7 +126,7 @@ class SeatCheckViewModel(
         local.update { it.copy(step = if (hasSeat) SeatCheckStep.PAYMENT else SeatCheckStep.NO_SEAT) }
     }
 
-    /** Closing the payment sheet goes back to the question. */
+    /** Closing the payment sheet, or leaving it without paying (PAY-02), goes back to the question. */
     fun closePayment() {
         if (currentState().step == SeatCheckStep.PAYMENT) local.update { it.copy(step = null) }
     }

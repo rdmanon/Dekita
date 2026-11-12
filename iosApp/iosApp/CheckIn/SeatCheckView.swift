@@ -85,6 +85,9 @@ struct SeatCheckView: View {
                 // Marking it paid closes the sheet; the ticket opens once it has.
                 paidFromSheet = paid.orderId
                 model.viewModel.markPaid(paidOrderId: paid.orderId)
+            } else if event is PaymentEventClosed {
+                // Left without paying (PAY-02): back to the question, still checked in.
+                model.viewModel.closePayment()
             }
         }
     }

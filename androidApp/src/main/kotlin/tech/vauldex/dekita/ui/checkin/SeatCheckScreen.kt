@@ -88,10 +88,15 @@ fun SeatCheckScreen(
     val currentOnSwitched by rememberUpdatedState(onSwitchedToTakeout)
     val currentOnWait by rememberUpdatedState(onWaitInLine)
     val currentOnExit by rememberUpdatedState(onExit)
-    CollectPaymentEvents(payment) { orderId ->
-        viewModel.markPaid(orderId)
-        onPaid(orderId)
-    }
+    CollectPaymentEvents(
+        payment,
+        onPaid = { orderId ->
+            viewModel.markPaid(orderId)
+            onPaid(orderId)
+        },
+        // Left without paying (PAY-02): back to the question, still checked in.
+        onClosed = viewModel::closePayment,
+    )
     LaunchedEffect(viewModel) {
         viewModel.events.collect { event ->
             when (event) {

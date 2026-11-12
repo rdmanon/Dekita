@@ -14,12 +14,14 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.SheetValue
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
@@ -33,8 +35,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -57,7 +61,10 @@ import tech.vauldex.dekita.ui.theme.Dimens
  * The payment sheet (PAY-01), laid out as the Android Payment artboard: what is being paid for, the total, the
  * methods as a connected group, Add card, and Pay. Pay shows a spinner and turns off while charging, and the sheet
  * can't be closed then. PayPay, Rakuten Pay and Google Pay open their mock approval screen over it.
- * The caller collects [PaymentEvent.Paid] with [CollectPaymentEvents], so it can navigate even with the sheet closed.
+ * A decline replaces Pay with Retry, Use another method and Cancel (PAY-02). Back, swiping down and Close all dismiss
+ * the sheet onto the screen behind it, Cart Review or the seat check, with nothing changed.
+ * The caller collects [PaymentEvent.Paid] and [PaymentEvent.Closed] with [CollectPaymentEvents]: it navigates on Paid,
+ * and closes the sheet on Closed (Cancel after a decline, or Cancel on the PayPay or Rakuten Pay page).
  */
 @Composable
 internal fun PaymentSheet(viewModel: PaymentViewModel, onDismiss: () -> Unit) {
@@ -108,6 +115,8 @@ internal fun PaymentSheet(viewModel: PaymentViewModel, onDismiss: () -> Unit) {
                     onSelect = viewModel::selectMethod,
                     onAddCard = { showAddCard = true },
                     onPay = viewModel::pay,
+                    onUseAnotherMethod = viewModel::useAnotherMethod,
+                    onCancel = viewModel::cancel,
                 )
             }
         }
@@ -119,12 +128,20 @@ internal fun PaymentSheet(viewModel: PaymentViewModel, onDismiss: () -> Unit) {
     }
 }
 
-/** Runs [onPaid] once the charge goes through, with the paid order's id. */
+/**
+ * Runs [onPaid] once the charge goes through, with the paid order's id, and [onClosed] when the customer leaves
+ * without paying: close the sheet then, so they are back on Cart Review or the seat check with nothing changed.
+ */
 @Composable
-internal fun CollectPaymentEvents(viewModel: PaymentViewModel, onPaid: (orderId: String) -> Unit) {
+internal fun CollectPaymentEvents(
+    viewModel: PaymentViewModel,
+    onPaid: (orderId: String) -> Unit,
+    onClosed: () -> Unit,
+) {
     CollectEvents(viewModel.events) { event ->
         when (event) {
             is PaymentEvent.Paid -> onPaid(event.orderId)
+            PaymentEvent.Closed -> onClosed()
         }
     }
 }
@@ -135,6 +152,8 @@ private fun ColumnScope.PaymentSheetContent(
     onSelect: (String) -> Unit,
     onAddCard: () -> Unit,
     onPay: () -> Unit,
+    onUseAnotherMethod: () -> Unit,
+    onCancel: () -> Unit,
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
         Text(state.summary, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -143,7 +162,11 @@ private fun ColumnScope.PaymentSheetContent(
             style = MaterialTheme.typography.displaySmall.copy(fontSize = 36.sp, lineHeight = 44.sp),
             fontWeight = FontWeight.Bold,
         )
-        Text("Tax included", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(
+            "Tax included",
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
     }
 
     Column(verticalArrangement = Arrangement.spacedBy(2.dp), modifier = Modifier.selectableGroup()) {
@@ -163,19 +186,61 @@ private fun ColumnScope.PaymentSheetContent(
         Text("Add card", modifier = Modifier.padding(start = 8.dp))
     }
 
-    state.errorMessage?.let { ErrorBanner(it) }
-    PrimaryButton(
-        text = state.payButtonLabel,
-        onClick = onPay,
-        enabled = state.canPay,
-        loading = state.isProcessing,
-    )
+    val error = state.errorMessage
+    if (state.isDeclined && error != null) {
+        DeclinedCard(error, onRetry = onPay, onUseAnotherMethod = onUseAnotherMethod, onCancel = onCancel)
+    } else {
+        error?.let { ErrorBanner(it) }
+        PrimaryButton(
+            text = state.payButtonLabel,
+            onClick = onPay,
+            enabled = state.canPay,
+            loading = state.isProcessing,
+        )
+    }
     Text(
         "Mockup: no real payment is made.",
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
         modifier = Modifier.align(Alignment.CenterHorizontally),
     )
+}
+
+/**
+ * A decline, inline on the sheet (PAY-02): what happened in plain words, then Retry (the selected method, which can be
+ * changed above first), Use another method, and Cancel back to Cart Review or the seat check. Screen readers announce
+ * it.
+ */
+@Composable
+private fun DeclinedCard(message: String, onRetry: () -> Unit, onUseAnotherMethod: () -> Unit, onCancel: () -> Unit) {
+    Surface(
+        color = MaterialTheme.colorScheme.errorContainer,
+        contentColor = MaterialTheme.colorScheme.onErrorContainer,
+        shape = MaterialTheme.shapes.large,
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.padding(16.dp)) {
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Icon(painterResource(R.drawable.ic_error), contentDescription = null, modifier = Modifier.size(20.dp))
+                Text(
+                    message,
+                    style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
+                )
+            }
+            PrimaryButton(text = "Retry", onClick = onRetry)
+            Row(horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
+                TextButton(
+                    onClick = onUseAnotherMethod,
+                    colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.onErrorContainer),
+                ) { Text("Use another method") }
+                TextButton(
+                    onClick = onCancel,
+                    colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.onErrorContainer),
+                ) { Text("Cancel") }
+            }
+        }
+    }
 }
 
 @Composable

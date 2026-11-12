@@ -56,11 +56,11 @@ enum class PaymentPhase {
     /** Charging. Pay is off and the sheet can't be closed. */
     PROCESSING,
 
-    /** The method was declined; nothing was charged. PAY-02 adds retry handling; until then the sheet says so. */
+    /**
+     * The method was declined; nothing was charged (PAY-02). The sheet shows the error with Retry, Use another method
+     * and Cancel. Picking another method keeps the error up, so Retry charges the newly picked one.
+     */
     DECLINED,
-
-    /** The customer cancelled on the mock approval screen; nothing was charged. */
-    CANCELLED,
 
     /** The draft can't be paid any more, for example after a reset. Nothing was charged. */
     UNAVAILABLE,
@@ -86,7 +86,10 @@ data class PaymentUiState(
 
     val isProcessing: Boolean get() = phase == PaymentPhase.PROCESSING
 
-    /** Pay is on when a method is chosen and no charge or approval is under way. */
+    /** True after a decline: the sheet shows the error with Retry, Use another method and Cancel in place of Pay. */
+    val isDeclined: Boolean get() = phase == PaymentPhase.DECLINED
+
+    /** Pay, or Retry after a decline, is on when a method is chosen and no charge or approval is under way. */
     val canPay: Boolean
         get() = !isLoading && total != null && selectedMethod != null && phase in retryablePhases
 
@@ -101,31 +104,41 @@ data class PaymentUiState(
 
     val payButtonLabel: String get() = total?.let { "Pay ${it.formatted()}" } ?: "Pay"
 
-    /** Under the methods: why the last attempt failed. Null when there is nothing to say. */
+    /**
+     * Under the methods: why the last attempt failed, in plain words. Never a provider or internal error code.
+     * Null when there is nothing to say.
+     */
     val errorMessage: String?
         get() = when (phase) {
-            PaymentPhase.DECLINED -> "Payment declined. You weren't charged. Try again or choose another method."
-            PaymentPhase.CANCELLED ->
-                "Payment cancelled. You weren't charged, and your ${if (isEatIn) "order" else "cart"} is kept."
+            PaymentPhase.DECLINED -> "Your payment didn't go through, so you weren't charged. " +
+                "Retry, or use another method. Your ${if (isEatIn) "order" else "cart"} is kept."
             PaymentPhase.UNAVAILABLE -> "This order can't be paid any more. You weren't charged."
             else -> null
         }
 
     private companion object {
-        val retryablePhases = setOf(PaymentPhase.READY, PaymentPhase.DECLINED, PaymentPhase.CANCELLED)
+        val retryablePhases = setOf(PaymentPhase.READY, PaymentPhase.DECLINED)
     }
 }
 
 sealed interface PaymentEvent {
     /** The charge went through and the order is PAID or QUEUED. Open its ticket. */
     data class Paid(val orderId: String, val orderNumber: Int) : PaymentEvent
+
+    /**
+     * The customer left without paying (PAY-02): Cancel after a decline, or Cancel on the PayPay or Rakuten Pay page.
+     * Close the sheet onto the screen behind it, Cart Review or the seat check. The cart, or the checked-in draft,
+     * is unchanged.
+     */
+    data object Closed : PaymentEvent
 }
 
 /**
- * The payment sheet (PAY-01), opened by "Pay now" on Cart Review or by the seat check's Yes (SEAT-01). Every method is
- * simulated. A card is charged when Pay is tapped; PayPay, Rakuten Pay and the wallets first open a mock approval
- * screen. Pay turns off as soon as it is tapped, and the payment service is idempotent on this sheet's checkout id,
- * so a double tap makes one order.
+ * The payment sheet (PAY-01, PAY-02), opened by "Pay now" on Cart Review or by the seat check's Yes (SEAT-01).
+ * Every method is simulated. A card is charged when Pay is tapped; PayPay, Rakuten Pay and the wallets first open
+ * a mock approval screen. Pay turns off as soon as it is tapped, and the payment service is idempotent on this
+ * sheet's checkout id, so a double tap makes one order, and so does a Retry after a decline. Nothing here ever
+ * changes the cart or the draft unless the charge goes through, so every way out of the sheet leaves them as they were.
  */
 class PaymentViewModel(
     private val target: PaymentTarget,
@@ -146,6 +159,9 @@ class PaymentViewModel(
     private val phase = MutableStateFlow(PaymentPhase.READY)
     private val selectedId = MutableStateFlow<String?>(null)
 
+    /** The method that was last declined, so Use another method can move off it. */
+    private var declinedId: String? = null
+
     /** The paid order, so the sheet keeps its summary after the cart empties and the draft moves on. */
     private val paidOrder = MutableStateFlow<Order?>(null)
 
@@ -157,7 +173,10 @@ class PaymentViewModel(
             val modeLabel = { mode: FulfillmentMode -> mode.orderLabel(store?.businessType) }
             LoadState.Success(
                 paid?.let { payableOf(it, modeLabel(it.mode)) }
-                    ?: cart?.takeUnless { it.isEmpty }?.let { Payable(summaryOf(store?.name.orEmpty(), modeLabel(it.mode), it.itemCount), store?.name.orEmpty(), it.total) },
+                    ?: cart?.takeUnless { it.isEmpty }?.let {
+                        val storeName = store?.name.orEmpty()
+                        Payable(summaryOf(storeName, modeLabel(it.mode), it.itemCount), storeName, it.total)
+                    },
             )
         }
         // Drafts only exist at stores with both modes, so the mode always reads "Eat-In".
@@ -185,17 +204,47 @@ class PaymentViewModel(
                 phase = phase,
                 isEatIn = target is PaymentTarget.Draft,
             )
-        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_TIMEOUT_MILLIS), PaymentUiState(isEatIn = target is PaymentTarget.Draft))
+        }.stateIn(
+            viewModelScope,
+            SharingStarted.WhileSubscribed(STOP_TIMEOUT_MILLIS),
+            PaymentUiState(isEatIn = target is PaymentTarget.Draft),
+        )
 
     private val _events = Channel<PaymentEvent>(Channel.BUFFERED)
     val events: Flow<PaymentEvent> = _events.receiveAsFlow()
 
-    /** Picks a method. Ignored while a charge or an approval is under way. Clears the last attempt's error. */
+    /**
+     * Picks a method. Ignored while a charge or an approval is under way. After a decline the error stays up, so Retry
+     * then charges the method picked here.
+     */
     fun selectMethod(methodId: String) {
         if (phase.value !in retryablePhases) return
         if (offered(paymentRepository.methods.value.dataOrNull()).none { it.id == methodId }) return
         selectedId.value = methodId
+    }
+
+    /**
+     * "Use another method" after a decline: clears the error and moves the selection off the declined method, to the
+     * saved default or else the first other one, so Pay is ready on a method that wasn't just declined.
+     */
+    fun useAnotherMethod() {
+        if (phase.value != PaymentPhase.DECLINED) return
+        val offered = offered(paymentRepository.methods.value.dataOrNull())
+        if (currentMethod()?.id == declinedId) {
+            val others = offered.filter { it.id != declinedId }
+            (others.firstOrNull { it.isDefault } ?: others.firstOrNull())?.let { selectedId.value = it.id }
+        }
         phase.value = PaymentPhase.READY
+    }
+
+    /**
+     * "Cancel" after a decline: leave without paying. The sheet closes onto Cart Review, or the seat check for Eat-In,
+     * with the cart or the checked-in draft exactly as it was. Ignored while a charge is under way or after paying.
+     */
+    fun cancel() {
+        if (phase.value == PaymentPhase.PROCESSING || phase.value == PaymentPhase.PAID) return
+        phase.value = PaymentPhase.READY
+        _events.trySend(PaymentEvent.Closed)
     }
 
     /**
@@ -216,12 +265,20 @@ class PaymentViewModel(
         charge(method)
     }
 
-    /** "Cancel" on a mock approval screen. Nothing is charged and the cart or draft is kept. */
+    /**
+     * "Cancel" on a mock approval screen, or swiping it away. Nothing is charged and the cart or draft is kept. Leaving
+     * the PayPay or Rakuten Pay page leaves the payment too, back to Cart Review or the seat check; closing the Apple
+     * Pay or Google Pay sheet returns to the payment sheet, as the real wallets do.
+     */
     fun cancelApproval() {
-        if (phase.value == PaymentPhase.APPROVING) phase.value = PaymentPhase.CANCELLED
+        if (phase.value != PaymentPhase.APPROVING) return
+        if (currentMethod()?.type?.approval == PaymentApproval.REDIRECT) cancel() else phase.value = PaymentPhase.READY
     }
 
-    /** The sheet was closed: drops the last attempt's error. Never interrupts a charge or forgets a payment. */
+    /**
+     * The sheet was closed by Android's Back, iOS's swipe-down or the close button: drops the last attempt's error.
+     * The cart or draft is untouched. Never interrupts a charge or forgets a payment.
+     */
     fun reset() {
         if (phase.value != PaymentPhase.PROCESSING && phase.value != PaymentPhase.PAID) phase.value = PaymentPhase.READY
     }
@@ -256,7 +313,10 @@ class PaymentViewModel(
                     phase.value = PaymentPhase.PAID
                     _events.trySend(PaymentEvent.Paid(result.order.id, result.order.number))
                 }
-                PaymentResult.Declined -> phase.value = PaymentPhase.DECLINED
+                PaymentResult.Declined -> {
+                    declinedId = method.id
+                    phase.value = PaymentPhase.DECLINED
+                }
                 PaymentResult.OrderUnavailable -> phase.value = PaymentPhase.UNAVAILABLE
             }
         }
@@ -268,8 +328,8 @@ class PaymentViewModel(
             val store = storeRepository.stores.value.dataOrNull()?.firstOrNull { it.id == cart.storeId } ?: return null
             PaymentRequest.PayNow(checkoutId, cart, store.name)
         }
-        is PaymentTarget.Draft ->
-            payableDraft(orderRepository.orders.value.dataOrNull().orEmpty())?.let { PaymentRequest.PayDraft(checkoutId, it.id) }
+        is PaymentTarget.Draft -> payableDraft(orderRepository.orders.value.dataOrNull().orEmpty())
+            ?.let { PaymentRequest.PayDraft(checkoutId, it.id) }
     }
 
     /** The draft, once checked in: the geofence or a store or table QR has recorded arrival. */
@@ -297,6 +357,6 @@ class PaymentViewModel(
         listOf(storeName, modeLabel, itemCountLabel(itemCount)).filter { it.isNotEmpty() }.joinToString(" · ")
 
     private companion object {
-        val retryablePhases = setOf(PaymentPhase.READY, PaymentPhase.DECLINED, PaymentPhase.CANCELLED)
+        val retryablePhases = setOf(PaymentPhase.READY, PaymentPhase.DECLINED)
     }
 }

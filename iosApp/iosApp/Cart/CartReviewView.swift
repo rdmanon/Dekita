@@ -121,10 +121,13 @@ struct CartReviewView: View {
             }
         }
         .sheet(isPresented: $showPayment, onDismiss: openPaidTicket) {
-            CartPaymentSheet { orderId in
-                paidOrderId = orderId
-                showPayment = false
-            }
+            CartPaymentSheet(
+                onPaid: { orderId in
+                    paidOrderId = orderId
+                    showPayment = false
+                },
+                onClosed: { showPayment = false }
+            )
         }
     }
 
@@ -145,14 +148,20 @@ struct CartReviewView: View {
 }
 
 /// The payment sheet for the cart. It owns its model, so closing the sheet ends that checkout.
+/// Leaving without paying (PAY-02) closes it back onto Cart Review with the cart as it was. Never Home.
 private struct CartPaymentSheet: View {
     let onPaid: (String) -> Void
+    let onClosed: () -> Void
     @StateObject private var model = PaymentModel()
 
     var body: some View {
         PaymentSheetView(model: model)
             .onReceive(model.events) { event in
-                if let paid = event as? PaymentEventPaid { onPaid(paid.orderId) }
+                if let paid = event as? PaymentEventPaid {
+                    onPaid(paid.orderId)
+                } else if event is PaymentEventClosed {
+                    onClosed()
+                }
             }
     }
 }

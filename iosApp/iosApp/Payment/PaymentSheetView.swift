@@ -6,8 +6,11 @@ import SharedLogic
 /// sheet can't be swiped away then. PayPay, Rakuten Pay and Apple Pay open their mock approval screen over it.
 /// The sheet is only as tall as the form, as on Android, and grows when an error shows; on a short screen or at
 /// large text sizes the form scrolls instead.
-/// The presenter handles `PaymentEventPaid` from `model.events`, and calls `reset()` when a sheet it keeps the
-/// model for is dismissed. (Not `onDisappear`: the full-screen mock approval page would trigger it.)
+/// A decline replaces Pay with Retry, Use Another Method and Cancel (PAY-02); swiping down or Close dismisses the sheet
+/// onto the screen behind it, Cart Review or the seat check, with nothing changed.
+/// The presenter handles `PaymentEventPaid` and `PaymentEventClosed` from `model.events` (closing the sheet on Closed),
+/// and calls `reset()` when a sheet it keeps the model for is dismissed. (Not `onDisappear`: the full-screen mock
+/// approval page would trigger it.)
 struct PaymentSheetView: View {
     @ObservedObject var model: PaymentModel
     @Environment(\.dismiss) private var dismiss
@@ -108,20 +111,59 @@ struct PaymentSheetView: View {
         .disabled(!state.canChangeMethod)
         .background(Palette.card, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
 
-        if let error = state.errorMessage {
-            ErrorCard(message: error)
+        if state.isDeclined, let error = state.errorMessage {
+            DeclinedCard(
+                message: error,
+                onRetry: { model.viewModel.pay() },
+                onUseAnotherMethod: { model.viewModel.useAnotherMethod() },
+                onCancel: { model.viewModel.cancel() }
+            )
+        } else {
+            if let error = state.errorMessage {
+                ErrorCard(message: error)
+            }
+            Button { model.viewModel.pay() } label: {
+                CapsuleLabel(title: state.payButtonLabel, loading: state.isProcessing)
+            }
+            .buttonStyle(CapsuleButtonStyle())
+            .disabled(!state.canPay)
         }
-
-        Button { model.viewModel.pay() } label: {
-            CapsuleLabel(title: state.payButtonLabel, loading: state.isProcessing)
-        }
-        .buttonStyle(CapsuleButtonStyle())
-        .disabled(!state.canPay)
 
         Text("Mockup: no real payment is made.")
             .font(.footnote)
             .foregroundStyle(.secondary)
             .frame(maxWidth: .infinity)
+    }
+}
+
+/// A decline, inline on the sheet (PAY-02): what happened in plain words, then Retry (the selected method, which can be
+/// changed above first), Use Another Method, and Cancel back to Cart Review or the seat check. VoiceOver announces it.
+private struct DeclinedCard: View {
+    let message: String
+    let onRetry: () -> Void
+    let onUseAnotherMethod: () -> Void
+    let onCancel: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Label(message, systemImage: "exclamationmark.triangle.fill")
+                .font(.subheadline)
+                .foregroundStyle(Palette.error)
+            Button(action: onRetry) { CapsuleLabel(title: "Retry") }
+                .buttonStyle(CapsuleButtonStyle())
+            HStack {
+                Button("Use Another Method", action: onUseAnotherMethod)
+                Spacer()
+                Button("Cancel", action: onCancel)
+            }
+            .font(.subheadline.weight(.semibold))
+            .foregroundStyle(Palette.action)
+            .buttonStyle(.borderless)
+            .frame(minHeight: 44)
+        }
+        .padding(14)
+        .background(Palette.badge(.full).background, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .onAppear { UIAccessibility.post(notification: .announcement, argument: message) }
     }
 }
 

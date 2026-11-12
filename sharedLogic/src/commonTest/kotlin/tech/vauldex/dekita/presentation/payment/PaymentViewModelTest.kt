@@ -263,7 +263,7 @@ class PaymentViewModelTest {
         assertEquals(before + 1, f.orderList().size)
     }
 
-    // Failure and cancel: each method reaches one (PAY-02 adds retry)
+    // Failure and cancel: each method reaches one (PAY-02's exits are in PaymentRetryTest)
 
     @Test
     fun declineCardChargesNothingAndKeepsTheCart() = runTest(mainDispatcher) {
@@ -283,10 +283,10 @@ class PaymentViewModelTest {
         assertEquals(before, f.orderList())
         assertEquals(cart, f.cart.cart.value)
 
-        // Another method then goes through on the same sheet.
+        // Another method then goes through on the same sheet; the error stays until Retry.
         sheet.selectMethod(SeedPaymentIds.TEST_CARD)
         runCurrent()
-        assertNull(sheet.state.value.errorMessage)
+        assertTrue(sheet.state.value.isDeclined)
         sheet.pay()
         finishCharge()
         assertEquals(PaymentPhase.PAID, sheet.state.value.phase)
@@ -330,7 +330,7 @@ class PaymentViewModelTest {
             assertEquals(methodId, sheet.state.value.approvingMethod?.id, methodId)
             sheet.cancelApproval()
             runCurrent()
-            assertEquals(PaymentPhase.CANCELLED, sheet.state.value.phase, methodId)
+            assertEquals(PaymentPhase.READY, sheet.state.value.phase, methodId)
             assertEquals(before, f.orderList(), "$methodId: cancel charges nothing")
             assertNotNull(f.cart.cart.value, "$methodId: cancel keeps the cart")
 

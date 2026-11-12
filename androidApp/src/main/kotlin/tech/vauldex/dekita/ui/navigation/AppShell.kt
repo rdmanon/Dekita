@@ -239,12 +239,17 @@ fun AppShell(
                             container.storeRepository,
                         )
                     }
-                    CollectPaymentEvents(payment) { orderId ->
-                        navController.navigate(OrderTicketRoute(orderId)) {
-                            // The cart is paid and empty, so Back from the ticket skips it.
-                            popUpTo<CartRoute> { inclusive = true }
-                        }
-                    }
+                    CollectPaymentEvents(
+                        payment,
+                        onPaid = { orderId ->
+                            navController.navigate(OrderTicketRoute(orderId)) {
+                                // The cart is paid and empty, so Back from the ticket skips it.
+                                popUpTo<CartRoute> { inclusive = true }
+                            }
+                        },
+                        // Left without paying (PAY-02): back on Cart Review with the cart as it was. Never Home.
+                        onClosed = { showPayment = false },
+                    )
                     CartReviewScreen(
                         viewModel = viewModel {
                             CartReviewViewModel(
