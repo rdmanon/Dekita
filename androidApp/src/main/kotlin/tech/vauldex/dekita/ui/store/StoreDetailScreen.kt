@@ -35,6 +35,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExtendedFloatingActionButton
@@ -49,6 +50,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -120,7 +122,12 @@ fun StoreDetailScreen(viewModel: StoreDetailViewModel, onBack: () -> Unit, onVie
             return@Scaffold
         }
         Box(Modifier.fillMaxSize()) {
+            val listState = rememberLazyListState()
+            // The tab row sits third (hero, header, tabs). Once it sticks to the top it would slide under the status
+            // bar and the floating buttons, so it gets their height as top padding while stuck.
+            val tabsStuck by remember { derivedStateOf { listState.firstVisibleItemIndex >= 2 } }
             LazyColumn(
+                state = listState,
                 contentPadding = PaddingValues(
                     // Room under the last row for the cart button.
                     bottom = padding.calculateBottomPadding() + Dimens.ScreenPadding + if (state.cart != null) 88.dp else 0.dp,
@@ -134,7 +141,12 @@ fun StoreDetailScreen(viewModel: StoreDetailViewModel, onBack: () -> Unit, onVie
                     is LoadState.Error -> item(key = "menu-error") { Text(menu.message, Modifier.padding(Dimens.ScreenPadding)) }
                     is LoadState.Success -> {
                         if (state.tabs.isNotEmpty()) stickyHeader(key = "tabs") {
-                            MenuTabs(state.tabs, state.currentTab?.id, onSelect = viewModel::selectTab)
+                            MenuTabs(
+                                state.tabs,
+                                state.currentTab?.id,
+                                onSelect = viewModel::selectTab,
+                                modifier = if (tabsStuck) Modifier.statusBarsPadding().padding(top = FloatingRowHeight) else Modifier,
+                            )
                         }
                         items(state.visibleItems, key = { it.id }) { item ->
                             MenuItemRow(
@@ -202,6 +214,9 @@ fun StoreDetailScreen(viewModel: StoreDetailViewModel, onBack: () -> Unit, onVie
         )
     }
 }
+
+/** The floating button row's height under the status bar: 8 dp top padding, 48 dp buttons, 8 dp gap. */
+private val FloatingRowHeight = 64.dp
 
 private class FavoriteState(val isFavorite: Boolean, val onToggle: () -> Unit)
 
@@ -285,8 +300,9 @@ private fun StoreHeader(store: Store, modifier: Modifier = Modifier) {
 
 /** Underline tabs: the selected one is primary with a 3 dp indicator the width of its label. */
 @Composable
-private fun MenuTabs(tabs: List<MenuTab>, selectedId: String?, onSelect: (String) -> Unit) {
-    Box(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface)) {
+private fun MenuTabs(tabs: List<MenuTab>, selectedId: String?, onSelect: (String) -> Unit, modifier: Modifier = Modifier) {
+    // The background goes first so it also fills the top padding while the row is stuck under the buttons.
+    Box(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface).then(modifier)) {
         Row(
             modifier = Modifier
                 .horizontalScroll(rememberScrollState())

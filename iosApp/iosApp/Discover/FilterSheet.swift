@@ -35,7 +35,7 @@ struct FilterSheet: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
-                    Button("Clear All") { viewModel.clearFilters() }
+                    Button("Clear All") { viewModel.clearSheetFilters() }
                 }
             }
             .safeAreaInset(edge: .bottom) {
