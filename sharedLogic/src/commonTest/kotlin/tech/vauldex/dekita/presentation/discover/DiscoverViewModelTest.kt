@@ -155,6 +155,24 @@ class DiscoverViewModelTest {
     }
 
     @Test
+    fun sheetClearAllKeepsTheChipsAndMode() = runTest(mainDispatcher) {
+        val fixture = loadedFixture()
+        fixture.viewModel.selectMode(FulfillmentMode.PICKUP)
+        fixture.viewModel.toggleCategory("Curry")
+        fixture.viewModel.selectWalkLimit(WalkLimit.FIVE)
+        fixture.viewModel.toggleStatus(StoreAvailability.OPEN)
+        runCurrent()
+
+        fixture.viewModel.clearSheetFilters()
+        runCurrent()
+        val filters = fixture.viewModel.state.value.filters
+        assertNull(filters.walkLimit)
+        assertTrue(filters.statuses.isEmpty())
+        assertEquals(setOf("Curry"), filters.categories, "Chips aren't in the sheet, so its Clear all leaves them")
+        assertEquals(FulfillmentMode.PICKUP, filters.mode)
+    }
+
+    @Test
     fun searchStillShowsTheResultList() = runTest(mainDispatcher) {
         val fixture = loadedFixture()
         fixture.viewModel.setQuery("curry")

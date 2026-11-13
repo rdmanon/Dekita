@@ -208,8 +208,11 @@ fun AppShell(
                     )
                 }
                 composable<RecommendedRoute> { entry ->
-                    // Discover's own view model, so the chip filter carries over to this list.
-                    val discoverEntry = remember(entry) { navController.getBackStackEntry<DiscoverRoute>() }
+                    // Discover's own view model, so the chip filter carries over to this list. Without Discover
+                    // below (it can't happen today), fall back to this screen's own instance instead of crashing.
+                    val discoverEntry = remember(entry) {
+                        runCatching { navController.getBackStackEntry<DiscoverRoute>() }.getOrNull() ?: entry
+                    }
                     RecommendedScreen(
                         viewModel = viewModel(discoverEntry) {
                             DiscoverViewModel(

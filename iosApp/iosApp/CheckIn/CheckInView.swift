@@ -12,6 +12,11 @@ struct CheckInView: View {
     let onCheckedIn: () -> Void
     /// The sheet belongs to this screen: it goes away when the scanner or seat check is pushed, and returns on Back.
     @State private var panelShown = false
+    /// Opened on top of the panel, not from the screen: iOS shows one sheet at a time, so a second sheet from
+    /// the screen would dismiss the panel and leave no way to Start Cooking once it closed.
+    @State private var showDebugPanel = false
+
+    private var panelVisible: Bool { panelShown && model.state.draft != nil && !model.state.isLoading }
 
     var body: some View {
         let state = model.state
@@ -33,12 +38,17 @@ struct CheckInView: View {
         .background(Palette.screen)
         .onAppear { panelShown = true }
         .onDisappear { panelShown = false }
-        .sheet(isPresented: Binding(get: { panelShown && state.draft != nil && !state.isLoading }, set: { panelShown = $0 })) {
+        .sheet(isPresented: Binding(get: { panelVisible }, set: { panelShown = $0 })) {
             CheckInPanel(
                 state: model.state,
                 onStartCooking: { if model.viewModel.startCooking() { onCheckedIn() } },
                 onScanQr: onScanQr
             )
+            .sheet(isPresented: $showDebugPanel) { DebugPanelView() }
+        }
+        // Loading or nothing to check in: no panel, so the debug panel opens from the screen.
+        .sheet(isPresented: Binding(get: { showDebugPanel && !panelVisible }, set: { showDebugPanel = $0 })) {
+            DebugPanelView()
         }
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(.hidden, for: .navigationBar)
@@ -57,7 +67,11 @@ struct CheckInView: View {
                 }
             }
             if AppBuild.isDebug {
-                ToolbarItem(placement: .topBarTrailing) { DebugPanelButton() }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button { showDebugPanel = true } label: {
+                        Label("Debug panel", systemImage: "ladybug")
+                    }
+                }
             }
         }
     }

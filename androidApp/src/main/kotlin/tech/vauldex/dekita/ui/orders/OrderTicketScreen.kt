@@ -41,7 +41,6 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.LiveRegionMode
@@ -316,7 +315,8 @@ private fun StepMarker(state: StepState) {
     val modifier = Modifier.size(24.dp)
     when (state) {
         StepState.DONE -> Box(contentAlignment = Alignment.Center, modifier = modifier.background(DekitaTheme.colors.liveDot, CircleShape)) {
-            Icon(painterResource(R.drawable.ic_check), contentDescription = null, tint = Color.White, modifier = Modifier.size(14.dp))
+            // Surface, not white: the green is light in dark mode, where a white check would fail contrast.
+            Icon(painterResource(R.drawable.ic_check), contentDescription = null, tint = MaterialTheme.colorScheme.surface, modifier = Modifier.size(14.dp))
         }
         StepState.CURRENT -> Box(contentAlignment = Alignment.Center, modifier = modifier.border(BorderStroke(3.dp, primary), CircleShape)) {
             Box(Modifier.size(8.dp).background(primary, CircleShape))

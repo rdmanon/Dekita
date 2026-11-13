@@ -107,9 +107,11 @@ private struct ShortcutTile: View {
 }
 
 /// Capsule chips. Selected ones turn dark, as in the design. Discover allows several; the store tabs pass one.
+/// Chips are identified by `categories` (Discover's names, or the store's tab ids); `title` gives the text shown.
 struct CategoryChips: View {
     let categories: [String]
     let selected: Set<String>
+    var title: (String) -> String = { $0 }
     var horizontalPadding: CGFloat = 14
     let onToggle: (String) -> Void
 
@@ -119,7 +121,7 @@ struct CategoryChips: View {
                 ForEach(categories, id: \.self) { category in
                     let isOn = selected.contains(category)
                     Button { onToggle(category) } label: {
-                        Text(category)
+                        Text(title(category))
                             .font(.subheadline.weight(isOn ? .semibold : .medium))
                             .foregroundStyle(isOn ? Color(.systemBackground) : Color.primary)
                             .padding(.horizontal, horizontalPadding)

@@ -244,7 +244,7 @@ private struct StatusTimeline: View {
 
     /// The time a finished step was reached, in the device's time zone; the usual wait for the current one.
     private func note(for step: TicketStep) -> String? {
-        if step.state == .current { return cookingNote }
+        if step.state == .current, let cookingNote { return cookingNote }
         guard let seconds = step.atEpochSeconds?.int64Value else { return nil }
         return Date(timeIntervalSince1970: TimeInterval(seconds)).formatted(date: .omitted, time: .shortened)
     }

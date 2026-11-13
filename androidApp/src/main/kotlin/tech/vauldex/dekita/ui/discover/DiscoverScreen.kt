@@ -136,7 +136,7 @@ fun DiscoverScreen(
             resultCount = state.stores.size,
             onWalkLimit = viewModel::selectWalkLimit,
             onToggleStatus = viewModel::toggleStatus,
-            onClearAll = viewModel::clearFilters,
+            onClearAll = viewModel::clearSheetFilters,
             onDismiss = { showFilters = false },
         )
     }

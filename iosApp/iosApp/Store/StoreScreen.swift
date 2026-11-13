@@ -105,14 +105,15 @@ struct StoreScreen: View {
     @ViewBuilder
     private func menu(_ store: Store) -> some View {
         if model.state.loadedMenu != nil {
+            // By tab id, not name: a category could share a name with another tab (say, its own "Popular").
+            let tabs = model.state.tabs
             CategoryChips(
-                categories: model.state.tabs.map(\.name),
-                selected: Set([model.state.currentTab?.name].compactMap { $0 }),
+                categories: tabs.map(\.id),
+                selected: Set([model.state.currentTab?.id].compactMap { $0 }),
+                title: { id in tabs.first { $0.id == id }?.name ?? id },
                 horizontalPadding: 16
-            ) { name in
-                if let tab = model.state.tabs.first(where: { $0.name == name }) {
-                    model.viewModel.selectTab(tabId: tab.id)
-                }
+            ) { id in
+                model.viewModel.selectTab(tabId: id)
             }
             VStack(spacing: 0) {
                 if let empty = model.state.emptyTabMessage {

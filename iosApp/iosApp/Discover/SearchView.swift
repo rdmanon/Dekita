@@ -27,7 +27,8 @@ struct SearchView: View {
         // Opening the Search tab starts typing straight away. Only on tab switches, so coming back
         // from a store page doesn't pop the keyboard up again.
         .onChange(of: flow.selection, initial: true) { _, tab in
-            if tab == .search { searchFocused = true }
+            // Not with a store page pushed on top: the field it would focus isn't on screen.
+            if tab == .search && flow.searchPath.isEmpty { searchFocused = true }
         }
         .onChange(of: query) { _, newValue in
             model.viewModel.setQuery(query: newValue)

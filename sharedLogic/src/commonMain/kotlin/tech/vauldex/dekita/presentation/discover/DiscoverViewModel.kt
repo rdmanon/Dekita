@@ -105,6 +105,10 @@ class DiscoverViewModel(
         cartRepository.setPreferredMode(null)
     }
 
+    /** The Filters sheet's Clear all: only what the sheet shows (walking distance and status). The page's chips,
+     *  mode and search stay as they are. */
+    fun clearSheetFilters() = filters.update { it.copy(walkLimit = null, statuses = emptySet()) }
+
     fun retry() = storeRepository.refresh()
 
     private fun toUiState(
