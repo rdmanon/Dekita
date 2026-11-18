@@ -105,6 +105,9 @@ struct StoreScreen: View {
     @ViewBuilder
     private func menu(_ store: Store) -> some View {
         if model.state.loadedMenu != nil {
+            if model.state.canChooseMode, let mode = model.state.mode {
+                StoreModeSection(mode: mode) { model.viewModel.selectMode(mode: $0) }
+            }
             // By tab id, not name: a category could share a name with another tab (say, its own "Popular").
             let tabs = model.state.tabs
             CategoryChips(
@@ -264,6 +267,31 @@ private struct NotAcceptingOrdersBanner: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(16)
             .background(colors.background, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+    }
+}
+
+/// "How are you eating?" and the Eat-in / Takeout control, for stores with both modes. The menu below it
+/// lists only what the picked mode can order.
+private struct StoreModeSection: View {
+    let mode: FulfillmentMode
+    let onSelect: (FulfillmentMode) -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("How are you eating?")
+                .font(.headline)
+                .padding(.horizontal, 4)
+                .accessibilityAddTraits(.isHeader)
+            SegmentedCapsule(
+                label: "Order mode",
+                options: [
+                    (FulfillmentMode.inStore.choiceLabel, FulfillmentMode.inStore),
+                    (FulfillmentMode.pickup.choiceLabel, FulfillmentMode.pickup),
+                ],
+                selection: mode,
+                onSelect: onSelect
+            )
+        }
     }
 }
 

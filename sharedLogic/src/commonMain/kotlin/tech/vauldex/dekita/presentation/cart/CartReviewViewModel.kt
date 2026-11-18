@@ -73,10 +73,8 @@ data class CartReviewUiState(
     val store: Store? = null,
     val isSignedIn: Boolean = false,
     val lines: List<CartLineUi> = emptyList(),
-    /** The mode the order will use: fixed for single-mode stores, the customer's pick for stores with both. */
+    /** The mode the order will use: fixed for single-mode stores, the customer's pick on the menu for stores with both. */
     val mode: FulfillmentMode? = null,
-    /** True only for stores with both modes, which show the Eat-In / Takeout toggle. */
-    val canChooseMode: Boolean = false,
     val action: CheckoutAction = CheckoutAction.PAY_NOW,
     val block: CheckoutBlock? = null,
     /** The item sheet while a line is being edited; its button saves over that line. */
@@ -133,11 +131,6 @@ class CartReviewViewModel(
 
     private val _events = Channel<CartReviewEvent>(Channel.BUFFERED)
     val events: Flow<CartReviewEvent> = _events.receiveAsFlow()
-
-    /** Eat-In or Takeout. Ignored for single-mode stores, whose mode is fixed. */
-    fun selectMode(mode: FulfillmentMode) {
-        if (currentState().canChooseMode) cartRepository.setMode(mode)
-    }
 
     fun increase(lineId: String) {
         val line = cartRepository.cart.value?.line(lineId) ?: return
@@ -251,7 +244,6 @@ class CartReviewViewModel(
             isSignedIn = session != null,
             lines = lines,
             mode = mode,
-            canChooseMode = canChoose,
             action = store?.let { checkoutAction(it.businessType, mode) } ?: CheckoutAction.PAY_NOW,
             block = block,
             editSheet = editing?.let { editSheet(it, nonEmpty, store, menu, mode) },

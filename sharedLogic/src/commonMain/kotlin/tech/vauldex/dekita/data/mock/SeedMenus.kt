@@ -235,6 +235,16 @@ private val udonHallMenu = SeedStoreIds.UDON_HALL.let { store ->
                 id = "item-kitsune-udon", storeId = store, categoryId = "udon",
                 name = "Kitsune Udon", description = "With sweet fried tofu", basePrice = yen(650), isPopular = true,
             ),
+            MenuItem(
+                id = "item-hotpot-udon", storeId = store, categoryId = "udon",
+                name = "Hot Pot Udon", description = "Served bubbling in a clay pot at the table",
+                basePrice = yen(900), availableModes = setOf(FulfillmentMode.IN_STORE),
+            ),
+            MenuItem(
+                id = "item-udon-take-home-pack", storeId = store, categoryId = "udon",
+                name = "Udon Take-home Pack", description = "Noodles and dashi to cook at home",
+                basePrice = yen(800), availableModes = setOf(FulfillmentMode.PICKUP),
+            ),
         ),
     )
 }

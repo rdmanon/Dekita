@@ -108,8 +108,8 @@ class CartReviewViewModelTest {
         finishLoading()
         val events = collectEvents(f.review.events)
         assertEquals("Test Ramen Bar", f.review.state.value.store?.name)
-        // The sample cart is Eat-In; Takeout makes the button "Pay now".
-        f.review.selectMode(FulfillmentMode.PICKUP)
+        // The sample cart is Eat-In; Takeout (picked on the menu) makes the button "Pay now".
+        f.cart.setMode(FulfillmentMode.PICKUP)
         runCurrent()
 
         f.review.checkout()
@@ -175,7 +175,6 @@ class CartReviewViewModelTest {
 
         val state = f.review.state.value
         assertEquals(FulfillmentMode.IN_STORE, state.mode)
-        assertFalse(state.canChooseMode, "No toggle")
         assertEquals(CheckoutAction.PAY_NOW, state.action)
     }
 
@@ -187,7 +186,6 @@ class CartReviewViewModelTest {
 
         val state = f.review.state.value
         assertEquals(FulfillmentMode.PICKUP, state.mode)
-        assertFalse(state.canChooseMode)
         assertEquals(CheckoutAction.PAY_NOW, state.action)
     }
 
@@ -204,7 +202,6 @@ class CartReviewViewModelTest {
         finishLoading()
 
         val state = f.review.state.value
-        assertTrue(state.canChooseMode)
         assertEquals(FulfillmentMode.PICKUP, state.mode, "Takeout is preselected")
         assertEquals(CheckoutAction.PAY_NOW, state.action)
     }
@@ -217,7 +214,7 @@ class CartReviewViewModelTest {
         finishLoading()
         val events = collectEvents(f.review.events)
 
-        f.review.selectMode(FulfillmentMode.IN_STORE)
+        f.cart.setMode(FulfillmentMode.IN_STORE)
         runCurrent()
         assertEquals(CheckoutAction.HEAD_TO_STORE, f.review.state.value.action)
         f.review.checkout()
@@ -262,7 +259,7 @@ class CartReviewViewModelTest {
         finishLoading()
         assertNull(f.review.state.value.block)
 
-        f.review.selectMode(FulfillmentMode.PICKUP)
+        f.cart.setMode(FulfillmentMode.PICKUP)
         runCurrent()
         assertEquals("Eat-in only",f.review.state.value.lines.first { it.line.item.id == "item-kaedama" }.unavailableReason)
         assertEquals(CheckoutBlock.UNAVAILABLE_LINES, f.review.state.value.block)
@@ -319,12 +316,12 @@ class CartReviewViewModelTest {
     }
 
     @Test
-    fun singleModeStoresIgnoreAModeChange() = runTest(mainDispatcher) {
+    fun singleModeStoresKeepTheirModeWhateverTheCartSays() = runTest(mainDispatcher) {
         val f = fixture()
         f.cart.addLine(FulfillmentMode.PICKUP, f.line(SeedStoreIds.MART, "item-green-tea"))
         finishLoading()
 
-        f.review.selectMode(FulfillmentMode.IN_STORE)
+        f.cart.setMode(FulfillmentMode.IN_STORE)
         runCurrent()
         assertEquals(FulfillmentMode.PICKUP, f.review.state.value.mode)
     }
