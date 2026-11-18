@@ -1,6 +1,5 @@
 package tech.vauldex.dekita.ui.cart
 
-import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -10,16 +9,12 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.foundation.selection.selectable
-import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -35,11 +30,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -57,7 +49,6 @@ import tech.vauldex.dekita.presentation.cart.CartReviewUiState
 import tech.vauldex.dekita.presentation.cart.CartReviewViewModel
 import tech.vauldex.dekita.presentation.cart.CheckoutBlock
 import tech.vauldex.dekita.presentation.checkoutInfo
-import tech.vauldex.dekita.presentation.choiceLabel
 import tech.vauldex.dekita.presentation.label
 import tech.vauldex.dekita.presentation.message
 import tech.vauldex.dekita.presentation.optionsLabel
@@ -75,8 +66,8 @@ import tech.vauldex.dekita.ui.theme.DekitaTheme
 import tech.vauldex.dekita.ui.theme.Dimens
 
 /**
- * Cart Review, laid out as the Android Cart artboard: the store and its live queue, Eat-in / Takeout for
- * stores with both modes, lines with Edit, quantity and remove, totals, and one button whose action depends
+ * Cart Review, laid out as the Android Cart artboard: the store and its live queue, the mode picked on the
+ * store menu (fixed here), lines with Edit, quantity and remove, totals, and one button whose action depends
  * on the store and mode. A guest's tap goes to sign-in, which returns here with the cart unchanged.
  * "Pay now" calls [onPayNow], which opens the payment sheet over this screen (PAY-01).
  */
@@ -149,7 +140,7 @@ fun CartReviewScreen(
                 item(key = "store") { StoreCard(store, Modifier.padding(bottom = 16.dp)) }
             }
             state.mode?.let { mode ->
-                item(key = "mode") { ModeSection(state, mode, viewModel::selectMode, Modifier.padding(bottom = 16.dp)) }
+                item(key = "mode") { ModeSection(state, mode, Modifier.padding(bottom = 16.dp)) }
             }
             val rowCount = state.lines.size + 1
             itemsIndexed(state.lines, key = { _, lineUi -> lineUi.line.lineId }) { index, lineUi ->
@@ -210,28 +201,19 @@ private fun StoreCard(store: Store, modifier: Modifier = Modifier) {
 }
 
 /**
- * Stores with both modes get the Eat-in / Takeout toggle; single-mode stores show their one mode,
- * fixed. Either way a line says when the customer pays.
+ * The mode the customer picked on the store menu, fixed here, and a line that says when the customer pays.
+ * To change the mode, go back to the menu.
  */
 @Composable
 private fun ModeSection(
     state: CartReviewUiState,
     mode: FulfillmentMode,
-    onSelect: (FulfillmentMode) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(12.dp), modifier = modifier) {
-        if (state.canChooseMode) {
-            Text("How are you eating?", style = MaterialTheme.typography.titleMedium, modifier = Modifier.semantics { heading() })
-            Row(horizontalArrangement = Arrangement.spacedBy(2.dp), modifier = Modifier.fillMaxWidth().selectableGroup()) {
-                ModeButton(FulfillmentMode.IN_STORE, mode == FulfillmentMode.IN_STORE, isFirst = true, onSelect, Modifier.weight(1f))
-                ModeButton(FulfillmentMode.PICKUP, mode == FulfillmentMode.PICKUP, isFirst = false, onSelect, Modifier.weight(1f))
-            }
-        } else {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("How you'll be served", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
-                StatusPill(mode.label, if (mode == FulfillmentMode.PICKUP) DekitaTheme.colors.pickup else DekitaTheme.colors.inStore)
-            }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("How you'll be served", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+            StatusPill(mode.label, if (mode == FulfillmentMode.PICKUP) DekitaTheme.colors.pickup else DekitaTheme.colors.inStore)
         }
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             Icon(
@@ -242,37 +224,6 @@ private fun ModeSection(
             )
             Text(checkoutInfo(state.action, mode), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
-    }
-}
-
-/** One half of the connected Eat-in / Takeout group: the selected half fills and rounds fully. */
-@Composable
-private fun ModeButton(
-    mode: FulfillmentMode,
-    isSelected: Boolean,
-    isFirst: Boolean,
-    onSelect: (FulfillmentMode) -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    val outer = 24.dp
-    val inner = 8.dp
-    val start by animateDpAsState(if (isSelected || isFirst) outer else inner, label = "mode-start")
-    val end by animateDpAsState(if (isSelected || !isFirst) outer else inner, label = "mode-end")
-    val colors = MaterialTheme.colorScheme
-    val content = if (isSelected) colors.onPrimary else colors.onSurfaceVariant
-    Row(
-        horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
-        verticalAlignment = Alignment.CenterVertically,
-        modifier = modifier
-            .height(48.dp)
-            .clip(RoundedCornerShape(topStart = start, bottomStart = start, topEnd = end, bottomEnd = end))
-            .background(if (isSelected) colors.primary else colors.surfaceContainerHighest)
-            .selectable(selected = isSelected, role = Role.RadioButton, onClick = { onSelect(mode) }),
-    ) {
-        if (isSelected) {
-            Icon(painterResource(R.drawable.ic_check), contentDescription = null, tint = content, modifier = Modifier.size(20.dp))
-        }
-        Text(mode.choiceLabel, style = MaterialTheme.typography.titleMedium, color = content)
     }
 }
 

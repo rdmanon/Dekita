@@ -1,6 +1,7 @@
 package tech.vauldex.dekita.ui.store
 
 import android.content.Intent
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Spacer
@@ -57,7 +58,10 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -69,6 +73,7 @@ import tech.vauldex.dekita.domain.FulfillmentMode
 import tech.vauldex.dekita.domain.MenuItem
 import tech.vauldex.dekita.domain.Store
 import tech.vauldex.dekita.presentation.NOT_ACCEPTING_ORDERS_MESSAGE
+import tech.vauldex.dekita.presentation.choiceLabel
 import tech.vauldex.dekita.presentation.optionsSummary
 import tech.vauldex.dekita.presentation.store.AddResult
 import tech.vauldex.dekita.presentation.store.StoreDetailViewModel
@@ -83,8 +88,8 @@ import tech.vauldex.dekita.ui.theme.Dimens
 
 /**
  * The store screen, as the Android Menu artboard: a hero picture with floating Back / Favorite / Share buttons,
- * the store header and live queue, an underline tab row (Popular first, then the categories) and one list of
- * the tab's items. Tapping an item opens its customize sheet.
+ * the store header and live queue, the Eat-in / Takeout choice for stores with both modes, an underline tab
+ * row (Popular first, then the categories) and one list of the tab's items that the mode can order. Tapping an item opens its customize sheet.
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -123,9 +128,12 @@ fun StoreDetailScreen(viewModel: StoreDetailViewModel, onBack: () -> Unit, onVie
         }
         Box(Modifier.fillMaxSize()) {
             val listState = rememberLazyListState()
-            // The tab row sits third (hero, header, tabs). Once it sticks to the top it would slide under the status
-            // bar and the floating buttons, so it gets their height as top padding while stuck.
-            val tabsStuck by remember { derivedStateOf { listState.firstVisibleItemIndex >= 2 } }
+            val modeShown = state.canChooseMode && state.mode != null && state.menu is LoadState.Success
+            // The tab row sits third (hero, header, tabs), or fourth under the Eat-in / Takeout selector. Once it
+            // sticks to the top it would slide under the status bar and the floating buttons, so it gets their
+            // height as top padding while stuck.
+            val tabsIndex = if (modeShown) 3 else 2
+            val tabsStuck by remember(tabsIndex) { derivedStateOf { listState.firstVisibleItemIndex >= tabsIndex } }
             LazyColumn(
                 state = listState,
                 contentPadding = PaddingValues(
@@ -140,6 +148,15 @@ fun StoreDetailScreen(viewModel: StoreDetailViewModel, onBack: () -> Unit, onVie
                     LoadState.Loading -> item(key = "menu-loading") { LoadingIndicator("Loading menu…") }
                     is LoadState.Error -> item(key = "menu-error") { Text(menu.message, Modifier.padding(Dimens.ScreenPadding)) }
                     is LoadState.Success -> {
+                        if (modeShown) state.mode?.let { mode ->
+                            item(key = "mode") {
+                                ModeChoice(
+                                    mode,
+                                    onSelect = viewModel::selectMode,
+                                    modifier = Modifier.padding(horizontal = Dimens.ScreenPadding, vertical = 8.dp),
+                                )
+                            }
+                        }
                         if (state.tabs.isNotEmpty()) stickyHeader(key = "tabs") {
                             MenuTabs(
                                 state.tabs,
@@ -295,6 +312,49 @@ private fun StoreHeader(store: Store, modifier: Modifier = Modifier) {
                 )
             }
         }
+    }
+}
+
+/** "How are you eating?" and the Eat-in / Takeout choice, for stores with both modes. The menu below shows only what [mode] can order. */
+@Composable
+private fun ModeChoice(mode: FulfillmentMode, onSelect: (FulfillmentMode) -> Unit, modifier: Modifier = Modifier) {
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp), modifier = modifier) {
+        Text("How are you eating?", style = MaterialTheme.typography.titleMedium, modifier = Modifier.semantics { heading() })
+        Row(horizontalArrangement = Arrangement.spacedBy(2.dp), modifier = Modifier.fillMaxWidth().selectableGroup()) {
+            ModeButton(FulfillmentMode.IN_STORE, mode == FulfillmentMode.IN_STORE, isFirst = true, onSelect, Modifier.weight(1f))
+            ModeButton(FulfillmentMode.PICKUP, mode == FulfillmentMode.PICKUP, isFirst = false, onSelect, Modifier.weight(1f))
+        }
+    }
+}
+
+/** One half of the connected Eat-in / Takeout group: the selected half fills and rounds fully. */
+@Composable
+private fun ModeButton(
+    mode: FulfillmentMode,
+    isSelected: Boolean,
+    isFirst: Boolean,
+    onSelect: (FulfillmentMode) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val outer = 24.dp
+    val inner = 8.dp
+    val start by animateDpAsState(if (isSelected || isFirst) outer else inner, label = "mode-start")
+    val end by animateDpAsState(if (isSelected || !isFirst) outer else inner, label = "mode-end")
+    val colors = MaterialTheme.colorScheme
+    val content = if (isSelected) colors.onPrimary else colors.onSurfaceVariant
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = modifier
+            .height(48.dp)
+            .clip(RoundedCornerShape(topStart = start, bottomStart = start, topEnd = end, bottomEnd = end))
+            .background(if (isSelected) colors.primary else colors.surfaceContainerHighest)
+            .selectable(selected = isSelected, role = Role.RadioButton, onClick = { onSelect(mode) }),
+    ) {
+        if (isSelected) {
+            Icon(painterResource(R.drawable.ic_check), contentDescription = null, tint = content, modifier = Modifier.size(20.dp))
+        }
+        Text(mode.choiceLabel, style = MaterialTheme.typography.titleMedium, color = content)
     }
 }
 

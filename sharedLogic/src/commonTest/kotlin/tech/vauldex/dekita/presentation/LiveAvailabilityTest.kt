@@ -184,18 +184,19 @@ class LiveAvailabilityTest {
         s.discover.selectMode(FulfillmentMode.IN_STORE)
         runCurrent()
         assertNotNull(s.badge(), "Test Ramen Bar offers Eat-In")
-        assertTrue(s.review.state.value.canChooseMode)
+        assertTrue(s.store.state.value.canChooseMode)
         assertEquals(CheckoutAction.HEAD_TO_STORE, s.review.state.value.action)
 
         s.stores.setBusinessType(SeedStoreIds.RAMEN_BAR, BusinessType.PICKUP_ONLY)
         runCurrent()
         assertNull(s.badge(), "The store drops out of the In-store filter")
         val pickupOnly = s.review.state.value
-        assertFalse(pickupOnly.canChooseMode, "Eat-In is hidden")
+        assertFalse(s.store.state.value.canChooseMode, "Eat-In is hidden")
         assertEquals(FulfillmentMode.PICKUP, pickupOnly.mode)
         assertEquals(CheckoutAction.PAY_NOW, pickupOnly.action)
-        s.review.selectMode(FulfillmentMode.IN_STORE)
+        s.store.selectMode(FulfillmentMode.IN_STORE)
         runCurrent()
+        assertEquals(FulfillmentMode.PICKUP, s.store.state.value.mode, "The locked mode can't be changed")
         assertEquals(FulfillmentMode.PICKUP, s.review.state.value.mode, "The locked mode can't be changed")
 
         // Adding from the menu now uses Pickup, never the old Eat-In mode.
@@ -207,7 +208,7 @@ class LiveAvailabilityTest {
         s.stores.setBusinessType(SeedStoreIds.RAMEN_BAR, BusinessType.BOTH)
         runCurrent()
         assertNotNull(s.badge())
-        assertTrue(s.review.state.value.canChooseMode, "The toggle comes back")
+        assertTrue(s.store.state.value.canChooseMode, "The selector comes back")
     }
 
     @Test

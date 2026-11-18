@@ -130,6 +130,91 @@ class StoreDetailViewModelTest {
         assertEquals("Only for Eat-in orders",viewModel.state.value.sheet!!.blockedReason)
     }
 
+    @Test
+    fun theModeDefaultsToTheDiscoverPickThenEatIn() = runTest(mainDispatcher) {
+        assertEquals(FulfillmentMode.IN_STORE, loadedScreen(SeedStoreIds.RAMEN_BAR).viewModel.state.value.mode)
+
+        val cart = FakeCartRepository().apply { setPreferredMode(FulfillmentMode.PICKUP) }
+        assertEquals(FulfillmentMode.PICKUP, loadedScreen(SeedStoreIds.RAMEN_BAR, cart).viewModel.state.value.mode)
+    }
+
+    @Test
+    fun pickingAModeFiltersTheMenu() = runTest(mainDispatcher) {
+        val viewModel = loadedScreen(SeedStoreIds.RAMEN_BAR).viewModel
+        assertTrue(viewModel.state.value.canChooseMode)
+        viewModel.selectTab("sides")
+        runCurrent()
+        assertEquals(listOf("Gyoza (6 pcs)", "Edamame"), viewModel.state.value.visibleItems.map { it.name })
+
+        viewModel.selectMode(FulfillmentMode.PICKUP)
+        runCurrent()
+        assertEquals(FulfillmentMode.PICKUP, viewModel.state.value.mode)
+        assertEquals(
+            listOf("Gyoza (6 pcs)", "Edamame", "Take-home Ramen Kit"),
+            viewModel.state.value.visibleItems.map { it.name },
+        )
+
+        viewModel.selectTab("ramen")
+        runCurrent()
+        assertEquals(listOf("Shoyu Ramen", "Tonkotsu Ramen"), viewModel.state.value.visibleItems.map { it.name })
+    }
+
+    @Test
+    fun pickingAModeIsTheModeOfTheNextAdd() = runTest(mainDispatcher) {
+        val cart = FakeCartRepository()
+        val viewModel = loadedScreen(SeedStoreIds.RAMEN_BAR, cart).viewModel
+
+        viewModel.selectMode(FulfillmentMode.PICKUP)
+        viewModel.openItem("item-gyoza")
+        assertEquals(AddResult.ADDED, viewModel.addToCart())
+        assertEquals(FulfillmentMode.PICKUP, cart.cart.value?.mode)
+    }
+
+    @Test
+    fun pickingAModeMovesThisStoresCart() = runTest(mainDispatcher) {
+        val cart = FakeCartRepository()
+        cart.addLine(FulfillmentMode.IN_STORE, CartLine("gyoza", seedItem(SeedStoreIds.RAMEN_BAR, "item-gyoza")))
+        val viewModel = loadedScreen(SeedStoreIds.RAMEN_BAR, cart).viewModel
+        assertEquals(FulfillmentMode.IN_STORE, viewModel.state.value.mode)
+
+        viewModel.selectMode(FulfillmentMode.PICKUP)
+        runCurrent()
+        assertEquals(FulfillmentMode.PICKUP, cart.cart.value?.mode)
+        assertEquals(FulfillmentMode.PICKUP, viewModel.state.value.mode)
+    }
+
+    @Test
+    fun pickingAModeLeavesAnotherStoresCartAlone() = runTest(mainDispatcher) {
+        val cart = FakeCartRepository()
+        cart.addLine(FulfillmentMode.PICKUP, CartLine("tea", seedItem(SeedStoreIds.MART, "item-green-tea")))
+        val viewModel = loadedScreen(SeedStoreIds.RAMEN_BAR, cart).viewModel
+
+        viewModel.selectMode(FulfillmentMode.IN_STORE)
+        runCurrent()
+        assertEquals(SeedStoreIds.MART, cart.cart.value?.storeId)
+        assertEquals(FulfillmentMode.PICKUP, cart.cart.value?.mode)
+    }
+
+    @Test
+    fun pickingAModeDoesNotChangeTheDiscoverFilter() = runTest(mainDispatcher) {
+        val cart = FakeCartRepository()
+        val viewModel = loadedScreen(SeedStoreIds.RAMEN_BAR, cart).viewModel
+
+        viewModel.selectMode(FulfillmentMode.PICKUP)
+        runCurrent()
+        assertNull(cart.preferredMode.value)
+    }
+
+    @Test
+    fun singleModeStoresHaveNoSelectorAndIgnoreAPick() = runTest(mainDispatcher) {
+        val viewModel = loadedScreen(SeedStoreIds.MART).viewModel // pickup only
+        assertFalse(viewModel.state.value.canChooseMode)
+
+        viewModel.selectMode(FulfillmentMode.IN_STORE)
+        runCurrent()
+        assertEquals(FulfillmentMode.PICKUP, viewModel.state.value.mode)
+    }
+
     private fun seedItemIdOf(storeId: String): String =
         seedMenus.getValue(storeId).items.first { !it.isSoldOut && it.modifierGroups.isEmpty() }.id
 }

@@ -25,12 +25,7 @@ struct CartReviewView: View {
                             CartStoreCard(store: store)
                         }
                         if let mode = state.mode {
-                            CartModeSection(
-                                mode: mode,
-                                canChoose: state.canChooseMode,
-                                action: state.action,
-                                onSelect: { model.viewModel.selectMode(mode: $0) }
-                            )
+                            CartModeSection(mode: mode, action: state.action)
                         }
                         VStack(spacing: 0) {
                             ForEach(Array(state.lines.enumerated()), id: \.element.line.lineId) { index, lineUi in
@@ -168,40 +163,21 @@ private struct CartPaymentSheet: View {
     }
 }
 
-/// "How are you eating?" and the Eat-in / Takeout control for stores with both modes; a fixed pill otherwise.
-/// The line under it says when the customer pays.
+/// The mode picked on the store menu, as a fixed pill (to change it, go back to the menu). The line under it
+/// says when the customer pays.
 private struct CartModeSection: View {
     let mode: FulfillmentMode
-    let canChoose: Bool
     let action: CheckoutAction
-    let onSelect: (FulfillmentMode) -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            if canChoose {
-                Text("How are you eating?")
-                    .font(.headline)
-                    .padding(.horizontal, 4)
-                    .padding(.top, 4)
-                    .accessibilityAddTraits(.isHeader)
-                SegmentedCapsule(
-                    label: "Order mode",
-                    options: [
-                        (FulfillmentMode.inStore.choiceLabel, FulfillmentMode.inStore),
-                        (FulfillmentMode.pickup.choiceLabel, FulfillmentMode.pickup),
-                    ],
-                    selection: mode,
-                    onSelect: onSelect
-                )
-            } else {
-                let colors = Palette.badge(mode == FulfillmentMode.pickup ? .pickupOnly : .inStoreOnly)
-                Text(mode.choiceLabel)
-                    .font(.subheadline.weight(.semibold))
-                    .padding(.horizontal, 12)
-                    .frame(minHeight: 28)
-                    .foregroundStyle(colors.foreground)
-                    .background(colors.background, in: Capsule())
-            }
+            let colors = Palette.badge(mode == FulfillmentMode.pickup ? .pickupOnly : .inStoreOnly)
+            Text(mode.choiceLabel)
+                .font(.subheadline.weight(.semibold))
+                .padding(.horizontal, 12)
+                .frame(minHeight: 28)
+                .foregroundStyle(colors.foreground)
+                .background(colors.background, in: Capsule())
             Label(LabelsKt.checkoutInfo(action: action, mode: mode), systemImage: "info.circle")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
