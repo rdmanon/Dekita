@@ -45,13 +45,14 @@ android {
         versionCode = 1
         versionName = "1.0"
 
-        // The MapLibre style for the check-in map. The default is OpenFreeMap's Positron style: free,
-        // no key, OpenStreetMap data. It is an outside service still pending supplier review.
+        // The MapLibre style for the check-in map. The default is OpenFreeMap's Bright style: free,
+        // no key, OpenStreetMap data, in color. (Its Positron style is the greyscale one.) It is an
+        // outside service still pending supplier review.
         // Override with dekita.mapStyleUrl in ~/.gradle/gradle.properties or with -P; never commit a
         // URL that carries an API key. MapLibre's demo style, with no streets and no extra supplier,
         // is https://demotiles.maplibre.org/style.json.
         val mapStyleUrl = providers.gradleProperty("dekita.mapStyleUrl")
-            .getOrElse("https://tiles.openfreemap.org/styles/positron")
+            .getOrElse("https://tiles.openfreemap.org/styles/liberty")
         buildConfigField("String", "MAP_STYLE_URL", "\"$mapStyleUrl\"")
     }
     packaging {
