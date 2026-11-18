@@ -51,13 +51,13 @@ fun BusinessTypeBadge(type: BusinessType, modifier: Modifier = Modifier) {
     val colors = DekitaTheme.colors
     when (type) {
         BusinessType.IN_STORE_ONLY -> StatusPill("In-store Only", colors.inStore, modifier)
-        BusinessType.PICKUP_ONLY -> StatusPill("Pickup Only", colors.pickup, modifier)
+        BusinessType.PICKUP_ONLY -> StatusPill("Takeout Only", colors.pickup, modifier)
         BusinessType.BOTH -> StatusPill(type.modesLabel.orEmpty(), colors.bothModes, modifier)
     }
 }
 
 /**
- * The one status badge on a store card: Open for Lunch, Pickup Only, In-store Only, Paused or Full.
+ * The one status badge on a store card: Open for Lunch, Takeout Only, Eat-in Only, In-store Only, Paused or Full.
  * Pass the live `store.badge`, so it changes as soon as the feed does.
  */
 @Composable
@@ -66,7 +66,7 @@ fun StoreStatusBadge(badge: StoreBadge, modifier: Modifier = Modifier) {
     val badgeColors = when (badge) {
         StoreBadge.OPEN_FOR_LUNCH -> colors.open
         StoreBadge.PICKUP_ONLY -> colors.pickup
-        StoreBadge.IN_STORE_ONLY -> colors.inStore
+        StoreBadge.EAT_IN_ONLY, StoreBadge.IN_STORE_ONLY -> colors.inStore
         StoreBadge.PAUSED -> colors.paused
         StoreBadge.FULL -> colors.full
     }

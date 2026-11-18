@@ -29,6 +29,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import tech.vauldex.dekita.domain.FulfillmentMode
 import tech.vauldex.dekita.domain.Order
 import tech.vauldex.dekita.domain.currentStep
 import tech.vauldex.dekita.presentation.orders.InboxRow
@@ -174,7 +175,7 @@ private fun DraftRow(order: Order, shape: Shape, onCheckIn: () -> Unit) {
         ) {
             Column(verticalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.weight(1f)) {
                 StatusPill("Waiting for check-in", DekitaTheme.colors.bothModes)
-                Text("${order.storeName} · Eat-In", style = MaterialTheme.typography.titleMedium)
+                Text("${order.storeName} · ${FulfillmentMode.IN_STORE.label}", style = MaterialTheme.typography.titleMedium)
                 val checkedIn = order.checkIn?.let { " · ${it.label}" }.orEmpty()
                 Text(
                     "${order.itemsLabel}$checkedIn",

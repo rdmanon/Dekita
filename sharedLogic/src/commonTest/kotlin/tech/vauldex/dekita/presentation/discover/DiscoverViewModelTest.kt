@@ -48,19 +48,19 @@ class DiscoverViewModelTest {
         Dispatchers.resetMain()
     }
 
-    private class Fixture(scope: CoroutineScope) {
+    private class Fixture(scope: CoroutineScope, modeNeedsCategory: Boolean = false) {
         val stores = FakeStoreRepository(scope, MockConfig())
         val orders = FakeOrderRepository(scope, MockConfig(), object : Clock {
             override fun now() = Instant.fromEpochSeconds(1_800_000_000)
         })
         val cart = FakeCartRepository()
         val auth = FakeAuthRepository(MockConfig())
-        val viewModel = DiscoverViewModel(stores, orders, cart, auth)
+        val viewModel = DiscoverViewModel(stores, orders, cart, auth, modeNeedsCategory)
     }
 
     /** Builds the view model, subscribes to it, and waits out the simulated loading delay. */
-    private fun TestScope.loadedFixture(): Fixture {
-        val fixture = Fixture(backgroundScope)
+    private fun TestScope.loadedFixture(modeNeedsCategory: Boolean = false): Fixture {
+        val fixture = Fixture(backgroundScope, modeNeedsCategory)
         backgroundScope.launch { fixture.viewModel.state.collect {} }
         finishLoading()
         return fixture
@@ -111,6 +111,62 @@ class DiscoverViewModelTest {
         assertEquals(FulfillmentMode.PICKUP, fixture.cart.preferredMode.value)
         // The mode alone keeps the home sections.
         assertFalse(fixture.viewModel.state.value.showsResults)
+    }
+
+    @Test
+    fun theSearchTabKeepsTheModeFilterOnScreenAndApplied() = runTest(mainDispatcher) {
+        val fixture = loadedFixture()
+        assertTrue(fixture.viewModel.state.value.showsModeFilter)
+
+        fixture.viewModel.selectMode(FulfillmentMode.PICKUP)
+        runCurrent()
+        assertTrue(fixture.viewModel.state.value.showsModeFilter)
+        assertEquals(FulfillmentMode.PICKUP, fixture.viewModel.state.value.filters.mode)
+        assertTrue("Sample Massage Studio" !in fixture.viewModel.state.value.stores.map { it.store.name })
+    }
+
+    @Test
+    fun discoverShowsTheModeFilterOnlyUnderACategoryWithAStoreOfferingBoth() = runTest(mainDispatcher) {
+        val fixture = loadedFixture(modeNeedsCategory = true)
+        assertFalse(fixture.viewModel.state.value.showsModeFilter, "No category picked yet")
+
+        fixture.viewModel.toggleCategory("Ramen")
+        runCurrent()
+        assertTrue(fixture.viewModel.state.value.showsModeFilter, "Test Ramen Bar offers both")
+
+        fixture.viewModel.toggleCategory("Ramen")
+        for (category in listOf("Curry", "Salon", "Convenience store")) {
+            fixture.viewModel.toggleCategory(category)
+            runCurrent()
+            assertFalse(fixture.viewModel.state.value.showsModeFilter, "$category has no store offering both")
+            fixture.viewModel.toggleCategory(category)
+        }
+    }
+
+    @Test
+    fun aModeLeftOverFromAnotherTabDoesNotHideStoresBehindAHiddenFilter() = runTest(mainDispatcher) {
+        val fixture = loadedFixture(modeNeedsCategory = true)
+        // The Search tab shares the cart's mode, so Discover can start with one that it isn't showing.
+        fixture.cart.setPreferredMode(FulfillmentMode.PICKUP)
+        runCurrent()
+
+        val state = fixture.viewModel.state.value
+        assertNull(state.filters.mode)
+        assertEquals(seedStores.size, state.stores.size)
+    }
+
+    @Test
+    fun pickingAnotherCategoryPutsTheModeBackToAll() = runTest(mainDispatcher) {
+        val fixture = loadedFixture(modeNeedsCategory = true)
+        fixture.viewModel.toggleCategory("Ramen")
+        fixture.viewModel.selectMode(FulfillmentMode.PICKUP)
+        runCurrent()
+        assertEquals(FulfillmentMode.PICKUP, fixture.viewModel.state.value.filters.mode)
+
+        fixture.viewModel.toggleCategory("Soba")
+        runCurrent()
+        assertNull(fixture.cart.preferredMode.value)
+        assertNull(fixture.viewModel.state.value.filters.mode)
     }
 
     @Test

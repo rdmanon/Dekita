@@ -132,4 +132,16 @@ class StoreFiltersTest {
         val pausedPickup = byName.getValue("Test Mart").copy(availability = StoreAvailability.PAUSED)
         assertEquals(StoreBadge.PAUSED, pausedPickup.badge, "Paused wins over the business type")
     }
+
+    @Test
+    fun anInStoreOnlyFoodStoreSaysEatInWhileAServiceKeepsInStore() {
+        val byName = seedStores.associateBy { it.name }
+        val studio = byName.getValue("Sample Massage Studio")
+        assertTrue(studio.isService)
+        assertEquals(StoreBadge.IN_STORE_ONLY, studio.badge, "The design keeps In-store Only for a service")
+
+        val restaurant = byName.getValue("Test Ramen Bar").copy(businessType = BusinessType.IN_STORE_ONLY)
+        assertFalse(restaurant.isService)
+        assertEquals(StoreBadge.EAT_IN_ONLY, restaurant.badge)
+    }
 }

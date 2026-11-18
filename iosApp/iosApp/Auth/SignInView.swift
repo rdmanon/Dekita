@@ -3,10 +3,8 @@ import SharedLogic
 
 /// Steps pushed inside the sign-in flow.
 enum AuthRoute: Hashable {
-    case phone
-    case otp(phoneE164: String)
-    case email(signUp: Bool)
-    case forgotPassword
+    /// The code step. `contactKey` is `AuthContact.key`: an email address, or a phone number in E.164 form.
+    case otp(contactKey: String)
 }
 
 /// The sign-in flow in its own navigation stack: a sheet, or full screen after sign-out (`isRoot`).
@@ -16,13 +14,10 @@ struct SignInFlowView: View {
 
     var body: some View {
         NavigationStack(path: $path) {
-            SignInView(isRoot: isRoot)
+            SignInView(isRoot: isRoot) { path.append(AuthRoute.otp(contactKey: $0)) }
                 .navigationDestination(for: AuthRoute.self) { route in
                     switch route {
-                    case .phone: PhoneEntryView { path.append(AuthRoute.otp(phoneE164: $0)) }
-                    case let .otp(phoneE164): OtpView(phoneE164: phoneE164)
-                    case let .email(signUp): EmailAuthView(signUp: signUp)
-                    case .forgotPassword: ForgotPasswordView()
+                    case let .otp(contactKey): OtpView(contactKey: contactKey)
                     }
                 }
         }
@@ -30,16 +25,22 @@ struct SignInFlowView: View {
     }
 }
 
-/// The Sign-Up / Login screen: phone, email, Google and Apple. Apple is always offered, as the App Store
-/// requires next to other third-party sign-in. Google and Apple are simulated: no SDK runs.
+/// The Sign-In screen: one field for a phone number or an email, then Google and Apple. "Send Code" goes to the
+/// code step for either. Apple is always offered, as the App Store requires next to other third-party sign-in.
+/// Google and Apple are simulated: no SDK runs.
 struct SignInView: View {
     let isRoot: Bool
+    /// Called with `AuthContact.key` once the code is sent.
+    let onCodeSent: (_ contactKey: String) -> Void
     @EnvironmentObject private var flow: AuthFlow
     @Environment(\.dismiss) private var dismiss
     @StateObject private var model = SignInModel()
-    @AccessibilityFocusState private var phoneFocused: Bool
+    /// What the field holds. The shared view model reads it, and turns full-width digits into half-width
+    /// when it checks them, so a Japanese IME isn't interrupted.
+    @State private var input = ""
+    @FocusState private var fieldFocused: Bool
 
-    private let phoneAnchor = "phone"
+    private let fieldAnchor = "field"
 
     var body: some View {
         let state = model.state
@@ -57,45 +58,47 @@ struct SignInView: View {
                             actionTitle: "Try another way"
                         ) {
                             model.viewModel.dismissError()
-                            withAnimation { proxy.scrollTo(phoneAnchor, anchor: .top) }
-                            phoneFocused = true
+                            withAnimation { proxy.scrollTo(fieldAnchor, anchor: .top) }
+                            fieldFocused = true
                         }
                     }
 
-                    NavigationLink(value: AuthRoute.phone) {
-                        CapsuleLabel(title: "Sign in with Phone", systemImage: "phone.fill")
+                    contactField(state)
+                        .id(fieldAnchor)
+
+                    Button { model.viewModel.sendCode() } label: {
+                        CapsuleLabel(title: "Send Code", systemImage: "paperplane", loading: state.isSending)
                     }
                     .buttonStyle(CapsuleButtonStyle())
-                    .accessibilityFocused($phoneFocused)
-                    .id(phoneAnchor)
-
-                    NavigationLink(value: AuthRoute.email(signUp: true)) {
-                        CapsuleLabel(title: "Sign in with Email", systemImage: "envelope.fill")
-                    }
-                    .buttonStyle(CapsuleButtonStyle(kind: .secondary))
+                    // Stays lit while the code is on its way, so the spinner isn't dimmed. The view model
+                    // ignores a second tap.
+                    .disabled(!state.canSend && !state.isSending)
 
                     OrDivider()
 
                     SsoButton(provider: .google, loading: state.ssoInProgress == .google) {
                         model.viewModel.continueWith(provider: .google)
                     }
+                    .disabled(state.isBusy)
                     SsoButton(provider: .apple, loading: state.ssoInProgress == .apple) {
                         model.viewModel.continueWith(provider: .apple)
                     }
+                    .disabled(state.isBusy)
 
                     if isRoot {
                         Button("Browse as guest") { flow.browseAsGuest() }
                             .frame(maxWidth: .infinity, minHeight: 44)
+                            .disabled(state.isBusy)
                     }
                     Text("Mockup: no real account is created and nothing leaves this device.")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                         .padding(.top, 8)
                 }
-                .disabled(state.isBusy)
                 .padding(.horizontal, 16)
                 .padding(.bottom, 24)
             }
+            .scrollDismissesKeyboard(.interactively)
         }
         .background(Palette.screen)
         .navigationTitle("Sign In")
@@ -108,7 +111,43 @@ struct SignInView: View {
             }
         }
         .onReceive(model.events) { event in
-            if event is AuthEventSignedIn { flow.finishSignIn() }
+            if event is AuthEventSignedIn {
+                flow.finishSignIn()
+            } else if let sent = event as? AuthEventCodeSent {
+                onCodeSent(sent.contact.key)
+            }
+        }
+    }
+
+    /// The label, the field and the line under it: what happens next, or what is wrong. The line is the
+    /// shared copy, so it reads like the Android one.
+    private func contactField(_ state: SignInUiState) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Phone number or email")
+                .font(.footnote.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 4)
+            FieldBox(isError: state.hasInputError) {
+                HStack(spacing: 10) {
+                    Image(systemName: "person")
+                        .foregroundStyle(.secondary)
+                        .accessibilityHidden(true)
+                    TextField("Phone number or email", text: $input, prompt: Text("Email or Phone number"))
+                        .keyboardType(.emailAddress)
+                        .textContentType(.username)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                        .submitLabel(.send)
+                        .focused($fieldFocused)
+                        .disabled(state.isBusy)
+                        .onChange(of: input) { _, typed in model.viewModel.onInputChange(raw: typed) }
+                        .onSubmit { model.viewModel.sendCode() }
+                }
+            }
+            FieldMessage(
+                error: state.hasInputError ? state.hint : nil,
+                hint: state.hasInputError ? nil : state.hint
+            )
         }
     }
 }

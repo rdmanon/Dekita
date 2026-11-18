@@ -2,6 +2,7 @@ package tech.vauldex.dekita.data
 
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.StateFlow
+import tech.vauldex.dekita.domain.AuthContact
 import tech.vauldex.dekita.domain.Cart
 import tech.vauldex.dekita.domain.CartLine
 import tech.vauldex.dekita.domain.CheckIn
@@ -15,7 +16,7 @@ import tech.vauldex.dekita.domain.Menu
 import tech.vauldex.dekita.domain.Order
 import tech.vauldex.dekita.domain.OrderStatus
 import tech.vauldex.dekita.domain.PaymentMethod
-import tech.vauldex.dekita.domain.PhoneNumber
+import tech.vauldex.dekita.domain.SavedPlace
 import tech.vauldex.dekita.domain.Session
 import tech.vauldex.dekita.domain.SsoProvider
 import tech.vauldex.dekita.domain.Store
@@ -126,6 +127,19 @@ interface LocationRepository {
     val customerLocation: StateFlow<GeoPoint?>
 }
 
+/**
+ * Where the customer looks for stores from: Nearby, walking times and queues are measured from the selected place.
+ * Held in memory only: nothing is written to disk. The mockup's places are sample data, not real addresses.
+ */
+interface PlaceRepository {
+    val places: StateFlow<List<SavedPlace>>
+
+    val selected: StateFlow<SavedPlace>
+
+    /** Does nothing for an id that isn't in [places]. */
+    fun select(placeId: String)
+}
+
 /** The camera's QR reader. Emits each code's raw text once, while someone collects. */
 interface QrScanner {
     val scans: Flow<String>
@@ -189,17 +203,14 @@ interface AuthRepository {
     /** Null while browsing as a guest. Held in memory only: nothing is written to disk and no token exists. */
     val session: StateFlow<Session?>
 
-    /** Sends a 6-digit code to [phone]. */
-    suspend fun requestOtp(phone: PhoneNumber)
+    /**
+     * Sends a 6-digit code to [contact]: an SMS for a phone, an email for an email address. It has the same outcome
+     * whether or not an account exists, so it can't reveal who is registered. A new contact gets an account when
+     * its code is verified.
+     */
+    suspend fun requestOtp(contact: AuthContact)
 
-    suspend fun verifyOtp(phone: PhoneNumber, code: String): AuthResult
-
-    suspend fun signUpWithEmail(email: String, password: String): AuthResult
-
-    suspend fun signInWithEmail(email: String, password: String): AuthResult
-
-    /** Has the same outcome whether or not the account exists, so it can't reveal which emails are registered. */
-    suspend fun requestPasswordReset(email: String)
+    suspend fun verifyOtp(contact: AuthContact, code: String): AuthResult
 
     suspend fun signInWith(provider: SsoProvider): AuthResult
 
@@ -212,4 +223,4 @@ sealed interface AuthResult {
     data class Failure(val reason: AuthFailure) : AuthResult
 }
 
-enum class AuthFailure { INVALID_CODE, WRONG_CREDENTIALS, EMAIL_TAKEN, SSO_FAILED }
+enum class AuthFailure { INVALID_CODE, SSO_FAILED }

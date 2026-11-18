@@ -75,7 +75,7 @@ import tech.vauldex.dekita.ui.theme.DekitaTheme
 import tech.vauldex.dekita.ui.theme.Dimens
 
 /**
- * Cart Review, laid out as the Android Cart artboard: the store and its live queue, Eat-In / Takeout for
+ * Cart Review, laid out as the Android Cart artboard: the store and its live queue, Eat-in / Takeout for
  * stores with both modes, lines with Edit, quantity and remove, totals, and one button whose action depends
  * on the store and mode. A guest's tap goes to sign-in, which returns here with the cart unchanged.
  * "Pay now" calls [onPayNow], which opens the payment sheet over this screen (PAY-01).
@@ -210,7 +210,7 @@ private fun StoreCard(store: Store, modifier: Modifier = Modifier) {
 }
 
 /**
- * Stores with both modes get the Eat-In / Takeout toggle; single-mode stores show their one mode,
+ * Stores with both modes get the Eat-in / Takeout toggle; single-mode stores show their one mode,
  * fixed. Either way a line says when the customer pays.
  */
 @Composable
@@ -245,7 +245,7 @@ private fun ModeSection(
     }
 }
 
-/** One half of the connected Eat-In / Takeout group: the selected half fills and rounds fully. */
+/** One half of the connected Eat-in / Takeout group: the selected half fills and rounds fully. */
 @Composable
 private fun ModeButton(
     mode: FulfillmentMode,

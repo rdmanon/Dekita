@@ -6,7 +6,7 @@ import SharedLogic
 // state (delivered on the main thread), and stops watching and clears the view models when it goes away.
 
 final class DiscoverModel: ObservableObject {
-    private let bridge = DiscoverBridge()
+    private let bridge: DiscoverBridge
     private var watch: FlowWatch?
 
     @Published private(set) var state: DiscoverUiState
@@ -14,6 +14,29 @@ final class DiscoverModel: ObservableObject {
     var viewModel: DiscoverViewModel { bridge.viewModel }
     var walkLimits: [WalkLimit] { bridge.walkLimits }
     var statuses: [StoreAvailability] { bridge.statuses }
+
+    /// The Discover tab passes `modeNeedsCategory: true`: its Eat-in / Takeout filter shows only under a picked
+    /// category that has a store offering both. The Search tab keeps the default, an always-visible picker.
+    init(modeNeedsCategory: Bool = false) {
+        bridge = DiscoverBridge(modeNeedsCategory: modeNeedsCategory)
+        state = bridge.currentState
+        watch = bridge.watch { [weak self] state in self?.state = state }
+    }
+
+    deinit {
+        watch?.cancel()
+        bridge.close()
+    }
+}
+
+/// The location chip on Discover and its picker sheet.
+final class PlacePickerModel: ObservableObject {
+    private let bridge = PlacePickerBridge()
+    private var watch: FlowWatch?
+
+    @Published private(set) var state: PlacePickerUiState
+
+    var viewModel: PlacePickerViewModel { bridge.viewModel }
 
     init() {
         state = bridge.currentState
@@ -284,30 +307,6 @@ final class SignInModel: ObservableObject {
     }
 }
 
-final class PhoneEntryModel: ObservableObject {
-    private let bridge = PhoneEntryBridge()
-    private var watches: [FlowWatch] = []
-
-    @Published private(set) var state: PhoneEntryUiState
-    let events = PassthroughSubject<any AuthEvent, Never>()
-
-    var viewModel: PhoneEntryViewModel { bridge.viewModel }
-    var dialCodes: [DialCode] { bridge.dialCodes }
-
-    init() {
-        state = bridge.currentState
-        watches = [
-            bridge.watch { [weak self] state in self?.state = state },
-            bridge.watchEvents { [weak self] event in self?.events.send(event) },
-        ]
-    }
-
-    deinit {
-        watches.forEach { $0.cancel() }
-        bridge.close()
-    }
-}
-
 final class OtpModel: ObservableObject {
     private let bridge: OtpBridge
     private var watches: [FlowWatch] = []
@@ -317,8 +316,9 @@ final class OtpModel: ObservableObject {
 
     var viewModel: OtpViewModel { bridge.viewModel }
 
-    init(phoneE164: String) {
-        bridge = OtpBridge(phoneE164: phoneE164)
+    /// `contactKey` is `AuthContact.key`: an email address, or a phone number in E.164 form.
+    init(contactKey: String) {
+        bridge = OtpBridge(contactKey: contactKey)
         state = bridge.currentState
         watches = [
             bridge.watch { [weak self] state in self?.state = state },
@@ -328,49 +328,6 @@ final class OtpModel: ObservableObject {
 
     deinit {
         watches.forEach { $0.cancel() }
-        bridge.close()
-    }
-}
-
-final class EmailAuthModel: ObservableObject {
-    private let bridge: EmailAuthBridge
-    private var watches: [FlowWatch] = []
-
-    @Published private(set) var state: EmailAuthUiState
-    let events = PassthroughSubject<any AuthEvent, Never>()
-
-    var viewModel: EmailAuthViewModel { bridge.viewModel }
-
-    init(signUp: Bool) {
-        bridge = EmailAuthBridge(signUp: signUp)
-        state = bridge.currentState
-        watches = [
-            bridge.watch { [weak self] state in self?.state = state },
-            bridge.watchEvents { [weak self] event in self?.events.send(event) },
-        ]
-    }
-
-    deinit {
-        watches.forEach { $0.cancel() }
-        bridge.close()
-    }
-}
-
-final class ForgotPasswordModel: ObservableObject {
-    private let bridge = ForgotPasswordBridge()
-    private var watch: FlowWatch?
-
-    @Published private(set) var state: ForgotPasswordUiState
-
-    var viewModel: ForgotPasswordViewModel { bridge.viewModel }
-
-    init() {
-        state = bridge.currentState
-        watch = bridge.watch { [weak self] state in self?.state = state }
-    }
-
-    deinit {
-        watch?.cancel()
         bridge.close()
     }
 }

@@ -58,23 +58,31 @@ data class Store(
 ) {
     val isAcceptingOrders: Boolean get() = availability == StoreAvailability.OPEN
 
+    /** A booked service such as a salon. "Eat-in" doesn't fit it, so it keeps the "In-store" wording. */
+    val isService: Boolean get() = category in SERVICE_CATEGORIES
+
     fun supports(mode: FulfillmentMode): Boolean = mode in businessType.supportedModes
 
     /**
      * The one status badge a store card shows. Not taking orders wins over everything,
      * then a single-mode store says which mode it has, and a store with both modes is open for lunch.
+     * An in-store-only food store reads "Eat-in Only"; a service keeps "In-store Only".
      */
     val badge: StoreBadge
         get() = when {
             availability == StoreAvailability.PAUSED -> StoreBadge.PAUSED
             availability == StoreAvailability.FULL -> StoreBadge.FULL
             businessType == BusinessType.PICKUP_ONLY -> StoreBadge.PICKUP_ONLY
-            businessType == BusinessType.IN_STORE_ONLY -> StoreBadge.IN_STORE_ONLY
+            businessType == BusinessType.IN_STORE_ONLY -> if (isService) StoreBadge.IN_STORE_ONLY else StoreBadge.EAT_IN_ONLY
             else -> StoreBadge.OPEN_FOR_LUNCH
         }
 }
 
-enum class StoreBadge { OPEN_FOR_LUNCH, PICKUP_ONLY, IN_STORE_ONLY, PAUSED, FULL }
+// shortcut: the store feed has no "kind" field, so a service is told by its category. Replace with a feed
+// field when the backend has one (ask the owner); until then a new service category must be added here.
+private val SERVICE_CATEGORIES = setOf("Salon")
+
+enum class StoreBadge { OPEN_FOR_LUNCH, PICKUP_ONLY, EAT_IN_ONLY, IN_STORE_ONLY, PAUSED, FULL }
 
 /** A favorited menu item. Tapping it opens [storeId]. */
 data class FavoriteItem(

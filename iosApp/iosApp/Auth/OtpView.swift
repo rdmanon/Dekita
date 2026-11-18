@@ -3,6 +3,7 @@ import SharedLogic
 
 /// The 6-digit code step: six cells over one hidden field, so SMS autofill and paste fill them all.
 /// The cells show the view model's normalized code, so full-width digits appear half-width.
+/// The code went to a phone number or an email; the screen is the same for both.
 struct OtpView: View {
     @EnvironmentObject private var flow: AuthFlow
     @Environment(\.dismiss) private var dismiss
@@ -10,15 +11,16 @@ struct OtpView: View {
     @State private var typed = ""
     @FocusState private var focused: Bool
 
-    init(phoneE164: String) {
-        _model = StateObject(wrappedValue: OtpModel(phoneE164: phoneE164))
+    /// `contactKey` is `AuthContact.key`: the email address or the E.164 number the code was sent to.
+    init(contactKey: String) {
+        _model = StateObject(wrappedValue: OtpModel(contactKey: contactKey))
     }
 
     var body: some View {
         let state = model.state
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
-                Text("We sent a 6-digit code to \(state.phone).")
+                Text("We sent a 6-digit code to \(state.destination).")
                 ZStack {
                     TextField("", text: $typed)
                         .keyboardType(.numberPad)
@@ -53,8 +55,10 @@ struct OtpView: View {
                 }
                 .disabled(!state.canResend)
                 .frame(minHeight: 44)
-                Button("Change number") { dismiss() }
+                // Goes back to the field, for a phone number or an email alike.
+                Button("Change") { dismiss() }
                     .frame(minHeight: 44)
+                    .accessibilityLabel("Change phone number or email")
 
                 if AppBuild.isDebug {
                     Text("Debug build · test code: \(SeedAuth.shared.TEST_OTP)")

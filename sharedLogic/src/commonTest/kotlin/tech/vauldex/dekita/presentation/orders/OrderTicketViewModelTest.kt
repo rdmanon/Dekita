@@ -106,7 +106,7 @@ class OrderTicketViewModelTest {
 
         var state = ticket.state.value
         assertEquals("#${order.number}", state.numberLabel)
-        assertEquals("Test Mart · Pickup", state.storeLine)
+        assertEquals("Test Mart · Takeout", state.storeLine)
         assertEquals(listOf("Received", "Cooking", "Ready"), state.steps.map { it.label })
         assertEquals(listOf(StepState.CURRENT, StepState.TODO, StepState.TODO), state.stepStates)
         assertEquals("Your order will be ready shortly.", state.bannerTitle)

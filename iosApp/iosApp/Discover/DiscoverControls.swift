@@ -29,7 +29,7 @@ struct DiscoverDestination: View {
     }
 }
 
-/// The In-store / Pickup selector, shown before any store. "All" clears it.
+/// The Eat-in / Takeout selector, shown before any store. "All" clears it.
 struct ModePicker: View {
     let mode: FulfillmentMode?
     let onSelect: (FulfillmentMode?) -> Void
@@ -39,8 +39,8 @@ struct ModePicker: View {
             label: "How you'll be served",
             options: [
                 ("All", Optional<FulfillmentMode>.none),
-                ("In-store", .some(FulfillmentMode.inStore)),
-                ("Pickup", .some(FulfillmentMode.pickup)),
+                (FulfillmentMode.inStore.choiceLabel, .some(FulfillmentMode.inStore)),
+                (FulfillmentMode.pickup.choiceLabel, .some(FulfillmentMode.pickup)),
             ],
             selection: mode,
             onSelect: onSelect
@@ -291,7 +291,7 @@ struct DraftBanner: View {
                     .frame(width: 36, height: 36)
                     .background(Palette.tileIcon, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
                 VStack(alignment: .leading, spacing: 1) {
-                    Text("Your Eat-In order is waiting").font(.subheadline.weight(.semibold))
+                    Text("Your Eat-in order is waiting").font(.subheadline.weight(.semibold))
                     Text("\(draft.storeName) · \(draft.itemsLabel)")
                         .font(.caption)
                         .foregroundStyle(.secondary)

@@ -16,8 +16,8 @@ fun defaultAvailabilityStoreId(cart: Cart?): String = cart?.storeId ?: SeedStore
 val BusinessType.debugLabel: String
     get() = when (this) {
         BusinessType.BOTH -> "Both"
-        BusinessType.IN_STORE_ONLY -> "In-store only"
-        BusinessType.PICKUP_ONLY -> "Pickup only"
+        BusinessType.IN_STORE_ONLY -> "Eat-in only"
+        BusinessType.PICKUP_ONLY -> "Takeout only"
     }
 
 /** One line on the store's live state, for example "Open for Lunch · Both · 3 orders ahead". */

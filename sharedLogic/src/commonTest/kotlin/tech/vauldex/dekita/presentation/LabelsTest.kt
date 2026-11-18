@@ -6,6 +6,7 @@ import kotlin.test.assertNull
 import tech.vauldex.dekita.data.mock.SeedStoreIds
 import tech.vauldex.dekita.data.mock.seedStores
 import tech.vauldex.dekita.domain.BusinessType
+import tech.vauldex.dekita.domain.FulfillmentMode
 import tech.vauldex.dekita.domain.StoreBadge
 
 /** The text both apps show, so Android and iOS stay in step. */
@@ -38,14 +39,23 @@ class LabelsTest {
     @Test
     fun badgeLabelsMatchTheTicket() {
         assertEquals("Open for Lunch", StoreBadge.OPEN_FOR_LUNCH.label)
-        assertEquals("Pickup Only", StoreBadge.PICKUP_ONLY.label)
+        assertEquals("Takeout Only", StoreBadge.PICKUP_ONLY.label)
+        assertEquals("Eat-in Only", StoreBadge.EAT_IN_ONLY.label)
         assertEquals("In-store Only", StoreBadge.IN_STORE_ONLY.label)
         assertEquals("Paused", StoreBadge.PAUSED.label)
     }
 
     @Test
+    fun modesAreCalledEatInAndTakeoutEverywhere() {
+        assertEquals("Eat-in", FulfillmentMode.IN_STORE.label)
+        assertEquals("Takeout", FulfillmentMode.PICKUP.label)
+        assertEquals(FulfillmentMode.IN_STORE.label, FulfillmentMode.IN_STORE.choiceLabel)
+        assertEquals(FulfillmentMode.PICKUP.label, FulfillmentMode.PICKUP.choiceLabel)
+    }
+
+    @Test
     fun onlyStoresWithBothModesSayWhichModes() {
-        assertEquals("Eat-In & Takeout", BusinessType.BOTH.modesLabel)
+        assertEquals("Eat-in & Takeout", BusinessType.BOTH.modesLabel)
         assertNull(BusinessType.PICKUP_ONLY.modesLabel)
         assertNull(BusinessType.IN_STORE_ONLY.modesLabel)
     }

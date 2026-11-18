@@ -93,7 +93,7 @@ class CheckInViewModelTest {
         finishLoading()
 
         val before = viewModel.state.value
-        assertEquals("Test Ramen Bar · Eat-In", before.storeLine)
+        assertEquals("Test Ramen Bar · Eat-in", before.storeLine)
         assertEquals("2 items · ¥1,550", before.orderSummary)
         assertEquals("3 orders ahead · ~8 min wait", before.queueLabel)
         assertEquals("On your way", before.headline)

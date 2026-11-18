@@ -398,7 +398,7 @@ class PaymentViewModelTest {
         val confirm = payment(f, target = PaymentTarget.Draft(draftId))
         val events = collectEvents(confirm.events)
 
-        assertEquals("Test Ramen Bar · Eat-In · 2 items", confirm.state.value.summary)
+        assertEquals("Test Ramen Bar · Eat-in · 2 items", confirm.state.value.summary)
         assertEquals(Money.yen(1550), confirm.state.value.total)
         assertEquals(SeedPaymentIds.TEST_CARD, confirm.state.value.selectedMethod?.id, "The sheet starts on the saved default")
 

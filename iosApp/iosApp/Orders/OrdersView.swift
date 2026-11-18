@@ -180,7 +180,7 @@ private struct DraftRow: View {
         layout {
             VStack(alignment: .leading, spacing: 4) {
                 StepCapsule(text: "Waiting for check-in")
-                Text("\(order.storeName) · Eat-In").font(.headline)
+                Text("\(order.storeName) · \(FulfillmentMode.inStore.label)").font(.headline)
                 Text(detail).font(.subheadline).foregroundStyle(.secondary)
             }
             .frame(maxWidth: .infinity, alignment: .leading)

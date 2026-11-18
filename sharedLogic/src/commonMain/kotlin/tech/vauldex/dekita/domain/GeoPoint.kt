@@ -2,6 +2,7 @@ package tech.vauldex.dekita.domain
 
 import kotlin.math.PI
 import kotlin.math.cos
+import kotlin.math.roundToInt
 import kotlin.math.sin
 import kotlin.math.sqrt
 
@@ -34,7 +35,13 @@ data class GeoPoint(val latitude: Double, val longitude: Double) {
         return sqrt(north * north + east * east)
     }
 
+    /** Walking minutes to [other] at [WALK_METERS_PER_MINUTE], rounded to the nearest minute and never below 1. */
+    fun walkMinutesTo(other: GeoPoint): Int = (distanceTo(other) / WALK_METERS_PER_MINUTE).roundToInt().coerceAtLeast(1)
+
     private companion object {
         const val METERS_PER_DEGREE = 111_320.0
     }
 }
+
+/** Roughly how far a customer walks in a minute, to turn walking times into distances. */
+const val WALK_METERS_PER_MINUTE = 80

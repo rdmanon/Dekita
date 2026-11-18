@@ -14,6 +14,7 @@ import tech.vauldex.dekita.data.LoadState
 import tech.vauldex.dekita.data.OrderRepository
 import tech.vauldex.dekita.data.StoreRepository
 import tech.vauldex.dekita.data.dataOrNull
+import tech.vauldex.dekita.domain.BusinessType
 import tech.vauldex.dekita.domain.FavoriteItem
 import tech.vauldex.dekita.domain.FulfillmentMode
 import tech.vauldex.dekita.domain.Order
@@ -39,6 +40,11 @@ data class DiscoverUiState(
     val draftToResume: Order? = null,
     /** The paid order updated most recently and not closed yet, for the banner that opens its ticket. Null for guests. */
     val activeOrder: Order? = null,
+    /**
+     * Whether the Eat-in / Takeout filter is on screen. Discover shows it only under a picked category that has a
+     * store offering both modes (v2 design); the Search tab always shows it. While it is hidden, [filters] has no mode.
+     */
+    val showsModeFilter: Boolean = true,
 ) {
     /** A search or a Filters-sheet filter shows only the result list. The mode and the category chip don't. */
     val showsResults: Boolean get() = filters.showsResults
@@ -49,11 +55,17 @@ data class DiscoverUiState(
 /** The orders for Discover, and whether they belong to a signed-in customer. */
 private class DiscoverOrders(val orders: LoadState<List<Order>>, val isSignedIn: Boolean)
 
+/**
+ * [modeNeedsCategory] is the Discover tab's rule: the Eat-in / Takeout filter only shows (and only applies) under a
+ * picked category that has a store offering both modes, and picking another category puts it back to All. The Search
+ * tab leaves it off and shows the filter all the time.
+ */
 class DiscoverViewModel(
     private val storeRepository: StoreRepository,
     orderRepository: OrderRepository,
     private val cartRepository: CartRepository,
     authRepository: AuthRepository,
+    private val modeNeedsCategory: Boolean = false,
 ) : ViewModel() {
 
     // Every filter except the mode. The mode lives in the cart repository, so every Discover screen
@@ -86,7 +98,7 @@ class DiscoverViewModel(
             ),
         )
 
-    /** Picks In-store or Pickup, or null for all stores. The cart starts in this mode. */
+    /** Picks Eat-in or Takeout, or null for all stores. The cart starts in this mode. */
     fun selectMode(mode: FulfillmentMode?) = cartRepository.setPreferredMode(mode)
 
     fun setQuery(query: String) = filters.update { it.copy(query = query) }
@@ -95,7 +107,11 @@ class DiscoverViewModel(
     fun selectWalkLimit(limit: WalkLimit?) = filters.update { it.copy(walkLimit = limit.takeUnless { l -> l == it.walkLimit }) }
 
     /** Multi-select (DISC-01): each chip turns its category on or off. */
-    fun toggleCategory(category: String) = filters.update { it.copy(categories = it.categories.toggle(category)) }
+    fun toggleCategory(category: String) {
+        filters.update { it.copy(categories = it.categories.toggle(category)) }
+        // A different category is a new question, so the Eat-in / Takeout filter starts again at All.
+        if (modeNeedsCategory) cartRepository.setPreferredMode(null)
+    }
 
     fun toggleStatus(status: StoreAvailability) = filters.update { it.copy(statuses = it.statuses.toggle(status)) }
 
@@ -130,16 +146,23 @@ class DiscoverViewModel(
             activeOrder = ownOrders.filter { it.isActive }.maxByOrNull { it.lastUpdatedAt },
         )
         return when (stores) {
-            LoadState.Loading -> base.copy(isLoading = true)
-            is LoadState.Error -> base.copy(isLoading = false, error = stores.message)
+            LoadState.Loading -> base.copy(isLoading = true, showsModeFilter = !modeNeedsCategory)
+            is LoadState.Error -> base.copy(isLoading = false, error = stores.message, showsModeFilter = !modeNeedsCategory)
             is LoadState.Success -> {
                 val byId = stores.data.associateBy { it.id }
+                val showsModeFilter = !modeNeedsCategory || stores.data.any {
+                    it.category in filters.categories && it.businessType == BusinessType.BOTH
+                }
+                // A mode left over from another tab must not hide stores behind a filter that isn't on screen.
+                val applied = if (showsModeFilter) filters else filters.copy(mode = null)
                 base.copy(
                     isLoading = false,
+                    filters = applied,
+                    showsModeFilter = showsModeFilter,
                     categories = stores.data.map { it.category }.distinct(),
                     // Recommendations keep their own order rather than walking distance.
-                    recommended = recommendedIds.mapNotNull { id -> byId[id]?.let(filters::match) },
-                    stores = stores.data.filterStores(filters),
+                    recommended = recommendedIds.mapNotNull { id -> byId[id]?.let(applied::match) },
+                    stores = stores.data.filterStores(applied),
                 )
             }
         }

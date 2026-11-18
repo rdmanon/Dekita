@@ -336,8 +336,8 @@ private struct MenuItemRowView: View {
 
     /// Sold out is the pill on the art, so only the mode limits are badged here.
     private var badge: (text: String, colors: Palette.BadgeColors)? {
-        if item.availableModes == [FulfillmentMode.inStore] { return ("In-store only", Palette.badge(.inStoreOnly)) }
-        if item.availableModes == [FulfillmentMode.pickup] { return ("Pickup only", Palette.badge(.pickupOnly)) }
+        if item.availableModes == [FulfillmentMode.inStore] { return ("Eat-in only", Palette.badge(.eatInOnly)) }
+        if item.availableModes == [FulfillmentMode.pickup] { return ("Takeout only", Palette.badge(.pickupOnly)) }
         return nil
     }
 }

@@ -42,17 +42,20 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import tech.vauldex.dekita.R
 import tech.vauldex.dekita.presentation.discover.DiscoverUiState
 import tech.vauldex.dekita.presentation.discover.DiscoverViewModel
+import tech.vauldex.dekita.presentation.place.PlacePickerViewModel
 import tech.vauldex.dekita.ui.components.groupedShape
 import tech.vauldex.dekita.ui.theme.Dimens
 
 /**
- * Discover, the start of every order. From the top: search, the In-store / Pickup selector,
- * a banner for an in-store draft waiting for check-in, the decided customer's Favorites and History, then the undecided customer's categories,
- * Recommended and Nearby. Any search or filter swaps the home sections for one result list.
+ * Discover, the start of every order. From the top: the location chip, search, the banners for an open order and for an
+ * Eat-in draft waiting for check-in, Browse by category, the Eat-in / Takeout selector (only for a category with a
+ * store offering both), Nearby, Recommended, then the Favorites and History shortcuts. Any search or filter swaps the
+ * home sections for one result list.
  */
 @Composable
 fun DiscoverScreen(
     viewModel: DiscoverViewModel,
+    placePicker: PlacePickerViewModel,
     onStoreClick: (String) -> Unit,
     onFavoritesClick: () -> Unit,
     onHistoryClick: () -> Unit,
@@ -61,9 +64,11 @@ fun DiscoverScreen(
     onOpenTicket: (orderId: String) -> Unit,
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    val place by placePicker.state.collectAsStateWithLifecycle()
     // Kept above the loading branch so the saved scroll position is still here when the list comes back.
     val listState = rememberLazyListState()
     var showFilters by rememberSaveable { mutableStateOf(false) }
+    var showPlaces by rememberSaveable { mutableStateOf(false) }
 
     // The field keeps its own text so typing never waits on the view model. It only follows the
     // view model when the query is cleared from elsewhere, such as Clear filters.
@@ -80,6 +85,14 @@ fun DiscoverScreen(
             contentPadding = PaddingValues(top = statusBarTop + 8.dp, bottom = Dimens.ScreenPadding),
             modifier = Modifier.fillMaxSize(),
         ) {
+            item(key = "location") {
+                // Inset by the chip's own 8 dp padding, so its pin lines up with the search field's edge.
+                LocationChip(
+                    placeName = place.selected.name,
+                    onClick = { showPlaces = true },
+                    modifier = Modifier.padding(start = Dimens.ScreenPadding - 8.dp),
+                )
+            }
             item(key = "search") {
                 DiscoverSearchField(
                     query = searchText,
@@ -89,14 +102,7 @@ fun DiscoverScreen(
                     },
                     filterCount = state.filters.sheetFilterCount,
                     onOpenFilters = { showFilters = true },
-                    modifier = Modifier.screenPadding(),
-                )
-            }
-            item(key = "mode") {
-                ModeSelector(
-                    selected = state.filters.mode,
-                    onSelect = viewModel::selectMode,
-                    modifier = Modifier.screenPadding().padding(top = 16.dp),
+                    modifier = Modifier.screenPadding().padding(top = 8.dp),
                 )
             }
             state.activeOrder?.let { order ->
@@ -117,6 +123,7 @@ fun DiscoverScreen(
                     )
                 }
             }
+            storeSections(state, viewModel, onStoreClick, onSeeAllRecommended)
             item(key = "shortcuts") {
                 DecidedShortcuts(
                     favoriteItemCount = state.favoriteItemCount,
@@ -126,8 +133,22 @@ fun DiscoverScreen(
                     modifier = Modifier.screenPadding().padding(top = 16.dp),
                 )
             }
-            storeSections(state, viewModel, onStoreClick, onSeeAllRecommended)
         }
+    }
+
+    if (showPlaces) {
+        PlacePickerSheet(
+            state = place,
+            onQueryChange = placePicker::setQuery,
+            onSelect = { placeId ->
+                placePicker.select(placeId)
+                showPlaces = false
+            },
+            onDismiss = {
+                placePicker.clearQuery()
+                showPlaces = false
+            },
+        )
     }
 
     if (showFilters) {
@@ -176,6 +197,17 @@ private fun LazyListScope.storeSections(
                 }
             }
 
+            // Only under a category with a store offering both, directly below the chips it narrows.
+            if (state.showsModeFilter) {
+                item(key = "mode") {
+                    ModeSelector(
+                        selected = state.filters.mode,
+                        onSelect = viewModel::selectMode,
+                        modifier = Modifier.screenPadding().padding(top = 16.dp),
+                    )
+                }
+            }
+
             if (state.showsResults) {
                 // With no results, the empty state below says so and has its own Clear filters.
                 if (state.stores.isNotEmpty()) item(key = "results-heading") {
@@ -191,7 +223,30 @@ private fun LazyListScope.storeSections(
                         TextButton(onClick = viewModel::clearFilters) { Text("Clear filters") }
                     }
                 }
-            } else if (state.recommended.isNotEmpty()) {
+            } else if (state.stores.isNotEmpty()) {
+                item(key = "nearby-heading") { SectionHeading("Nearby") }
+            }
+
+            if (state.hasNoMatches) {
+                item(key = "no-matches") {
+                    NoMatchesState(
+                        onClearFilters = viewModel::clearFilters,
+                        modifier = Modifier.screenPadding().padding(top = 16.dp),
+                    )
+                }
+            }
+
+            itemsIndexed(state.stores, key = { _, match -> "store-${match.store.id}" }) { index, match ->
+                StoreRow(
+                    store = match.store,
+                    shape = groupedShape(index, state.stores.size),
+                    onClick = { onStoreClick(match.store.id) },
+                    matchedItem = match.matchedItem,
+                    modifier = Modifier.screenPadding().padding(bottom = 2.dp),
+                )
+            }
+
+            if (!state.showsResults && state.recommended.isNotEmpty()) {
                 item(key = "recommended") {
                     Column {
                         SectionHeading(
@@ -223,29 +278,6 @@ private fun LazyListScope.storeSections(
                         }
                     }
                 }
-            }
-
-            if (!state.showsResults && state.stores.isNotEmpty()) {
-                item(key = "nearby-heading") { SectionHeading("Nearby") }
-            }
-
-            if (state.hasNoMatches) {
-                item(key = "no-matches") {
-                    NoMatchesState(
-                        onClearFilters = viewModel::clearFilters,
-                        modifier = Modifier.screenPadding().padding(top = 16.dp),
-                    )
-                }
-            }
-
-            itemsIndexed(state.stores, key = { _, match -> "store-${match.store.id}" }) { index, match ->
-                StoreRow(
-                    store = match.store,
-                    shape = groupedShape(index, state.stores.size),
-                    onClick = { onStoreClick(match.store.id) },
-                    matchedItem = match.matchedItem,
-                    modifier = Modifier.screenPadding().padding(bottom = 2.dp),
-                )
             }
         }
     }

@@ -20,8 +20,8 @@ import tech.vauldex.dekita.data.AuthResult
 import tech.vauldex.dekita.domain.AuthInput
 
 data class OtpUiState(
-    /** The number the code went to, formatted for display. */
-    val phone: String,
+    /** Where the code went, for display: the number formatted like "+81 90-1234-5678", or the email address. */
+    val destination: String,
     val code: String = "",
     val error: String? = null,
     val isVerifying: Boolean = false,
@@ -31,23 +31,24 @@ data class OtpUiState(
     val canResend: Boolean get() = resendSecondsLeft == 0 && !isResending && !isVerifying
 
     override fun toString() =
-        "OtpUiState(phone=••••, code=••••, error=$error, isVerifying=$isVerifying, " +
+        "OtpUiState(destination=••••, code=••••, error=$error, isVerifying=$isVerifying, " +
             "isResending=$isResending, resendSecondsLeft=$resendSecondsLeft)"
 }
 
 /**
- * The 6-digit code step. The resend cooldown is measured with [timeSource] rather than by counting ticks,
- * so it stays right when the app sits in the background. Tests pass the test scheduler's time source.
+ * The 6-digit code step, for a code sent to a phone or an email. The resend cooldown is measured with [timeSource]
+ * rather than by counting ticks, so it stays right when the app sits in the background. Tests pass the test
+ * scheduler's time source. [contactKey] is [AuthContact.key] of the contact the previous screen sent the code to.
  */
 class OtpViewModel(
-    phoneE164: String,
+    contactKey: String,
     private val authRepository: AuthRepository,
     private val timeSource: TimeSource = TimeSource.Monotonic,
 ) : ViewModel() {
 
-    private val phone = requireNotNull(AuthInput.parseE164(phoneE164)) { "OtpViewModel needs a mobile number" }
+    private val contact = requireNotNull(AuthInput.parseContact(contactKey)) { "OtpViewModel needs a mobile number or an email" }
 
-    private val _state = MutableStateFlow(OtpUiState(phone = phone.formatted()))
+    private val _state = MutableStateFlow(OtpUiState(destination = contact.display))
     val state: StateFlow<OtpUiState> = _state.asStateFlow()
 
     private val _events = Channel<AuthEvent>(Channel.BUFFERED)
@@ -77,7 +78,7 @@ class OtpViewModel(
         }
         _state.update { it.copy(isVerifying = true, error = null) }
         viewModelScope.launch {
-            when (authRepository.verifyOtp(phone, current.code)) {
+            when (authRepository.verifyOtp(contact, current.code)) {
                 AuthResult.Success -> {
                     cooldownJob?.cancel()
                     _state.update { it.copy(isVerifying = false) }
@@ -93,7 +94,7 @@ class OtpViewModel(
         if (!_state.value.canResend) return
         _state.update { it.copy(isResending = true, code = "", error = null) }
         viewModelScope.launch {
-            authRepository.requestOtp(phone)
+            authRepository.requestOtp(contact)
             _state.update { it.copy(isResending = false) }
             startCooldown()
         }

@@ -6,6 +6,7 @@ import tech.vauldex.dekita.domain.GeoPoint
 import tech.vauldex.dekita.domain.QueueStatus
 import tech.vauldex.dekita.domain.Store
 import tech.vauldex.dekita.domain.StoreAvailability
+import tech.vauldex.dekita.domain.WALK_METERS_PER_MINUTE
 
 /** Seed store ids. Every store name says Test or Sample so it can't pass for a real business. */
 internal object SeedStoreIds {
@@ -30,8 +31,7 @@ internal val seedCustomerLocation = GeoPoint(35.6655, 139.7580)
 private fun around(walkMinutes: Int, bearingDegrees: Double) =
     seedCustomerLocation.offset(walkMinutes * METERS_PER_WALK_MINUTE.toDouble(), bearingDegrees)
 
-/** Roughly how far a customer walks in a minute, to turn walking times into distances. */
-internal const val METERS_PER_WALK_MINUTE = 80
+internal const val METERS_PER_WALK_MINUTE = WALK_METERS_PER_MINUTE
 
 // The list order sets the order of the category chips on Discover (first appearance wins),
 // so restaurants come first, as in the design. Discover sorts the stores themselves by walking time.

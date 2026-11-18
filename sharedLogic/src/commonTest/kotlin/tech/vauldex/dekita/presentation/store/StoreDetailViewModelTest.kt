@@ -127,7 +127,7 @@ class StoreDetailViewModelTest {
         val viewModel = loadedScreen(SeedStoreIds.RAMEN_BAR, cart).viewModel
         viewModel.openItem("item-kaedama") // in-store only
         runCurrent()
-        assertEquals("Only for In-store orders", viewModel.state.value.sheet!!.blockedReason)
+        assertEquals("Only for Eat-in orders",viewModel.state.value.sheet!!.blockedReason)
     }
 
     private fun seedItemIdOf(storeId: String): String =

@@ -8,6 +8,7 @@ import kotlinx.coroutines.test.currentTime
 import kotlinx.coroutines.test.runTest
 import tech.vauldex.dekita.data.AuthFailure
 import tech.vauldex.dekita.data.AuthResult
+import tech.vauldex.dekita.domain.AuthContact
 import tech.vauldex.dekita.domain.AuthInput
 import tech.vauldex.dekita.domain.DialCode
 import tech.vauldex.dekita.domain.SignInMethod
@@ -16,7 +17,8 @@ import tech.vauldex.dekita.domain.SsoProvider
 @OptIn(ExperimentalCoroutinesApi::class)
 class FakeAuthRepositoryTest {
 
-    private val phone = AuthInput.parseMobile(DialCode.JP, "+819000000000")!!
+    private val phone = AuthContact.Phone(AuthInput.parseMobile(DialCode.JP, "+819000000000")!!)
+    private val email = AuthContact.Email("lunchuser@example.com")
 
     @Test
     fun theTestCodeSignsInWithThePhone() = runTest {
@@ -28,10 +30,31 @@ class FakeAuthRepositoryTest {
     }
 
     @Test
+    fun theTestCodeSignsInWithTheEmail() = runTest {
+        val repository = FakeAuthRepository(MockConfig())
+        repository.requestOtp(email)
+        assertEquals(AuthResult.Success, repository.verifyOtp(email, SeedAuth.TEST_OTP))
+        assertEquals(SignInMethod.EMAIL, repository.session.value?.method)
+        assertEquals("lunchuser@example.com", repository.session.value?.profile?.email)
+    }
+
+    @Test
     fun anyOtherCodeFailsAndStaysSignedOut() = runTest {
         val repository = FakeAuthRepository(MockConfig())
         assertEquals(AuthResult.Failure(AuthFailure.INVALID_CODE), repository.verifyOtp(phone, "000000"))
+        assertEquals(AuthResult.Failure(AuthFailure.INVALID_CODE), repository.verifyOtp(email, "000000"))
         assertNull(repository.session.value)
+    }
+
+    @Test
+    fun aCodeRequestTakesTheSameTimeForAnyContact() = runTest {
+        // The answer must not show whether the contact already has an account.
+        val repository = FakeAuthRepository(MockConfig())
+        val start = currentTime
+        repository.requestOtp(AuthContact.Email(SeedAuth.TEST_EMAIL))
+        val firstTook = currentTime - start
+        repository.requestOtp(AuthContact.Email("nobody.new@example.com"))
+        assertEquals(firstTook, currentTime - start - firstTook)
     }
 
     @Test
@@ -40,40 +63,6 @@ class FakeAuthRepositoryTest {
         val start = currentTime
         repository.signInWith(SsoProvider.APPLE)
         assertEquals(MockConfig.DEFAULT_LOADING_DELAY.inWholeMilliseconds, currentTime - start)
-    }
-
-    @Test
-    fun signUpThenSignOutThenLogInWithTheSamePassword() = runTest {
-        val repository = FakeAuthRepository(MockConfig())
-        assertEquals(AuthResult.Success, repository.signUpWithEmail("lunchuser@example.com", "Pass1234!"))
-        assertEquals(SignInMethod.EMAIL, repository.session.value?.method)
-        repository.signOut()
-        assertNull(repository.session.value)
-        assertEquals(AuthResult.Success, repository.signInWithEmail("LunchUser@example.com", "Pass1234!"))
-        assertEquals("LunchUser@example.com", repository.session.value?.profile?.email)
-    }
-
-    @Test
-    fun theSeedAccountLogsIn() = runTest {
-        val repository = FakeAuthRepository(MockConfig())
-        assertEquals(AuthResult.Success, repository.signInWithEmail(SeedAuth.TEST_EMAIL, SeedAuth.TEST_PASSWORD))
-    }
-
-    @Test
-    fun wrongPasswordAndUnknownEmailFailTheSameWay() = runTest {
-        val repository = FakeAuthRepository(MockConfig())
-        val wrongPassword = repository.signInWithEmail(SeedAuth.TEST_EMAIL, "Wrong1234")
-        val unknownEmail = repository.signInWithEmail("nobody@example.com", SeedAuth.TEST_PASSWORD)
-        assertEquals(AuthResult.Failure(AuthFailure.WRONG_CREDENTIALS), wrongPassword)
-        assertEquals(wrongPassword, unknownEmail)
-        assertNull(repository.session.value)
-    }
-
-    @Test
-    fun signingUpWithATakenEmailFails() = runTest {
-        val repository = FakeAuthRepository(MockConfig())
-        assertEquals(AuthResult.Failure(AuthFailure.EMAIL_TAKEN), repository.signUpWithEmail(SeedAuth.TEST_EMAIL, "Pass1234!"))
-        assertNull(repository.session.value)
     }
 
     @Test
@@ -89,14 +78,10 @@ class FakeAuthRepositoryTest {
     }
 
     @Test
-    fun resetSignsOutAndForgetsNewAccounts() = runTest {
+    fun resetSignsOut() = runTest {
         val repository = FakeAuthRepository(MockConfig())
-        repository.signUpWithEmail("lunchuser@example.com", "Pass1234!")
+        repository.verifyOtp(email, SeedAuth.TEST_OTP)
         repository.reset()
         assertNull(repository.session.value)
-        assertEquals(
-            AuthResult.Failure(AuthFailure.WRONG_CREDENTIALS),
-            repository.signInWithEmail("lunchuser@example.com", "Pass1234!"),
-        )
     }
 }
