@@ -15,12 +15,14 @@ import tech.vauldex.dekita.data.dataOrNull
 import tech.vauldex.dekita.domain.CheckIn
 import tech.vauldex.dekita.domain.CheckInMethod
 import tech.vauldex.dekita.domain.GeoPoint
+import tech.vauldex.dekita.domain.FulfillmentMode
 import tech.vauldex.dekita.domain.Geofence
 import tech.vauldex.dekita.domain.Order
 import tech.vauldex.dekita.domain.Store
 import tech.vauldex.dekita.domain.StoreAvailability
 import tech.vauldex.dekita.presentation.STOP_TIMEOUT_MILLIS
 import tech.vauldex.dekita.presentation.itemsLabel
+import tech.vauldex.dekita.presentation.label
 import tech.vauldex.dekita.presentation.queueDetailLabel
 
 data class CheckInUiState(
@@ -52,7 +54,7 @@ data class CheckInUiState(
 
     val headline: String get() = if (hasArrived) "You've arrived" else "On your way"
 
-    val storeLine: String get() = draft?.let { "${it.storeName} · Eat-In" }.orEmpty()
+    val storeLine: String get() = draft?.let { "${it.storeName} · ${FulfillmentMode.IN_STORE.label}" }.orEmpty()
 
     val orderSummary: String get() = draft?.itemsLabel.orEmpty()
 

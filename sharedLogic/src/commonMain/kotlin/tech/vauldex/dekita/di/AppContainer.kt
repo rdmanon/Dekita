@@ -12,6 +12,7 @@ import tech.vauldex.dekita.data.MenuRepository
 import tech.vauldex.dekita.data.OrderRepository
 import tech.vauldex.dekita.data.PaymentRepository
 import tech.vauldex.dekita.data.PaymentService
+import tech.vauldex.dekita.data.PlaceRepository
 import tech.vauldex.dekita.data.QrScanner
 import tech.vauldex.dekita.data.StoreRepository
 import tech.vauldex.dekita.data.mock.CheckInSimulator
@@ -24,6 +25,7 @@ import tech.vauldex.dekita.data.mock.FakeMenuRepository
 import tech.vauldex.dekita.data.mock.FakeOrderRepository
 import tech.vauldex.dekita.data.mock.FakePaymentRepository
 import tech.vauldex.dekita.data.mock.FakePaymentService
+import tech.vauldex.dekita.data.mock.FakePlaceRepository
 import tech.vauldex.dekita.data.mock.FakeQrScanner
 import tech.vauldex.dekita.data.mock.FakeStoreRepository
 import tech.vauldex.dekita.data.mock.MockConfig
@@ -40,7 +42,9 @@ class AppContainer(
 ) {
     val mockConfig = MockConfig()
 
-    private val stores = FakeStoreRepository(scope, mockConfig)
+    private val location = FakeLocationRepository()
+    private val places = FakePlaceRepository { location.customerLocation.value }
+    private val stores = FakeStoreRepository(scope, mockConfig, places)
     private val menus = FakeMenuRepository(scope, mockConfig)
     private val cart = FakeCartRepository()
     private val orders = FakeOrderRepository(scope, mockConfig, clock)
@@ -48,7 +52,6 @@ class AppContainer(
     private val charges = FakePaymentService(orders, payments, mockConfig)
     private val inbox = FakeInboxRepository(scope, mockConfig, clock)
     private val auth = FakeAuthRepository(mockConfig)
-    private val location = FakeLocationRepository()
     private val scanner = FakeQrScanner()
 
     val storeRepository: StoreRepository get() = stores
@@ -60,6 +63,7 @@ class AppContainer(
     val inboxRepository: InboxRepository get() = inbox
     val authRepository: AuthRepository get() = auth
     val locationRepository: LocationRepository get() = location
+    val placeRepository: PlaceRepository get() = places
     val qrScanner: QrScanner get() = scanner
 
     /** Debug panel only: live changes to the store feed. */
@@ -93,7 +97,7 @@ class AppContainer(
 
     /** Puts every repository back to the seed data, with the loading delay. Also signs out. */
     fun resetMockData() {
-        listOf(stores, menus, cart, orders, payments, charges, inbox, auth, location).forEach { it.reset() }
+        listOf(stores, menus, cart, orders, payments, charges, inbox, auth, location, places).forEach { it.reset() }
     }
 
     companion object {

@@ -264,7 +264,7 @@ class CartReviewViewModelTest {
 
         f.review.selectMode(FulfillmentMode.PICKUP)
         runCurrent()
-        assertEquals("Eat-In only", f.review.state.value.lines.first { it.line.item.id == "item-kaedama" }.unavailableReason)
+        assertEquals("Eat-in only",f.review.state.value.lines.first { it.line.item.id == "item-kaedama" }.unavailableReason)
         assertEquals(CheckoutBlock.UNAVAILABLE_LINES, f.review.state.value.block)
     }
 

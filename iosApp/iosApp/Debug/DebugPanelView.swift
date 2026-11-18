@@ -62,7 +62,7 @@ struct DebugPanelView: View {
                         set: { bridge.setForceSsoFailure(on: $0) }
                     ))
                     LabeledContent("Test code", value: bridge.testCode)
-                    LabeledContent("Test account", value: "\(bridge.testEmail) / \(bridge.testPassword)")
+                    LabeledContent("Test email", value: bridge.testEmail)
                 } header: {
                     Text("Auth")
                 } footer: {
@@ -174,7 +174,7 @@ struct DebugPanelView: View {
         }
     }
 
-    /// SEAT-01: "seats full" per Eat-In store, to try the seat check's fallbacks.
+    /// SEAT-01: "seats full" per Eat-in store, to try the seat check's fallbacks.
     private func seatSection(state: DebugState, bridge: DebugBridge) -> some View {
         Section {
             if let stores = state.stores {

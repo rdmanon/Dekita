@@ -12,7 +12,7 @@ enum class WalkLimit(val maxMinutes: Int) { FIVE(5), TEN(10), FIFTEEN(15) }
  * An empty set or null means that filter is off.
  */
 data class StoreFilters(
-    /** The In-store / Pickup selector. Null shows every store. */
+    /** The Eat-in / Takeout selector. Null shows every store. */
     val mode: FulfillmentMode? = null,
     val query: String = "",
     val walkLimit: WalkLimit? = null,

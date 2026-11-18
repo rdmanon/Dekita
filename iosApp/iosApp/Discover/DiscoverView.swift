@@ -1,14 +1,16 @@
 import SwiftUI
 import SharedLogic
 
-/// Discover, the start of every order. From the top: the title, the In-store / Pickup selector, a banner for an
-/// in-store draft waiting for check-in, the decided
-/// customer's Favorites and History (Search is the floating Search tab), then the undecided
-/// customer's categories, Recommended and Nearby. The mode and the category chip filter those sections
-/// in place; a search or a Filters-sheet filter swaps them for one result list.
+/// Discover, the start of every order. From the top: the location chip and the title, a banner for an active
+/// order and one for an Eat-in draft waiting for check-in, the categories, then the Eat-in / Takeout selector
+/// (only under a picked category that has a store offering both), Nearby, Recommended, and last the decided
+/// customer's Favorites and History (Search is the floating Search tab). The mode and the category chip filter
+/// those sections in place; a search or a Filters-sheet filter swaps them for one result list.
 struct DiscoverView: View {
-    @StateObject private var model = DiscoverModel()
+    @StateObject private var model = DiscoverModel(modeNeedsCategory: true)
+    @StateObject private var placeModel = PlacePickerModel()
     @State private var showFilters = false
+    @State private var showPlaces = false
     @State private var showDebugPanel = false
     @Environment(\.openCheckIn) private var openCheckIn
     @Environment(\.openOrderTicket) private var openOrderTicket
@@ -17,28 +19,29 @@ struct DiscoverView: View {
         let state = model.state
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
-                // The artboard puts the subtitle above the title, which a system large title can't do.
+                // The artboard puts the location chip above the title, which a system large title can't do.
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("Lunchtime near you")
-                        .font(.subheadline.weight(.medium))
-                        .foregroundStyle(.secondary)
+                    LocationChip(placeName: placeModel.state.selected.name) { showPlaces = true }
                     Text("Discover")
                         .font(.largeTitle.weight(.bold))
                         .accessibilityAddTraits(.isHeader)
                 }
-                .accessibilityElement(children: .combine)
-                ModePicker(mode: state.filters.mode) { model.viewModel.selectMode(mode: $0) }
                 if let order = state.activeOrder {
                     ActiveOrderBanner(order: order) { openOrderTicket(order.id) }
                 }
                 if let draft = state.draftToResume {
                     DraftBanner(draft: draft) { openCheckIn(draft.id) }
                 }
+                StoreSections(
+                    state: state,
+                    viewModel: model.viewModel,
+                    showsRecommended: true,
+                    showsModePicker: state.showsModeFilter
+                )
                 DecidedShortcuts(
                     favoriteItemCount: state.favoriteItemCount,
                     lastOrderStoreName: state.lastOrderStoreName
                 )
-                StoreSections(state: state, viewModel: model.viewModel, showsRecommended: true)
             }
             .padding(.horizontal, 16)
             .padding(.bottom, 24)
@@ -61,17 +64,24 @@ struct DiscoverView: View {
             }
         }
         .sheet(isPresented: $showFilters) { FilterSheet(model: model) }
+        // Closing without a pick empties the sheet's search, so it opens fresh next time.
+        .sheet(isPresented: $showPlaces, onDismiss: { placeModel.viewModel.clearQuery() }) {
+            PlaceSheetView(model: placeModel)
+        }
         .sheet(isPresented: $showDebugPanel) { DebugPanelView() }
         .navigationDestination(for: DiscoverRoute.self) { DiscoverDestination(route: $0, discover: model) }
     }
 }
 
-/// Everything below the shortcuts: loading, error, categories, Recommended, Nearby or results.
-/// Shared by the Discover and Search tabs.
+/// The store sections: loading, error, then the categories, the optional Eat-in / Takeout selector, Nearby (or
+/// the results) and Recommended. Shared by the Discover and Search tabs. Discover puts the selector under the
+/// chips, and only when the shared state says so; Search keeps its own selector above, always on screen.
 struct StoreSections: View {
     let state: DiscoverUiState
     let viewModel: DiscoverViewModel
     let showsRecommended: Bool
+    /// Draws the Eat-in / Takeout selector directly under the category chips.
+    var showsModePicker = false
 
     var body: some View {
         if state.isLoading {
@@ -86,15 +96,15 @@ struct StoreSections: View {
                 }
             }
 
+            if showsModePicker {
+                ModePicker(mode: state.filters.mode) { viewModel.selectMode(mode: $0) }
+            }
+
             if state.showsResults {
                 if !state.stores.isEmpty {
                     ResultsHeader(count: state.stores.count) { viewModel.clearFilters() }
                 }
-            } else if showsRecommended && !state.recommended.isEmpty {
-                RecommendedSection(matches: state.recommended)
-            }
-
-            if !state.showsResults && !state.stores.isEmpty {
+            } else if !state.stores.isEmpty {
                 SectionHeader(title: "Nearby")
             }
             if state.hasNoMatches {
@@ -102,6 +112,10 @@ struct StoreSections: View {
             }
             if !state.stores.isEmpty {
                 StoreListCard(matches: state.stores)
+            }
+
+            if !state.showsResults && showsRecommended && !state.recommended.isEmpty {
+                RecommendedSection(matches: state.recommended)
             }
         }
     }

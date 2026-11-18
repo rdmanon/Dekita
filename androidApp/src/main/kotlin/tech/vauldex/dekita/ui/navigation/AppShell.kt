@@ -42,11 +42,7 @@ import tech.vauldex.dekita.R
 import tech.vauldex.dekita.di.AppContainer
 import tech.vauldex.dekita.domain.ClientPlatform
 import tech.vauldex.dekita.presentation.account.AccountViewModel
-import tech.vauldex.dekita.presentation.auth.EmailAuthMode
-import tech.vauldex.dekita.presentation.auth.EmailAuthViewModel
-import tech.vauldex.dekita.presentation.auth.ForgotPasswordViewModel
 import tech.vauldex.dekita.presentation.auth.OtpViewModel
-import tech.vauldex.dekita.presentation.auth.PhoneEntryViewModel
 import tech.vauldex.dekita.presentation.auth.SignInViewModel
 import tech.vauldex.dekita.presentation.cart.CartReviewViewModel
 import tech.vauldex.dekita.presentation.checkin.CheckInViewModel
@@ -60,12 +56,10 @@ import tech.vauldex.dekita.presentation.orders.OrdersViewModel
 import tech.vauldex.dekita.presentation.orders.RateOrderViewModel
 import tech.vauldex.dekita.presentation.payment.PaymentTarget
 import tech.vauldex.dekita.presentation.payment.PaymentViewModel
+import tech.vauldex.dekita.presentation.place.PlacePickerViewModel
 import tech.vauldex.dekita.presentation.store.StoreDetailViewModel
 import tech.vauldex.dekita.ui.account.AccountScreen
-import tech.vauldex.dekita.ui.auth.EmailAuthScreen
-import tech.vauldex.dekita.ui.auth.ForgotPasswordScreen
 import tech.vauldex.dekita.ui.auth.OtpScreen
-import tech.vauldex.dekita.ui.auth.PhoneEntryScreen
 import tech.vauldex.dekita.ui.auth.SignInScreen
 import tech.vauldex.dekita.ui.cart.CartReviewScreen
 import tech.vauldex.dekita.ui.checkin.CheckInScreen
@@ -99,10 +93,8 @@ import tech.vauldex.dekita.ui.store.StoreDetailScreen
 // Auth screens sit outside the tab graphs so any tab, or the cart, can push them.
 /** [isRoot] after sign-out: the only screen left, offering "Browse as guest" instead of Close. */
 @Serializable data class SignInRoute(val isRoot: Boolean = false)
-@Serializable data object PhoneEntryRoute
-@Serializable data class OtpRoute(val phoneE164: String)
-@Serializable data class EmailAuthRoute(val signUp: Boolean)
-@Serializable data object ForgotPasswordRoute
+/** [contactKey] is the phone number (E.164) or email the code went to; it is read back with `AuthInput.parseContact`. */
+@Serializable data class OtpRoute(val contactKey: String)
 
 // Check-in sits outside the tabs: it opens over Discover or Orders, and leaving it returns there.
 @Serializable data class CheckInRoute(val orderId: String)
@@ -186,8 +178,11 @@ fun AppShell(
                                 container.orderRepository,
                                 container.cartRepository,
                                 container.authRepository,
+                                // The Eat-in / Takeout filter only shows under a category, as in the design.
+                                modeNeedsCategory = true,
                             )
                         },
+                        placePicker = viewModel { PlacePickerViewModel(container.placeRepository) },
                         onStoreClick = { storeId ->
                             if (entry.isResumed()) navController.navigate(StoreDetailRoute(storeId))
                         },
@@ -220,6 +215,7 @@ fun AppShell(
                                 container.orderRepository,
                                 container.cartRepository,
                                 container.authRepository,
+                                modeNeedsCategory = true,
                             )
                         },
                         onStoreClick = { storeId ->
@@ -344,39 +340,16 @@ private fun NavGraphBuilder.authDestinations(container: AppContainer, navControl
                     if (isRoot) navController.showFreshDiscover() else navController.popBackStack()
                 }
             },
-            onPhone = { if (entry.isResumed()) navController.navigate(PhoneEntryRoute) },
-            onEmail = { if (entry.isResumed()) navController.navigate(EmailAuthRoute(signUp = true)) },
+            onCodeSent = { contactKey -> if (entry.isResumed()) navController.navigate(OtpRoute(contactKey)) },
             onSignedIn = { navController.finishSignIn() },
-        )
-    }
-    composable<PhoneEntryRoute> { entry ->
-        PhoneEntryScreen(
-            viewModel = viewModel { PhoneEntryViewModel(container.authRepository) },
-            onBack = { if (entry.isResumed()) navController.popBackStack() },
-            onCodeSent = { phone -> if (entry.isResumed()) navController.navigate(OtpRoute(phone.e164)) },
         )
     }
     composable<OtpRoute> { entry ->
-        val phoneE164 = entry.toRoute<OtpRoute>().phoneE164
+        val contactKey = entry.toRoute<OtpRoute>().contactKey
         OtpScreen(
-            viewModel = viewModel { OtpViewModel(phoneE164, container.authRepository) },
+            viewModel = viewModel { OtpViewModel(contactKey, container.authRepository) },
             onBack = { if (entry.isResumed()) navController.popBackStack() },
             onSignedIn = { navController.finishSignIn() },
-        )
-    }
-    composable<EmailAuthRoute> { entry ->
-        val mode = if (entry.toRoute<EmailAuthRoute>().signUp) EmailAuthMode.SIGN_UP else EmailAuthMode.LOG_IN
-        EmailAuthScreen(
-            viewModel = viewModel { EmailAuthViewModel(mode, container.authRepository) },
-            onBack = { if (entry.isResumed()) navController.popBackStack() },
-            onForgotPassword = { if (entry.isResumed()) navController.navigate(ForgotPasswordRoute) },
-            onSignedIn = { navController.finishSignIn() },
-        )
-    }
-    composable<ForgotPasswordRoute> { entry ->
-        ForgotPasswordScreen(
-            viewModel = viewModel { ForgotPasswordViewModel(container.authRepository) },
-            onBack = { if (entry.isResumed()) navController.popBackStack() },
         )
     }
 }

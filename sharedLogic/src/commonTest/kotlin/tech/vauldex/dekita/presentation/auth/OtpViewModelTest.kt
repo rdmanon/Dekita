@@ -48,7 +48,21 @@ class OtpViewModelTest {
 
     @Test
     fun showsTheNumberTheCodeWentTo() = runTest(mainDispatcher) {
-        assertEquals("+81 90-0000-0000", newViewModel().state.value.phone)
+        assertEquals("+81 90-0000-0000", newViewModel().state.value.destination)
+    }
+
+    @Test
+    fun showsTheEmailTheCodeWentToAndSignsInWithIt() = runTest(mainDispatcher) {
+        val viewModel = OtpViewModel("lunchuser@example.com", repository, testScheduler.timeSource)
+        assertEquals("lunchuser@example.com", viewModel.state.value.destination)
+        assertFalse(viewModel.state.value.toString().contains("lunchuser"), "The address stays out of the printed state")
+
+        val events = collectEvents(viewModel.events)
+        viewModel.onCodeChange(SeedAuth.TEST_OTP)
+        finishRequest()
+        assertEquals(listOf<AuthEvent>(AuthEvent.SignedIn), events)
+        assertEquals(SignInMethod.EMAIL, repository.session.value?.method)
+        assertEquals("lunchuser@example.com", repository.session.value?.profile?.email)
     }
 
     @Test

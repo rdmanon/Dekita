@@ -27,7 +27,6 @@ import tech.vauldex.dekita.di.AppContainer
 import tech.vauldex.dekita.domain.BusinessType
 import tech.vauldex.dekita.domain.CheckInQr
 import tech.vauldex.dekita.domain.ClientPlatform
-import tech.vauldex.dekita.domain.DialCode
 import tech.vauldex.dekita.domain.Geofence
 import tech.vauldex.dekita.domain.Menu
 import tech.vauldex.dekita.domain.MenuItem
@@ -39,15 +38,8 @@ import tech.vauldex.dekita.domain.StoreAvailability
 import tech.vauldex.dekita.presentation.account.AccountUiState
 import tech.vauldex.dekita.presentation.account.AccountViewModel
 import tech.vauldex.dekita.presentation.auth.AuthEvent
-import tech.vauldex.dekita.presentation.auth.EmailAuthMode
-import tech.vauldex.dekita.presentation.auth.EmailAuthUiState
-import tech.vauldex.dekita.presentation.auth.EmailAuthViewModel
-import tech.vauldex.dekita.presentation.auth.ForgotPasswordUiState
-import tech.vauldex.dekita.presentation.auth.ForgotPasswordViewModel
 import tech.vauldex.dekita.presentation.auth.OtpUiState
 import tech.vauldex.dekita.presentation.auth.OtpViewModel
-import tech.vauldex.dekita.presentation.auth.PhoneEntryUiState
-import tech.vauldex.dekita.presentation.auth.PhoneEntryViewModel
 import tech.vauldex.dekita.presentation.auth.SignInUiState
 import tech.vauldex.dekita.presentation.auth.SignInViewModel
 import tech.vauldex.dekita.presentation.cart.CartReviewEvent
@@ -75,6 +67,8 @@ import tech.vauldex.dekita.presentation.orders.OrdersUiState
 import tech.vauldex.dekita.presentation.orders.RateOrderUiState
 import tech.vauldex.dekita.presentation.orders.RateOrderViewModel
 import tech.vauldex.dekita.presentation.orders.OrdersViewModel
+import tech.vauldex.dekita.presentation.place.PlacePickerUiState
+import tech.vauldex.dekita.presentation.place.PlacePickerViewModel
 import tech.vauldex.dekita.presentation.payment.PaymentEvent
 import tech.vauldex.dekita.presentation.payment.PaymentTarget
 import tech.vauldex.dekita.presentation.payment.PaymentUiState
@@ -114,9 +108,20 @@ abstract class ScreenBridge {
     }
 }
 
-class DiscoverBridge : ScreenBridge() {
+/**
+ * [modeNeedsCategory] is the Discover tab's rule (see [DiscoverViewModel]); the Search tab uses the no-argument form.
+ */
+class DiscoverBridge(modeNeedsCategory: Boolean) : ScreenBridge() {
+    constructor() : this(false)
+
     val viewModel: DiscoverViewModel = makeViewModel(DiscoverViewModel::class) {
-        DiscoverViewModel(container.storeRepository, container.orderRepository, container.cartRepository, container.authRepository)
+        DiscoverViewModel(
+            container.storeRepository,
+            container.orderRepository,
+            container.cartRepository,
+            container.authRepository,
+            modeNeedsCategory,
+        )
     }
 
     val currentState: DiscoverUiState get() = viewModel.state.value
@@ -128,6 +133,17 @@ class DiscoverBridge : ScreenBridge() {
 
     /** The status filter's choices, in order. */
     val statuses: List<StoreAvailability> = StoreAvailability.entries
+}
+
+/** The location chip and its picker sheet on Discover. */
+class PlacePickerBridge : ScreenBridge() {
+    val viewModel: PlacePickerViewModel = makeViewModel(PlacePickerViewModel::class) {
+        PlacePickerViewModel(container.placeRepository)
+    }
+
+    val currentState: PlacePickerUiState get() = viewModel.state.value
+
+    fun watch(onState: (PlacePickerUiState) -> Unit): FlowWatch = viewModel.state.watch(onState)
 }
 
 class FavoritesBridge : ScreenBridge() {
@@ -305,51 +321,15 @@ class SignInBridge : ScreenBridge() {
     fun watchEvents(onEvent: (AuthEvent) -> Unit): FlowWatch = viewModel.events.watch(onEvent)
 }
 
-class PhoneEntryBridge : ScreenBridge() {
-    val viewModel: PhoneEntryViewModel = makeViewModel(PhoneEntryViewModel::class) {
-        PhoneEntryViewModel(container.authRepository)
-    }
-
-    val currentState: PhoneEntryUiState get() = viewModel.state.value
-
-    /** The country code menu's choices, in order. */
-    val dialCodes: List<DialCode> = DialCode.entries
-
-    fun watch(onState: (PhoneEntryUiState) -> Unit): FlowWatch = viewModel.state.watch(onState)
-
-    fun watchEvents(onEvent: (AuthEvent) -> Unit): FlowWatch = viewModel.events.watch(onEvent)
-}
-
-class OtpBridge(phoneE164: String) : ScreenBridge() {
-    val viewModel: OtpViewModel = makeViewModel(OtpViewModel::class) { OtpViewModel(phoneE164, container.authRepository) }
+/** [contactKey] is the key of the contact the code was sent to: an email address, or a number in E.164 form. */
+class OtpBridge(contactKey: String) : ScreenBridge() {
+    val viewModel: OtpViewModel = makeViewModel(OtpViewModel::class) { OtpViewModel(contactKey, container.authRepository) }
 
     val currentState: OtpUiState get() = viewModel.state.value
 
     fun watch(onState: (OtpUiState) -> Unit): FlowWatch = viewModel.state.watch(onState)
 
     fun watchEvents(onEvent: (AuthEvent) -> Unit): FlowWatch = viewModel.events.watch(onEvent)
-}
-
-class EmailAuthBridge(signUp: Boolean) : ScreenBridge() {
-    val viewModel: EmailAuthViewModel = makeViewModel(EmailAuthViewModel::class) {
-        EmailAuthViewModel(if (signUp) EmailAuthMode.SIGN_UP else EmailAuthMode.LOG_IN, container.authRepository)
-    }
-
-    val currentState: EmailAuthUiState get() = viewModel.state.value
-
-    fun watch(onState: (EmailAuthUiState) -> Unit): FlowWatch = viewModel.state.watch(onState)
-
-    fun watchEvents(onEvent: (AuthEvent) -> Unit): FlowWatch = viewModel.events.watch(onEvent)
-}
-
-class ForgotPasswordBridge : ScreenBridge() {
-    val viewModel: ForgotPasswordViewModel = makeViewModel(ForgotPasswordViewModel::class) {
-        ForgotPasswordViewModel(container.authRepository)
-    }
-
-    val currentState: ForgotPasswordUiState get() = viewModel.state.value
-
-    fun watch(onState: (ForgotPasswordUiState) -> Unit): FlowWatch = viewModel.state.watch(onState)
 }
 
 class CartReviewBridge : ScreenBridge() {
@@ -427,7 +407,6 @@ class DebugBridge {
     val loadingDelayOptionsMillis: List<Long> = listOf(0L, 800L, 2_000L)
     val testCode: String = SeedAuth.TEST_OTP
     val testEmail: String = SeedAuth.TEST_EMAIL
-    val testPassword: String = SeedAuth.TEST_PASSWORD
 
     val currentState: DebugState get() = DebugState(
         loadingDelayMillis = config.loadingDelay.value.inWholeMilliseconds,

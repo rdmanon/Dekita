@@ -2,7 +2,7 @@ import SwiftUI
 import SharedLogic
 
 /// The floating Search tab. Matches store names and item names, together with the mode and filters.
-/// It keeps its own search and filters; the In-store / Pickup choice is shared with Discover.
+/// It keeps its own search and filters; the Eat-in / Takeout choice is shared with Discover.
 struct SearchView: View {
     @StateObject private var model = DiscoverModel()
     @State private var query = ""

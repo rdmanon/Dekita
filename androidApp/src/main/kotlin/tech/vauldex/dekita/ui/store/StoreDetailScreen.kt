@@ -375,8 +375,8 @@ private fun MenuItemRow(item: MenuItem, artKey: String?, canOrder: Boolean, modi
         }
         when {
             item.isSoldOut -> StatusPill("Sold out", DekitaTheme.colors.paused)
-            item.availableModes == setOf(FulfillmentMode.IN_STORE) -> StatusPill("In-store only", DekitaTheme.colors.inStore)
-            item.availableModes == setOf(FulfillmentMode.PICKUP) -> StatusPill("Pickup only", DekitaTheme.colors.pickup)
+            item.availableModes == setOf(FulfillmentMode.IN_STORE) -> StatusPill("Eat-in only", DekitaTheme.colors.inStore)
+            item.availableModes == setOf(FulfillmentMode.PICKUP) -> StatusPill("Takeout only", DekitaTheme.colors.pickup)
         }
         if (!item.isSoldOut) AddAffordance(enabled = canOrder)
     }

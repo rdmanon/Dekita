@@ -183,7 +183,7 @@ private fun AuthControls(container: AppContainer) {
         label = { Text("Force SSO failure") },
     )
     Text("Test code: ${SeedAuth.TEST_OTP}", style = MaterialTheme.typography.bodyMedium)
-    Text("Test account: ${SeedAuth.TEST_EMAIL} / ${SeedAuth.TEST_PASSWORD}", style = MaterialTheme.typography.bodyMedium)
+    Text("Test email: ${SeedAuth.TEST_EMAIL}", style = MaterialTheme.typography.bodyMedium)
     OutlinedButton(onClick = { container.fillSampleCart() }) { Text("Fill sample cart") }
 }
 
@@ -372,7 +372,7 @@ private fun CheckInControls(container: AppContainer) {
     OutlinedButton(onClick = simulator::scanInvalidQr) { Text("Simulate invalid QR") }
 }
 
-/** SEAT-01: "seats full" per Eat-In store, to try the seat check's fallbacks. */
+/** SEAT-01: "seats full" per Eat-in store, to try the seat check's fallbacks. */
 @Composable
 private fun SeatControls(container: AppContainer) {
     val stores by container.storeRepository.stores.collectAsStateWithLifecycle()

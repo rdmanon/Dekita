@@ -32,7 +32,7 @@ struct StoreArtView: View {
     }
 }
 
-/// Open for Lunch, Pickup Only, In-store Only, Paused or Full. Fades when the live feed changes it.
+/// Open for Lunch, Takeout Only, Eat-in Only, In-store Only, Paused or Full. Fades when the live feed changes it.
 struct StatusBadgeView: View {
     let badge: StoreBadge
     var minHeight: CGFloat = 22

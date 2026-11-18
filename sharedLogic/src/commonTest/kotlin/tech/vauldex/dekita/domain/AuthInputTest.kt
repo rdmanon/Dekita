@@ -83,12 +83,43 @@ class AuthInputTest {
     }
 
     @Test
-    fun passwordNeedsEightCharactersALetterAndANumber() {
-        assertFalse(AuthInput.isValidPassword("password"), "no number")
-        assertFalse(AuthInput.isValidPassword("12345678"), "no letter")
-        assertFalse(AuthInput.isValidPassword("Pass123"), "7 characters")
-        assertTrue(AuthInput.isValidPassword("Pass1234!"))
-        assertTrue(AuthInput.isValidPassword("pass1234"))
+    fun theOneFieldReadsAnEmailOrAMobileNumber() {
+        assertEquals(AuthContact.Email("lunchuser@example.com"), AuthInput.parseContact("lunchuser@example.com"))
+        assertEquals(AuthContact.Email("lunchuser@example.com"), AuthInput.parseContact(" ｌｕｎｃｈｕｓｅｒ＠ｅｘａｍｐｌｅ．ｃｏｍ "))
+        val japan = AuthInput.parseContact("090-1234-5678") as AuthContact.Phone
+        assertEquals("+819012345678", japan.key)
+        assertEquals("+81 90-1234-5678", japan.display)
+        val philippines = AuthInput.parseContact("+63 917 123 4567") as AuthContact.Phone
+        assertEquals("+639171234567", philippines.key)
+    }
+
+    @Test
+    fun aNumberWithoutACountryCodeIsJapanAndThePhilippinesNeedsItsCode() {
+        // 901 234 5678 is a valid national number in both countries; Japan is tried first.
+        val ambiguous = AuthInput.parseContact("9012345678") as AuthContact.Phone
+        assertEquals(DialCode.JP, ambiguous.number.dialCode)
+        val philippines = AuthInput.parseContact("+639012345678") as AuthContact.Phone
+        assertEquals(DialCode.PH, philippines.number.dialCode)
+    }
+
+    @Test
+    fun textThatIsNeitherIsRejected() {
+        listOf("", "   ", "lunchuser", "lunchuser@", "lunch user@example.com", "0312345678", "090-1234-567", "+1 555 0100", "abc123")
+            .forEach { assertNull(AuthInput.parseContact(it), "Input: '$it'") }
+    }
+
+    @Test
+    fun aContactKeyReadsBackIntoTheSameContact() {
+        listOf("lunchuser@example.com", "090-1234-5678", "+63 917 123 4567").forEach { raw ->
+            val contact = AuthInput.parseContact(raw)!!
+            assertEquals(contact, AuthInput.parseContact(contact.key), "Input: $raw")
+        }
+    }
+
+    @Test
+    fun aContactHidesItselfWhenPrinted() {
+        assertFalse(AuthContact.Email("lunchuser@example.com").toString().contains("lunchuser"))
+        assertFalse(AuthInput.parseContact("090-1234-5678").toString().contains("1234"))
     }
 
     @Test

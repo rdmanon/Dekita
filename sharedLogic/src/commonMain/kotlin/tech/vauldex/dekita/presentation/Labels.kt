@@ -32,7 +32,8 @@ import tech.vauldex.dekita.presentation.discover.WalkLimit
 val StoreBadge.label: String
     get() = when (this) {
         StoreBadge.OPEN_FOR_LUNCH -> "Open for Lunch"
-        StoreBadge.PICKUP_ONLY -> "Pickup Only"
+        StoreBadge.PICKUP_ONLY -> "Takeout Only"
+        StoreBadge.EAT_IN_ONLY -> "Eat-in Only"
         StoreBadge.IN_STORE_ONLY -> "In-store Only"
         StoreBadge.PAUSED -> "Paused"
         StoreBadge.FULL -> "Full"
@@ -104,8 +105,8 @@ val BusinessType.modesLabel: String?
 
 val FulfillmentMode.label: String
     get() = when (this) {
-        FulfillmentMode.IN_STORE -> "In-store"
-        FulfillmentMode.PICKUP -> "Pickup"
+        FulfillmentMode.IN_STORE -> "Eat-in"
+        FulfillmentMode.PICKUP -> "Takeout"
     }
 
 val OrderStatus.label: String
@@ -199,12 +200,19 @@ fun addButtonLabel(total: Money): String = "Add · ${total.formatted()}"
 /** The item sheet's button text when editing a cart line, for example "Update · ¥1,100". */
 fun updateButtonLabel(total: Money): String = "Update · ${total.formatted()}"
 
-/** The Eat-In / Takeout toggle's words, for stores that offer both modes. */
+/** The Eat-in / Takeout toggle's words, for stores that offer both modes. Same as [label] since the rename. */
 val FulfillmentMode.choiceLabel: String
-    get() = when (this) {
-        FulfillmentMode.IN_STORE -> "Eat-In"
-        FulfillmentMode.PICKUP -> "Takeout"
-    }
+    get() = label
+
+// Location settings: the chip on Discover and its picker sheet.
+
+/** The small line over the place's name on the Android chip. */
+const val PLACE_CHIP_LABEL = "Takeout near"
+
+const val PLACE_PICKER_TITLE = "Takeout location"
+const val PLACE_PICKER_DETAIL = "Nearby stores, walk times and queues are based on this spot."
+const val PLACE_SEARCH_HINT = "Search address or station"
+const val NO_PLACES_FOUND = "No saved places match."
 
 val CheckoutAction.label: String
     get() = when (this) {
@@ -259,7 +267,7 @@ const val CANCEL_EXIT_DETAIL = "Back to Discover. Your order stays in Orders as 
 /** The payment sheet's button, for example "Pay ¥1,550". */
 fun payButtonLabel(total: Money): String = "Pay ${total.formatted()}"
 
-/** The order's mode as the customer chose it: "Eat-In" or "Takeout" at a store with both, else "In-store" or "Pickup". */
+/** The order's mode as the customer chose it: "Eat-in" or "Takeout". Both label forms read the same since the rename. */
 fun FulfillmentMode.orderLabel(businessType: BusinessType?): String =
     if (businessType?.letsCustomerChooseMode == true) choiceLabel else label
 

@@ -24,8 +24,10 @@ import tech.vauldex.dekita.data.LoadState
 import tech.vauldex.dekita.data.MenuRepository
 import tech.vauldex.dekita.data.OrderRepository
 import tech.vauldex.dekita.data.PaymentRepository
+import tech.vauldex.dekita.data.PlaceRepository
 import tech.vauldex.dekita.data.StoreRepository
 import tech.vauldex.dekita.data.dataOrNull
+import tech.vauldex.dekita.domain.AuthContact
 import tech.vauldex.dekita.domain.BusinessType
 import tech.vauldex.dekita.domain.Cart
 import tech.vauldex.dekita.domain.CartLine
@@ -44,8 +46,8 @@ import tech.vauldex.dekita.domain.OrderStatus
 import tech.vauldex.dekita.domain.OrderStatusMachine
 import tech.vauldex.dekita.domain.PaymentMethod
 import tech.vauldex.dekita.domain.PaymentType
-import tech.vauldex.dekita.domain.PhoneNumber
 import tech.vauldex.dekita.domain.QueueStatus
+import tech.vauldex.dekita.domain.SavedPlace
 import tech.vauldex.dekita.domain.Session
 import tech.vauldex.dekita.domain.SignInMethod
 import tech.vauldex.dekita.domain.SsoProvider
@@ -81,9 +83,15 @@ interface StoreFeedSimulator {
     fun setSeatsFull(storeId: String, full: Boolean)
 }
 
+/**
+ * The fake store feed. [places] is where the customer looks from: the feed's walking times are measured from the
+ * selected place, so Nearby, the walk filter and every "N min walk" line follow it. The default place is the
+ * seed's own start, so the feed reads as seeded until another place is picked.
+ */
 class FakeStoreRepository(
     private val scope: CoroutineScope,
     private val config: MockConfig,
+    private val places: PlaceRepository = FakePlaceRepository(),
 ) : StoreRepository, StoreFeedSimulator, Resettable {
 
     private val _stores = MutableStateFlow<LoadState<List<Store>>>(LoadState.Loading)
@@ -106,12 +114,19 @@ class FakeStoreRepository(
 
     init {
         refresh()
+        scope.launch { places.selected.collect(::measureFrom) }
         scope.launch {
             while (true) {
                 delay(MockConfig.QUEUE_TICK_INTERVAL)
                 if (config.liveQueue.value) tickQueues()
             }
         }
+    }
+
+    /** Re-measures every store's walk from [place] and pushes the feed to anyone showing it. */
+    private fun measureFrom(place: SavedPlace) {
+        val updated = feed.updateAndGet { stores -> stores.map { it.copy(walkMinutes = place.location.walkMinutesTo(it.location)) } }
+        _stores.update { state -> if (state is LoadState.Success) LoadState.Success(updated) else state }
     }
 
     override fun refresh() {
@@ -660,48 +675,27 @@ class FakeInboxRepository(
 
 /**
  * Simulated sign-in. Each call waits the loading delay in the caller's coroutine, so a test dispatcher
- * runs it on virtual time. Accepts only [SeedAuth.TEST_OTP]; Google and Apple fail when
- * [MockConfig.forceSsoFailure] is on.
+ * runs it on virtual time. Accepts only [SeedAuth.TEST_OTP], for a phone and for an email alike; Google and
+ * Apple fail when [MockConfig.forceSsoFailure] is on. Any contact signs in: a new one just creates its account.
  */
 class FakeAuthRepository(private val config: MockConfig) : AuthRepository, Resettable {
 
     private val _session = MutableStateFlow<Session?>(null)
     override val session: StateFlow<Session?> = _session.asStateFlow()
 
-    // Mock only: lowercase email to the password it was created with, so log-in works after sign-up.
-    // A real backend keeps a salted hash on the server and never holds or returns the password.
-    private val accounts = MutableStateFlow(seedAccounts)
-
-    override suspend fun requestOtp(phone: PhoneNumber) {
+    // No account list: the fake has no accounts to look up, so every contact behaves the same and the
+    // result can't reveal which contacts are registered. A real backend must give the same answer for both.
+    override suspend fun requestOtp(contact: AuthContact) {
         delay(config.loadingDelay.value)
     }
 
-    override suspend fun verifyOtp(phone: PhoneNumber, code: String): AuthResult {
+    override suspend fun verifyOtp(contact: AuthContact, code: String): AuthResult {
         delay(config.loadingDelay.value)
         if (code != SeedAuth.TEST_OTP) return AuthResult.Failure(AuthFailure.INVALID_CODE)
-        return signIn(UserProfile(seedUser.displayName, phone = phone.formatted()), SignInMethod.PHONE)
-    }
-
-    override suspend fun signUpWithEmail(email: String, password: String): AuthResult {
-        delay(config.loadingDelay.value)
-        var created = false
-        accounts.update { current ->
-            created = email.lowercase() !in current
-            if (created) current + (email.lowercase() to password) else current
+        return when (contact) {
+            is AuthContact.Email -> signIn(UserProfile(seedUser.displayName, email = contact.address), SignInMethod.EMAIL)
+            is AuthContact.Phone -> signIn(UserProfile(seedUser.displayName, phone = contact.number.formatted()), SignInMethod.PHONE)
         }
-        if (!created) return AuthResult.Failure(AuthFailure.EMAIL_TAKEN)
-        return signIn(UserProfile(seedUser.displayName, email = email), SignInMethod.EMAIL)
-    }
-
-    override suspend fun signInWithEmail(email: String, password: String): AuthResult {
-        delay(config.loadingDelay.value)
-        // One answer for an unknown email and a wrong password, so the error can't reveal which accounts exist.
-        if (accounts.value[email.lowercase()] != password) return AuthResult.Failure(AuthFailure.WRONG_CREDENTIALS)
-        return signIn(UserProfile(seedUser.displayName, email = email), SignInMethod.EMAIL)
-    }
-
-    override suspend fun requestPasswordReset(email: String) {
-        delay(config.loadingDelay.value)
     }
 
     override suspend fun signInWith(provider: SsoProvider): AuthResult {
@@ -720,7 +714,6 @@ class FakeAuthRepository(private val config: MockConfig) : AuthRepository, Reset
 
     override fun reset() {
         signOut()
-        accounts.value = seedAccounts
     }
 
     private fun signIn(profile: UserProfile, method: SignInMethod): AuthResult {

@@ -29,7 +29,7 @@ enum Palette {
             return BadgeColors(background: Color(light: 0xE3F5E9, dark: 0x1E3B2A), foreground: Color(light: 0x1B6B3A, dark: 0x9BE3B4))
         case .pickupOnly:
             return BadgeColors(background: Color(light: 0xE5EEFF, dark: 0x1E2A4A), foreground: Color(light: 0x1D4ED8, dark: 0xA9C4FF))
-        case .inStoreOnly:
+        case .inStoreOnly, .eatInOnly:
             return BadgeColors(background: Color(light: 0xF1E8FF, dark: 0x34204A), foreground: Color(light: 0x6B21A8, dark: 0xDDC2FF))
         case .full:
             return BadgeColors(background: Color(light: 0xFFE5E3, dark: 0x4A1E1C), foreground: Color(light: 0xB3261E, dark: 0xFFB4AB))

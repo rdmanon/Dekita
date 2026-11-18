@@ -5,6 +5,7 @@ import kotlin.time.Instant
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
+import tech.vauldex.dekita.domain.AuthContact
 import tech.vauldex.dekita.domain.AuthInput
 import tech.vauldex.dekita.domain.BusinessType
 import tech.vauldex.dekita.domain.CompletionReason
@@ -153,11 +154,27 @@ class MockSeedTest {
     fun authValuesAreTheDocumentedFakes() {
         assertEquals("123456", SeedAuth.TEST_OTP)
         assertTrue(SeedAuth.TEST_EMAIL.endsWith("@example.com"))
-        // No word boundary inside "Test1234", so check the prefix rather than the obviouslyFake regex.
-        assertTrue(SeedAuth.TEST_PASSWORD.startsWith("Test"))
-        // The test account must also pass the sign-up rule, so it works on either form.
-        assertTrue(AuthInput.isValidPassword(SeedAuth.TEST_PASSWORD))
-        assertTrue(seedAccounts.keys.all { it == it.lowercase() && it.endsWith("@example.com") })
+        // The test address must pass the sign-in field's own check, so it works as typed.
+        assertTrue(AuthInput.parseContact(SeedAuth.TEST_EMAIL) is AuthContact.Email)
+    }
+
+    @Test
+    fun theDefaultPlaceIsTheMockCustomersStartSoSeededWalkingTimesHold() {
+        val default = seedPlaces.first { it.id == SeedPlaceIds.DEFAULT }
+        assertEquals("Shibuya Station", default.name)
+        for (store in seedStores) {
+            assertEquals(store.walkMinutes, default.location.walkMinutesTo(store.location), store.name)
+        }
+    }
+
+    @Test
+    fun placesCarryTheDesignsNamesAndDifferInWhereTheyAre() {
+        assertEquals(
+            listOf("Current location", "Shibuya Station", "Home", "Office"),
+            seedPlaces.map { it.name },
+        )
+        assertEquals(seedPlaces.size, seedPlaces.map { it.id }.toSet().size)
+        assertTrue(seedPlaces.first { it.id == SeedPlaceIds.HOME }.location != seedCustomerLocation)
     }
 
     @Test

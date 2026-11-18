@@ -3,7 +3,7 @@ import SharedLogic
 
 /// Cart Review (CART-01), laid out as the iOS Cart artboard: the store card with its live queue, the order mode,
 /// editable lines, totals and one checkout button. The button follows the store's business type: single-mode
-/// stores pay now; stores with both offer Eat-In ("Head to Store", a DRAFT order) or Takeout ("Pay Now").
+/// stores pay now; stores with both offer Eat-in ("Head to Store", a DRAFT order) or Takeout ("Pay Now").
 /// A guest's checkout opens sign-in as a sheet over this screen, so finishing it lands back here unchanged.
 /// "Pay now" opens the payment sheet (PAY-01); a fresh one each time, so every checkout gets its own id.
 struct CartReviewView: View {
@@ -168,7 +168,7 @@ private struct CartPaymentSheet: View {
     }
 }
 
-/// "How are you eating?" and the Eat-In / Takeout control for stores with both modes; a fixed pill otherwise.
+/// "How are you eating?" and the Eat-in / Takeout control for stores with both modes; a fixed pill otherwise.
 /// The line under it says when the customer pays.
 private struct CartModeSection: View {
     let mode: FulfillmentMode

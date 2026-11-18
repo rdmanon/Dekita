@@ -13,8 +13,10 @@ import tech.vauldex.dekita.data.QrScanner
 import tech.vauldex.dekita.data.StoreRepository
 import tech.vauldex.dekita.data.dataOrNull
 import tech.vauldex.dekita.domain.CheckInQr
+import tech.vauldex.dekita.domain.FulfillmentMode
 import tech.vauldex.dekita.domain.QrScanResult
 import tech.vauldex.dekita.presentation.STOP_TIMEOUT_MILLIS
+import tech.vauldex.dekita.presentation.label
 
 data class QrScannerUiState(
     /** The draft's store, for the result text. */
@@ -44,7 +46,7 @@ data class QrScannerUiState(
     val message: String
         get() = when (result) {
             null -> "Point your camera at the QR code on the counter, at the entrance, or on your table."
-            is QrScanResult.CheckedIn -> "$storeName · Eat-In. Next, make sure there's a seat for you."
+            is QrScanResult.CheckedIn -> "$storeName · ${FulfillmentMode.IN_STORE.label}. Next, make sure there's a seat for you."
             is QrScanResult.WrongStore -> "It's for ${scannedStoreName ?: "another store"}. Scan the QR at $storeName."
             QrScanResult.Invalid -> "It isn't a Passnize check-in code. Scan the QR on the counter or your table."
         }

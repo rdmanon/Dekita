@@ -45,7 +45,7 @@ import tech.vauldex.dekita.presentation.label
 import tech.vauldex.dekita.presentation.store.ItemSheetState
 
 /**
- * A cart line and, when it can't be ordered right now, why: "Sold out", or "Eat-In only" when the item
+ * A cart line and, when it can't be ordered right now, why: "Sold out", or "Eat-in only" when the item
  * is limited to the other mode. Checked against the live menu.
  */
 data class CartLineUi(val line: CartLine, val unavailableReason: String?) {

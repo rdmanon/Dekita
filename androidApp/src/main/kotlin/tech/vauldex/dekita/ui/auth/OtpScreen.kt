@@ -60,7 +60,7 @@ fun OtpScreen(viewModel: OtpViewModel, onBack: () -> Unit, onSignedIn: () -> Uni
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 24.dp, vertical = 8.dp),
         ) {
-            Text("We sent a 6-digit code to ${state.phone}.", style = MaterialTheme.typography.bodyLarge)
+            Text("We sent a 6-digit code to ${state.destination}.", style = MaterialTheme.typography.bodyLarge)
             OtpField(
                 value = field,
                 onValueChange = { typed ->
@@ -86,7 +86,7 @@ fun OtpScreen(viewModel: OtpViewModel, onBack: () -> Unit, onSignedIn: () -> Uni
                     if (state.resendSecondsLeft > 0) "Resend code in ${countdown(state.resendSecondsLeft)}" else "Resend code",
                 )
             }
-            TextButton(onClick = onBack) { Text("Change number") }
+            TextButton(onClick = onBack) { Text("Change") }
             if (isDebug) {
                 Text(
                     "Debug build · test code: ${SeedAuth.TEST_OTP}",

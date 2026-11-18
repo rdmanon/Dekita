@@ -120,7 +120,7 @@ internal fun DiscoverSearchField(
 }
 
 /**
- * The In-store / Pickup selector, shown before any store, as an M3 Expressive connected button group.
+ * The Eat-in / Takeout selector, shown under the category chips, as an M3 Expressive connected button group.
  * "All" clears the selection. The selected segment fills with the brand color and rounds fully.
  */
 @Composable
@@ -131,8 +131,8 @@ internal fun ModeSelector(
 ) {
     val options = listOf<Pair<FulfillmentMode?, String>>(
         null to "All",
-        FulfillmentMode.IN_STORE to "In-store",
-        FulfillmentMode.PICKUP to "Pickup",
+        FulfillmentMode.IN_STORE to "Eat-in",
+        FulfillmentMode.PICKUP to "Takeout",
     )
     Row(horizontalArrangement = Arrangement.spacedBy(2.dp), modifier = modifier.fillMaxWidth().selectableGroup()) {
         options.forEachIndexed { index, (mode, label) ->
@@ -314,7 +314,7 @@ internal fun DraftBanner(draft: Order, onResume: () -> Unit, modifier: Modifier 
         ) {
             Icon(painterResource(R.drawable.ic_restaurant), contentDescription = null, modifier = Modifier.size(24.dp))
             Column(verticalArrangement = Arrangement.spacedBy(2.dp), modifier = Modifier.weight(1f)) {
-                Text("Your Eat-In order is waiting", style = MaterialTheme.typography.titleMedium, maxLines = 1)
+                Text("Your Eat-in order is waiting", style = MaterialTheme.typography.titleMedium, maxLines = 1)
                 Text(
                     "${draft.storeName} · ${draft.itemsLabel}",
                     style = MaterialTheme.typography.labelMedium,
